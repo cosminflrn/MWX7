@@ -38,3 +38,12 @@ Scaffold, deploy pipeline, window manager (drag/resize/snap/minimize), menu bar,
 
 ## ✅ v0.2 “Fidelity”
 Premium pass (Aero glass, realistic icons, new logo, Serenity Hill + Blue Wave wallpapers), power → BIOS → boot logo → logon, original sounds (#12), real genie minimize, Start menu glued to the orb, double-click centers windows, VFS v2 with IndexedDB (#1), Terminal (#4), Space Pinball (#5).
+
+## ✅ v0.3 “Aero”
+Real footage wallpapers + ambience, KDE Oxygen icons, Selawik font, real-photo avatars, Win7-style setup, canvas genie, sampled sounds, Space Pinball v2, MWX Commander, session-only mode.
+
+## ✅ v0.4 “Explorer”
+Explorer (#8), Aero Peek (#7), grid desktop icons with drag & /Desktop files (#10), Trash in the dock (#13), Alt+` / Ctrl+Tab switcher and window shortcuts (#2), clock calendar (#3), Windows 7 Calculator, Notepad and Control Panel.
+
+## Next
+Mission Control (#11), Paint (#9), touch & small screens (#14), Internet-style browser app, Media Player with the Music folder, more Control Panel pages.

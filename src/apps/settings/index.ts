@@ -6,7 +6,7 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 type PageId = 'home' | 'personalization' | 'accounts' | 'sound' | 'system';
 

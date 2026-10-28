@@ -4,7 +4,7 @@
 
 **The dream desktop.**
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.3 “Aero”
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.4 “Explorer”
 
 ![MWX 7 desktop](docs/screenshot.jpg)
 
@@ -19,7 +19,8 @@ MWX 7 is a complete desktop operating system that runs in your browser: glass wi
 - **Start menu + Spotlight.** Click the orb or press `Ctrl+Space` to find any app or document.
 - **Its own sound.** Original startup chime and system sounds, synthesized live.
 - **Living wallpapers.** Real moving footage and animated scenes, with soft ambient sound on the desktop.
-- **Apps:** Notepad, Calculator, Terminal, Space Pinball, Settings — more on the way.
+- **Windows 7 at heart.** Explorer, Control Panel, Calculator and Notepad, Aero Peek, an Alt+` switcher, a clock calendar and a Trash in the dock.
+- **Apps:** Explorer, Notepad, Calculator, Terminal, Space Pinball, Control Panel — more on the way.
 
 ![MWX 7 logon](docs/logon.jpg)
 
