@@ -1,0 +1,65 @@
+/* MWX Commander: everything scoped under .mwx-cmdr. The 16 EGA colours drive f<N> (text) and b<N> (background). */
+.mwx-cmdr {
+  --cw: 12px;
+  --fs: 20px;
+  --lh: 24px;
+  position: fixed;
+  inset: 0;
+  z-index: 600000;
+  background: #000;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', monospace;
+  font-size: var(--fs);
+  letter-spacing: var(--ls, 0px);
+  font-weight: normal;
+  font-variant-ligatures: none;
+  -webkit-font-smoothing: none;
+  text-rendering: optimizeSpeed;
+}
+.mwx-cmdr .cmdr-screen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--cw) * 80);
+  transform-origin: 0 0;
+}
+.mwx-cmdr .cmdr-row {
+  height: var(--lh);
+  line-height: var(--lh);
+  white-space: pre;
+  overflow: hidden;
+}
+.mwx-cmdr .cmdr-row span {
+  display: inline-block;
+  vertical-align: top;
+  height: var(--lh);
+  overflow: hidden;
+}
+.mwx-cmdr .cmdr-probe {
+  position: absolute;
+  visibility: hidden;
+  left: 0;
+  top: 0;
+  font-size: 100px;
+  white-space: pre;
+}
+
+.mwx-cmdr .f0 { color: #000000; }  .mwx-cmdr .b0 { background: #000000; }
+.mwx-cmdr .f1 { color: #0000aa; }  .mwx-cmdr .b1 { background: #0000aa; }
+.mwx-cmdr .f2 { color: #00aa00; }  .mwx-cmdr .b2 { background: #00aa00; }
+.mwx-cmdr .f3 { color: #00aaaa; }  .mwx-cmdr .b3 { background: #00aaaa; }
+.mwx-cmdr .f4 { color: #aa0000; }  .mwx-cmdr .b4 { background: #aa0000; }
+.mwx-cmdr .f5 { color: #aa00aa; }  .mwx-cmdr .b5 { background: #aa00aa; }
+.mwx-cmdr .f6 { color: #aa5500; }  .mwx-cmdr .b6 { background: #aa5500; }
+.mwx-cmdr .f7 { color: #aaaaaa; }  .mwx-cmdr .b7 { background: #aaaaaa; }
+.mwx-cmdr .f8 { color: #555555; }  .mwx-cmdr .b8 { background: #555555; }
+.mwx-cmdr .f9 { color: #5555ff; }  .mwx-cmdr .b9 { background: #5555ff; }
+.mwx-cmdr .f10 { color: #55ff55; } .mwx-cmdr .b10 { background: #55ff55; }
+.mwx-cmdr .f11 { color: #55ffff; } .mwx-cmdr .b11 { background: #55ffff; }
+.mwx-cmdr .f12 { color: #ff5555; } .mwx-cmdr .b12 { background: #ff5555; }
+.mwx-cmdr .f13 { color: #ff55ff; } .mwx-cmdr .b13 { background: #ff55ff; }
+.mwx-cmdr .f14 { color: #ffff55; } .mwx-cmdr .b14 { background: #ffff55; }
+.mwx-cmdr .f15 { color: #ffffff; } .mwx-cmdr .b15 { background: #ffffff; }
