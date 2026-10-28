@@ -1025,3 +1025,41 @@ body.peeking .win.peek-target { z-index: 98500 !important; }
 
 /* The thumbnails replace the dock label while Peek is open. */
 body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
+
+/* ===== Mission Control ===== */
+.mc-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at 50% 40%, rgba(10, 30, 60, 0.35), rgba(0, 8, 20, 0.6));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: mc-in 0.3s ease forwards;
+}
+
+.mc-dim.leaving { animation: mc-out 0.35s ease forwards; }
+
+@keyframes mc-in { from { opacity: 0; } }
+@keyframes mc-out { to { opacity: 0; } }
+
+.mc-label {
+  position: absolute;
+  transform: translateX(-50%);
+  max-width: 260px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  font-size: 12px;
+  background: rgba(20, 32, 50, 0.6);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+body.mission .win { cursor: pointer; }
+body.mission .win * { pointer-events: none; }
+body.mission .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
+body.mission #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
+#desktop-icons { transition: opacity 0.3s; }

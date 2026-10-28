@@ -6,6 +6,7 @@ import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
+import { openMissionControl } from './mission';
 import { logOff, shutDown } from './screens';
 
 /** macOS-style global menu bar with Win7 glass, showing the focused app's menus. */
@@ -23,6 +24,7 @@ export function mountMenubar(bar: HTMLElement): void {
       { separator: true },
       { label: 'Settings…', action: () => launch('settings') },
       { label: 'Spotlight Search', shortcut: 'Ctrl+Space', action: () => bus.emit('spotlight:open', {}) },
+      { label: 'Mission Control', shortcut: 'F3', action: () => openMissionControl() },
       { separator: true },
       { label: 'Log Off…', action: () => void logOff() },
       { label: 'Shut Down…', action: () => void shutDown() },

@@ -14,6 +14,7 @@ import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountMenubar } from './shell/menubar';
 import { mountNotifications } from './shell/notifications';
+import { mountMissionControl } from './shell/mission';
 import { mountSelection } from './shell/selection';
 import { startup } from './shell/screens';
 import { mountSpotlight } from './shell/spotlight';
@@ -79,6 +80,7 @@ async function start(): Promise<void> {
   );
 
   mountSelection($('desktop'), $('desktop-icons'));
+  mountMissionControl();
   await startup();
 
   notify(`Welcome, ${settings.get().userName}`, 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
