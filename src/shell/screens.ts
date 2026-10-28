@@ -3,7 +3,7 @@ import { settings } from '../core/settings';
 import { play, unlockAudio } from '../core/sound';
 import { allWindows, closeWindow } from '../core/wm';
 import { h } from '../ui/dom';
-import { avatarHtml, avatarPicker } from './avatars';
+import { AVATARS, avatarHtml, avatarPicker } from './avatars';
 import { openCommander } from './commander';
 import { createWallpaperLayer } from './wallpapers';
 
@@ -236,7 +236,7 @@ export async function logon(): Promise<void> {
 /* ---------- 3b. first-run setup (Windows 7 OOBE style) ---------- */
 
 async function setup(): Promise<void> {
-  let picked = '';
+  let picked = AVATARS[0] ?? '';
   const name = h('input', {
     class: 'oobe-input',
     type: 'text',
@@ -254,7 +254,7 @@ async function setup(): Promise<void> {
     pc.textContent = `Computer name: ${(v ? v.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 12) || 'MWX' : 'MWX')}-PC`;
     error.textContent = '';
   });
-  const picker = avatarPicker('', (url) => (picked = url));
+  const picker = avatarPicker(picked, (url) => (picked = url));
   const dialog = h(
     'div',
     { class: 'oobe-window' },

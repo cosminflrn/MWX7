@@ -6,7 +6,20 @@ import { h } from '../ui/dom';
  * Account pictures — real photographs in the spirit of the classic XP / 7
  * account pictures (see public/media/CREDITS.md for sources and licenses).
  */
-const FILES: string[] = [];
+const FILES: string[] = [
+  '01-flower.jpg',
+  '02-goldfish.jpg',
+  '03-guitar.jpg',
+  '04-chess.jpg',
+  '05-soccer.jpg',
+  '06-dog.jpg',
+  '07-cat.jpg',
+  '08-butterfly.jpg',
+  '09-airplane.jpg',
+  '10-snowboard.jpg',
+  '11-beach.jpg',
+  '12-horse.jpg',
+];
 
 const BASE = import.meta.env.BASE_URL;
 

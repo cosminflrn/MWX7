@@ -14,7 +14,8 @@
   gap: 2px;
 }
 
-.set-side-head svg { width: 44px; height: 44px; margin: 0 0 10px 6px; }
+.set-side-head svg,
+.set-side-head img { width: 44px; height: 44px; margin: 0 0 10px 6px; }
 
 .set-side a {
   padding: 6px 10px;

@@ -1,9 +1,9 @@
+import { icons } from '../../assets/icons';
 import type { AppManifest, VFS } from '../../core/types';
 import { h } from '../../ui/dom';
-import { terminalIcon } from './icon';
 import './terminal.css';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const ROOTS = ['/', '/Desktop', '/Documents', '/Pictures', '/Music', '/Trash'];
 const COMMANDS = [
   'cat', 'cd', 'clear', 'date', 'echo', 'help', 'history', 'ls', 'mkdir', 'mwx7fetch', 'open', 'pwd', 'rm', 'touch', 'whoami',
@@ -106,7 +106,7 @@ function tokenize(line: string): Tok[] {
 export const terminal: AppManifest = {
   id: 'terminal',
   name: 'Terminal',
-  icon: terminalIcon,
+  icon: icons.terminal,
   description: 'Command line for your MWX 7 files',
   keywords: ['shell', 'console', 'command', 'cli', 'bash', 'prompt'],
   pinned: true,

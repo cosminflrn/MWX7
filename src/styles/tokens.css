@@ -1,7 +1,7 @@
 /* MWX7 design tokens — the single source of truth for the hybrid look. */
 :root {
-  /* Type: system faces only (we ship no fonts) */
-  --font-ui: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Ubuntu, Roboto, Arial, sans-serif;
+  /* Type: Segoe UI where installed, otherwise our bundled Selawik (OFL) */
+  --font-ui: 'Segoe UI', 'Selawik', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Ubuntu, Roboto, Arial, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
 
   /* Aero glass (Win7 "Sky" color) */

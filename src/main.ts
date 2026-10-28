@@ -19,8 +19,24 @@ import { startup } from './shell/screens';
 import { mountSpotlight } from './shell/spotlight';
 import { mountStartMenu } from './shell/startmenu';
 
+/** Selawik (OFL): Microsoft's open-source, metric-compatible companion to Segoe UI. */
+function loadFonts(): void {
+  const base = `${import.meta.env.BASE_URL}fonts/selawik/`;
+  const faces = [
+    ['light', 300],
+    ['regular', 400],
+    ['semibold', 600],
+    ['bold', 700],
+  ] as const;
+  const css = faces
+    .map(([file, weight]) => `@font-face{font-family:'Selawik';src:url('${base}selawik-${file}.woff2') format('woff2');font-weight:${weight};font-display:swap}`)
+    .join('');
+  document.head.insertAdjacentHTML('beforeend', `<style>${css}</style>`);
+}
+
 async function start(): Promise<void> {
   forgetPersistedData();
+  loadFonts();
   document.body.insertAdjacentHTML('afterbegin', ICON_DEFS);
   registerAll();
   await seedFS();

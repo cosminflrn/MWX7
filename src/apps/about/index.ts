@@ -14,7 +14,7 @@ export const about: AppManifest = {
   keywords: ['version', 'info', 'credits', 'system'],
   desktop: true,
   singleInstance: true,
-  window: { width: 400, height: 380, resizable: false },
+  window: { width: 420, height: 430, resizable: false },
 
   mount({ win, args }) {
     const app = typeof args.app === 'string' ? getApp(args.app) : undefined;
@@ -46,6 +46,11 @@ export const about: AppManifest = {
         h('dd', {}, 'Cosmin & Claude'),
       ),
       h('a', { class: 'about-link', href: 'https://github.com/cosminflrn/MWX7', target: '_blank', rel: 'noopener' }, 'github.com/cosminflrn/MWX7'),
+      h(
+        'p',
+        { class: 'about-small' },
+        'Icons: KDE Oxygen (LGPL) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
+      ),
     );
   },
 };

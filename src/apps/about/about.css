@@ -7,7 +7,8 @@
   background: radial-gradient(ellipse at 50% 0%, #e6f3ff, #fff 60%);
 }
 
-.about-logo svg { width: 72px; height: 72px; filter: drop-shadow(0 4px 10px rgba(10, 60, 140, 0.35)); }
+.about-logo svg,
+.about-logo img { width: 72px; height: 72px; filter: drop-shadow(0 4px 10px rgba(10, 60, 140, 0.35)); }
 .about h1 { margin: 8px 0 2px; font-size: 26px; font-weight: 600; color: #123a6e; }
 .about h1 { letter-spacing: 0.03em; }
 .about-seven { font-weight: 300; color: #1f74d8; }
