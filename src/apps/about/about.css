@@ -1,0 +1,27 @@
+.about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 22px 26px;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, #e6f3ff, #fff 60%);
+}
+
+.about-logo svg { width: 72px; height: 72px; filter: drop-shadow(0 4px 10px rgba(10, 60, 140, 0.35)); }
+.about h1 { margin: 8px 0 2px; font-size: 26px; font-weight: 600; color: #123a6e; }
+.about h1 sup { font-size: 14px; color: #1fa3c9; }
+.about-tag { margin: 0 0 14px; color: #4a5d74; font-size: 13px; }
+.about-small { color: #7b8aa0; font-size: 12px; }
+
+.about-specs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.about-specs dt { color: #6b7b90; text-align: right; }
+.about-specs dd { margin: 0; color: #1d2b3c; }
+.about-link { font-size: 12px; color: #1662c4; }

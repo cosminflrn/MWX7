@@ -1,0 +1,40 @@
+/* MWX7 design tokens — the single source of truth for the hybrid look. */
+:root {
+  /* Type: system faces only (we ship no fonts) */
+  --font-ui: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Ubuntu, Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+
+  /* Aero glass */
+  --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.18) 46%, rgba(190, 215, 240, 0.22));
+  --glass-bg-inactive: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1));
+  --glass-blur: blur(18px) saturate(170%);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-edge: rgba(10, 30, 60, 0.45);
+  --glass-dark: rgba(16, 28, 46, 0.55);
+
+  /* XP warmth */
+  --xp-blue-1: #2c74de;
+  --xp-blue-2: #0d4bb5;
+  --xp-sky: #d4e6fb;
+  --xp-green: #3fa83c;
+
+  /* Accents */
+  --accent: #2f86e8;
+  --accent-strong: #1662c4;
+  --focus-ring: 0 0 0 3px rgba(47, 134, 232, 0.4);
+
+  /* Traffic lights (macOS) */
+  --tl-close: #ff5f57;
+  --tl-min: #febc2e;
+  --tl-max: #28c840;
+
+  /* Shape + depth */
+  --radius-win: 10px;
+  --radius-menu: 9px;
+  --shadow-win: 0 22px 60px rgba(0, 10, 30, 0.45), 0 4px 14px rgba(0, 10, 30, 0.3);
+  --shadow-win-inactive: 0 12px 30px rgba(0, 10, 30, 0.28);
+  --shadow-pop: 0 14px 40px rgba(0, 10, 30, 0.38);
+
+  --menubar-h: 28px;
+  --dock-icon: 48px;
+}

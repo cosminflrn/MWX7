@@ -1,0 +1,238 @@
+/* Windows: Win7 Aero glass frame + macOS traffic lights */
+
+#windows {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.win {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px 6px;
+  border-radius: var(--radius-win);
+  background: var(--glass-bg-inactive), var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 0 0 1px var(--glass-border), var(--shadow-win-inactive);
+  pointer-events: auto;
+  outline: none;
+  transform-origin: center;
+}
+
+.win.active {
+  background: var(--glass-bg), rgba(40, 90, 150, 0.35);
+  box-shadow: inset 0 0 0 1px var(--glass-border), var(--shadow-win);
+}
+
+.win.anim {
+  transition: left 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), height 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.win.maximized {
+  border-radius: 0;
+  padding: 0 0 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.win.maximized .win-body { border-radius: 0; }
+
+.win.dragging,
+.win.resizing {
+  cursor: grabbing;
+}
+
+.win.dragging .win-body,
+.win.resizing .win-body {
+  pointer-events: none;
+}
+
+/* Title bar */
+.win-titlebar {
+  position: relative;
+  flex: none;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  cursor: default;
+  touch-action: none;
+}
+
+/* the Win7 glossy highlight across the top */
+.win-titlebar::before {
+  content: '';
+  position: absolute;
+  inset: 1px -5px auto;
+  height: 15px;
+  border-radius: var(--radius-win) var(--radius-win) 40% 40% / var(--radius-win) var(--radius-win) 8px 8px;
+  background: linear-gradient(rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.05));
+  pointer-events: none;
+}
+
+.win-title {
+  position: absolute;
+  left: 76px;
+  right: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  color: #0b1c33;
+  font-size: 13px;
+  font-weight: 500;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.95), 0 0 2px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.win:not(.active) .win-title { color: rgba(11, 28, 51, 0.55); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5); }
+
+.win-icon svg { width: 16px; height: 16px; flex: none; }
+
+.win-title-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Traffic lights */
+.win-controls {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  padding-left: 6px;
+}
+
+.wc {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  position: relative;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  line-height: 1;
+  color: transparent;
+}
+
+.wc-close { background: radial-gradient(circle at 50% 30%, #ff9a92, var(--tl-close) 60%); }
+.wc-min { background: radial-gradient(circle at 50% 30%, #ffe08a, var(--tl-min) 60%); }
+.wc-max { background: radial-gradient(circle at 50% 30%, #8df09c, var(--tl-max) 60%); }
+
+.win:not(.active) .wc { background: radial-gradient(circle at 50% 30%, #e9eef4, #b9c3cf 70%); }
+.win.fixed .wc-max { opacity: 0.45; pointer-events: none; }
+
+.win-controls:hover .wc::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(60, 0, 0, 0.7);
+  font-weight: 700;
+}
+
+.win-controls:hover .wc-close::after { content: '×'; font-size: 12px; }
+.win-controls:hover .wc-min::after { content: '–'; color: rgba(90, 50, 0, 0.75); }
+.win-controls:hover .wc-max::after { content: '+'; color: rgba(0, 60, 10, 0.75); }
+
+/* Content area (Win7 white pane inside the glass) */
+.win-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(10, 30, 60, 0.35), 0 0 0 2px rgba(255, 255, 255, 0.25);
+  user-select: text;
+}
+
+/* Resize handles */
+.rz { position: absolute; z-index: 2; touch-action: none; }
+.rz-n, .rz-s { left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.rz-e, .rz-w { top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.rz-n { top: -3px; }
+.rz-s { bottom: -3px; }
+.rz-e { right: -3px; }
+.rz-w { left: -3px; }
+.rz-ne, .rz-nw, .rz-se, .rz-sw { width: 14px; height: 14px; }
+.rz-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.rz-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.rz-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.rz-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.win.maximized .rz { display: none; }
+
+/* Aero Snap preview */
+.snap-preview {
+  position: absolute;
+  z-index: 9000;
+  border-radius: 10px;
+  background: rgba(150, 200, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.15s, transform 0.15s, left 0.15s, top 0.15s, width 0.15s, height 0.15s;
+  pointer-events: none;
+}
+
+.snap-preview.visible { opacity: 1; transform: none; }
+
+/* Sheets (macOS) */
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(20, 35, 55, 0.18);
+  display: flex;
+  justify-content: center;
+}
+
+.sheet {
+  align-self: flex-start;
+  width: min(380px, 92%);
+  max-height: 90%;
+  overflow: auto;
+  background: linear-gradient(#fbfcfe, #eef2f8);
+  border: 1px solid #a7b6c9;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 10px 30px rgba(0, 20, 50, 0.35);
+}
+
+.sheet-form { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.sheet-form label { font-weight: 600; }
+.sheet-input { padding: 6px 8px; border: 1px solid #9fb2c9; border-radius: 6px; font: inherit; outline: none; }
+.sheet-input:focus { box-shadow: var(--focus-ring); border-color: var(--accent); }
+.sheet-hint { color: #6a7a8f; font-size: 12px; }
+.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.sheet-list { display: flex; flex-direction: column; max-height: 220px; overflow: auto; border: 1px solid #ccd7e4; border-radius: 6px; background: #fff; }
+
+.sheet-file {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: default;
+}
+
+.sheet-file svg { width: 20px; height: 20px; }
+.sheet-file small { color: #7a889a; font-size: 11px; }
+.sheet-file:hover { background: #eaf2fc; }
+.sheet-file.sel { background: var(--accent); color: #fff; }
+.sheet-file.sel small { color: #dce9fb; }

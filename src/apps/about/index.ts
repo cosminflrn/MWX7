@@ -1,0 +1,51 @@
+import { icons } from '../../assets/icons';
+import { getApp } from '../../core/registry';
+import type { AppManifest } from '../../core/types';
+import { h } from '../../ui/dom';
+import './about.css';
+
+export const VERSION = '0.1.0';
+
+export const about: AppManifest = {
+  id: 'about',
+  name: 'About MWX7',
+  icon: icons.about,
+  description: 'Version and credits',
+  keywords: ['version', 'info', 'credits', 'system'],
+  desktop: true,
+  singleInstance: true,
+  window: { width: 400, height: 380, resizable: false },
+
+  mount({ win, args }) {
+    const app = typeof args.app === 'string' ? getApp(args.app) : undefined;
+    win.body.classList.add('about');
+    if (app) {
+      win.setTitle(`About ${app.name}`);
+      win.body.append(
+        h('div', { class: 'about-logo', html: app.icon }),
+        h('h1', {}, app.name),
+        h('p', { class: 'about-tag' }, app.description ?? ''),
+        h('p', { class: 'about-small' }, `Part of MWX7 ${VERSION}`),
+      );
+      return;
+    }
+    win.body.append(
+      h('div', { class: 'about-logo', html: icons.orb }),
+      h('h1', {}, 'MWX', h('sup', {}, '7')),
+      h('p', { class: 'about-tag' }, 'The dream desktop — macOS polish, XP warmth, 7’s glass.'),
+      h(
+        'dl',
+        { class: 'about-specs' },
+        h('dt', {}, 'Version'),
+        h('dd', {}, `${VERSION} “Genesis”`),
+        h('dt', {}, 'Processor'),
+        h('dd', {}, navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'),
+        h('dt', {}, 'Storage'),
+        h('dd', {}, 'This browser (localStorage)'),
+        h('dt', {}, 'Built by'),
+        h('dd', {}, 'Cosmin & Claude'),
+      ),
+      h('a', { class: 'about-link', href: 'https://github.com/cosminflrn/MWX7', target: '_blank', rel: 'noopener' }, 'github.com/cosminflrn/MWX7'),
+    );
+  },
+};
