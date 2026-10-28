@@ -1,8 +1,8 @@
 {
   "name": "mwx7",
   "private": true,
-  "version": "0.1.0",
-  "description": "MWX7 — a mockup desktop OS blending the best of macOS, Windows XP and Windows 7. Runs in the browser on GitHub Pages.",
+  "version": "0.2.0",
+  "description": "MWX 7 — the dream desktop OS, in your browser.",
   "type": "module",
   "scripts": {
     "dev": "vite",

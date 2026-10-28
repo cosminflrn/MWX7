@@ -63,7 +63,9 @@ export const settingsApp: AppManifest = {
             Object.keys(localStorage)
               .filter((k) => k.startsWith('mwx7:'))
               .forEach((k) => localStorage.removeItem(k));
-            location.reload();
+            // The file system lives in IndexedDB since VFS v2.
+            const del = indexedDB.deleteDatabase('mwx7');
+            del.onsuccess = del.onerror = del.onblocked = () => location.reload();
           }
         },
       },
@@ -100,7 +102,7 @@ export const settingsApp: AppManifest = {
           section(
             'System',
             h('label', { class: 'set-row' }, h('span', {}, 'Full startup (power button, BIOS, boot logo)'), boot),
-            h('div', { class: 'set-row' }, h('span', {}, 'Storage: this browser (localStorage)'), reset),
+            h('div', { class: 'set-row' }, h('span', {}, 'Storage: this browser'), reset),
           ),
         ),
       ),

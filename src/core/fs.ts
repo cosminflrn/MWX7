@@ -289,7 +289,7 @@ export async function seedFS(): Promise<void> {
   await fs.write(
     '/Documents/Welcome.txt',
     [
-      'Welcome to MWX7!',
+      'Welcome to MWX 7!',
       '',
       'The dream desktop: the polish of macOS, the warmth of Windows XP',
       'and the glass of Windows 7 — all in one browser tab.',

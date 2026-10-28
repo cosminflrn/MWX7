@@ -1,17 +1,26 @@
-# MWX7
+<div align="center">
 
-**The dream desktop OS — in your browser.** MWX7 blends the polish of macOS, the warmth of Windows XP and the glass of Windows 7 into one original desktop.
+# MWX 7
 
-**▶ Live:** https://cosminflrn.github.io/MWX7/
+**The dream desktop.**
 
-## What's inside (v0.1 “Genesis”)
-- Aero-glass windows with macOS traffic lights — drag, resize, double-click to maximize
-- **Aero Snap**: drag a window to the left/right edge or the top
-- Dock with magnification + Win7 superbar behaviour and a genie-style minimize
-- XP two-column **Start menu** behind a glowing orb
-- **Spotlight** search (`Ctrl+Space`) across apps and documents
-- Global menu bar, notifications, sheets, boot / welcome / shutdown screens
-- Apps: Notepad (saves to a virtual `/Documents`), Calculator, Settings (wallpapers, user name), About
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.2 “Fidelity”
+
+![MWX 7 desktop](docs/screenshot.jpg)
+
+</div>
+
+MWX 7 is a complete desktop operating system that runs in your browser: glass windows, a dock, a Start menu, a real boot sequence, sounds, and its own apps. No install, nothing to download. Your files stay in your browser.
+
+## Highlights
+- **A real startup.** Press the power button, watch the BIOS test your memory (with the beep), then the boot logo and the logon screen.
+- **Glass everywhere.** Translucent windows, smooth animations, windows that pour into the dock when you minimize them.
+- **Snap and center.** Drag a window to the left or right edge to snap it, to the top to maximize it, double-click the title bar to center it.
+- **Start menu + Spotlight.** Click the orb or press `Ctrl+Space` to find any app or document.
+- **Its own sound.** Original startup chime and system sounds, synthesized live.
+- **Apps:** Notepad, Calculator, Terminal, Space Pinball, Settings — more on the way.
+
+![MWX 7 logon](docs/logon.jpg)
 
 ## Run locally
 ```bash
@@ -19,8 +28,8 @@ npm install
 npm run dev
 ```
 
-## Contributing (humans and AI agents)
-Read [`SPEC.md`](SPEC.md) and [`CLAUDE.md`](CLAUDE.md). Work is tracked as GitHub issues labelled by phase and by the model best suited to it. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+## Contributing
+Read [`SPEC.md`](SPEC.md) and [`CLAUDE.md`](CLAUDE.md). Work is tracked as GitHub issues; see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Credits
-Made by Cosmin with Claude. All artwork is original; MWX7 is a fan-made concept and is not affiliated with Apple or Microsoft.
+Created by Cosmin, built with Claude. All artwork, sounds and code are original. MWX 7 is an independent project and is not affiliated with any operating system vendor.

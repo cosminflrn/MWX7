@@ -3,7 +3,7 @@ import { h } from '../../ui/dom';
 import { terminalIcon } from './icon';
 import './terminal.css';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const ROOTS = ['/', '/Desktop', '/Documents', '/Pictures', '/Music', '/Trash'];
 const COMMANDS = [
   'cat', 'cd', 'clear', 'date', 'echo', 'help', 'history', 'ls', 'mkdir', 'mwx7fetch', 'open', 'pwd', 'rm', 'touch', 'whoami',

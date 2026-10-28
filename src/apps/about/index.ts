@@ -41,7 +41,7 @@ export const about: AppManifest = {
         h('dt', {}, 'Processor'),
         h('dd', {}, navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'),
         h('dt', {}, 'Storage'),
-        h('dd', {}, 'This browser (localStorage)'),
+        h('dd', {}, 'This browser (IndexedDB)'),
         h('dt', {}, 'Built by'),
         h('dd', {}, 'Cosmin & Claude'),
       ),
