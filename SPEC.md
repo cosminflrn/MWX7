@@ -1,6 +1,10 @@
-# MWX7 — Product & Technical Spec
+# MWX 7 — Product & Technical Spec
 
 > The dream desktop: **macOS polish, Windows XP warmth, Windows 7 glass** — in one browser tab, hosted on GitHub Pages.
+>
+> **Product bar:** MWX 7 must feel premium and finished — realistic materials, never cartoonish or mockup-like. Close to the originals in fidelity, never a 1:1 copy.
+> **Naming:** the product is “MWX 7” (with a space). User-facing text never spells out what the letters stand for.
+> **Long-term:** a web version first, an installable Linux distro later — keep the shell portable.
 
 ## 1. Design direction (fixed hybrid)
 
@@ -10,17 +14,21 @@ MWX7 is **one** coherent design, not a theme switcher. Each part borrows the bes
 |---|---|---|
 | Global menu bar | macOS | Top bar shows the focused app's menus, plus Spotlight and the clock |
 | Dock | macOS + Win7 | Centered glass dock with magnification and launch bounce; Win7 superbar rules: click focused app = minimize, glow under running apps, right-click = jump list |
-| Start orb + Start menu | XP + Win7 | Glowing orb as the first dock item; XP two-column menu (apps left, places right, user header, Log Off / Turn Off footer) |
+| Start orb + Start menu | XP + Win7 | Glass orb with the four-colour pinwheel as the first dock item; XP two-column menu in Win7 materials, centered on the orb and glued to it during magnification |
 | Window frames | Win7 | Aero glass frame around a white content pane, glossy title highlight |
-| Window controls | macOS | Traffic lights on the left, glyphs on hover |
+| Window controls | macOS look, Windows placement | Traffic lights on the right (minimize, maximize, close), glyphs on hover; double-click title bar = center window |
 | Window management | Win7 | Aero Snap (drag to edges), shake/peek later |
 | Search | macOS | Spotlight overlay, `Ctrl+Space` |
 | Notifications | macOS | Glass banners top-right |
 | Dialogs | macOS | Sheets slide down from the title bar |
 | Desktop icons | XP | Left column, single-click select, double-click open |
-| Moments | XP + Win7 | Boot screen with marching bar, XP "welcome" log-off screen, Win7 shutdown |
+| Moments | PC + Win7 | Power button → BIOS POST (beep) → boot logo → Win7-style logon on Serenity Hill; log off / shut down transitions |
+| Sound | original | Synthesized with Web Audio in `core/sound.ts` (POST beep, startup/logoff chimes, notify, minimize/restore) |
+| Minimize | macOS | Genie: the window is sliced into strips that funnel into the dock icon |
 
-**Originality rule:** recreate the *feel*, never the assets. No Apple/Microsoft logos, icons, wallpapers (no Bliss), sounds, cursors or shipped system fonts. All artwork lives in `src/assets/` and `src/shell/wallpapers.ts` and is original SVG/CSS.
+**Originality rule:** recreate the *feel*, never the assets. No Apple/Microsoft logos (no flag shape), icons, wallpapers (no Bliss photo — we paint our own Serenity Hill), sounds or melodies, cursors or shipped system fonts. All artwork is original SVG/CSS/canvas.
+
+**Icon style:** realistic — soft studio lighting, hairline edges (≤0.75px, low-opacity dark), subtle gradients, a soft drop shadow from CSS. No thick outlines, no toy gloss. App icons live in `src/apps/<id>/icon.ts`.
 
 ## 2. Architecture
 
@@ -33,7 +41,8 @@ src/
     wm.ts              window manager (open/focus/minimize/close, drag, resize, snap)
     os.ts              launch(), notify(), the OSApi object handed to apps
     registry.ts        app registry
-    fs.ts              virtual filesystem (localStorage now, IndexedDB later — same async API)
+    fs.ts              virtual filesystem: IndexedDB with real folders, in-memory cache
+    sound.ts           synthesized system sounds
     settings.ts        persisted user settings
   shell/               desktop, menubar, dock, startmenu, spotlight, notifications, screens, wallpapers
   ui/                  shared helpers: dom.ts (h()), menu.ts (popup menus), sheet.ts
