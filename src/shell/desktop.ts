@@ -4,24 +4,30 @@ import { listApps } from '../core/registry';
 import { settings } from '../core/settings';
 import { h } from '../ui/dom';
 import { openMenu } from '../ui/menu';
-import { wallpaperBackground, wallpapers } from './wallpapers';
+import { mountAmbience } from './ambience';
+import { createWallpaperLayer, resolveWallpaperId, wallpapers } from './wallpapers';
 
 /** Wallpaper + XP-style desktop icons (left column) + desktop context menu. */
 export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void {
-  let current = '';
-  let token = 0;
-  const applyWallpaper = async () => {
-    const t = ++token;
-    const bg = await wallpaperBackground(settings.get().wallpaper);
-    if (t === token && bg !== current) desktop.style.background = current = bg;
-  };
-  void applyWallpaper();
-  bus.on('settings:change', () => void applyWallpaper());
-  let resizeTimer = 0;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => void applyWallpaper(), 400);
+  // Live wallpaper: the first child of #desktop, so icons and windows paint above it.
+  let wallId = resolveWallpaperId(settings.get().wallpaper);
+  let wall = createWallpaperLayer(wallId);
+  desktop.prepend(wall.el);
+  // Rewrite retired ids once so the Settings picker highlights the wallpaper actually showing.
+  if (settings.get().wallpaper !== wallId) settings.set({ wallpaper: wallId });
+  bus.on('settings:change', (s) => {
+    const next = resolveWallpaperId(s.wallpaper);
+    if (next === wallId) return;
+    wallId = next;
+    const old = wall;
+    const fresh = (wall = createWallpaperLayer(next));
+    fresh.el.classList.add('wp-enter');
+    old.el.after(fresh.el);
+    // Two frames so the starting opacity is committed before the transition begins.
+    requestAnimationFrame(() => requestAnimationFrame(() => fresh.el.classList.add('wp-in')));
+    window.setTimeout(() => old.destroy(), 650);
   });
+  mountAmbience();
 
   const select = (el: HTMLElement | null) => {
     iconLayer.querySelectorAll('.desk-icon.selected').forEach((n) => n.classList.remove('selected'));
@@ -56,7 +62,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
   desktop.addEventListener('contextmenu', (e) => {
     if (e.target !== desktop && e.target !== iconLayer) return;
     e.preventDefault();
-    const current = settings.get().wallpaper;
+    const current = resolveWallpaperId(settings.get().wallpaper);
     const idx = wallpapers.findIndex((w) => w.id === current);
     openMenu(
       [
