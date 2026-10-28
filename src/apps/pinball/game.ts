@@ -80,7 +80,7 @@ export class Game {
   flash: Record<string, number> = {};
   sparks: Spark[] = [];
   banner: Banner | null = null;
-  ticker = 'Hold SPACE to charge the plunger';
+  ticker = 'Hold UP to charge the plunger';
   trail: { x: number; y: number }[] = [];
   /** Set by index.ts to persist a new high score. */
   onHigh: (high: number) => void = () => undefined;
@@ -145,7 +145,7 @@ export class Game {
     this.phase = this.phase === 'over' ? 'over' : 'ready';
     this.trail.length = 0;
     this.world.plunger.ay = this.world.plunger.by = PLUNGER_REST_Y;
-    this.ticker = 'Hold SPACE to charge the plunger';
+    this.ticker = 'Hold UP to charge the plunger';
   }
 
   say(text: string, sub = '', color: string = NEON.cyan, dur = 1.8): void {

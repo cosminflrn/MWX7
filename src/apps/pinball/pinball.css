@@ -1,6 +1,20 @@
 .pb {
   display: flex;
-  background: radial-gradient(120% 90% at 30% 20%, #10153a 0%, #060818 55%, #02030a 100%);
+  align-items: center;
+  justify-content: center;
+  /* A quiet deep-space backdrop for the space beside the table (the table itself is portrait). */
+  background:
+    radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(1px 1px at 27% 71%, rgba(207, 230, 255, 0.45), transparent 60%),
+    radial-gradient(1.2px 1.2px at 8% 46%, rgba(255, 233, 196, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 41% 9%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1.2px 1.2px at 88% 24%, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 93% 63%, rgba(217, 201, 255, 0.5), transparent 60%),
+    radial-gradient(1px 1px at 76% 88%, rgba(255, 255, 255, 0.4), transparent 60%),
+    radial-gradient(1px 1px at 19% 90%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(60% 70% at 12% 50%, rgba(90, 70, 210, 0.34), transparent 70%),
+    radial-gradient(55% 70% at 92% 40%, rgba(25, 130, 185, 0.28), transparent 70%),
+    radial-gradient(120% 90% at 50% 20%, #10153a 0%, #060818 55%, #02030a 100%);
   color: #cfe0ff;
   outline: none;
   overflow: hidden;
@@ -10,12 +24,8 @@
 
 .pb .pb-stage {
   position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 0;
+  flex: none;
+  box-shadow: 0 0 0 1px rgba(120, 160, 255, 0.14), 0 0 60px rgba(0, 0, 0, 0.7);
 }
 
 .pb .pb-canvas {
@@ -56,6 +66,8 @@
 .pb .pb-panel {
   width: 232px;
   flex: none;
+  box-sizing: border-box;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 4px;

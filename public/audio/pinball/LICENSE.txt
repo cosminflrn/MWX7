@@ -1,0 +1,8 @@
+Audio samples in this folder are individual notes from the FluidR3_GM soundfont
+(instruments: electric_piano_1, string_ensemble_1, pad_2_warm, fretless_bass).
+
+FluidR3_GM soundfont by Frank Wen, MIT license, via gleitz/midi-js-soundfonts
+https://github.com/gleitz/midi-js-soundfonts
+
+The sequence (composition and arrangement) that plays these samples is original
+and lives in src/apps/pinball/music.ts.

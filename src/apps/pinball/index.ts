@@ -1,6 +1,7 @@
 import type { AppManifest, MenuDef } from '../../core/types';
 import { h } from '../../ui/dom';
 import { Sfx } from './audio';
+import { Music } from './music';
 import { BALL_SAVE_SECONDS, Game, RANKS } from './game';
 import { pinballIcon } from './icon';
 import './pinball.css';
@@ -20,10 +21,11 @@ export const pinball: AppManifest = {
   pinned: false,
   desktop: true,
   singleInstance: true,
-  window: { width: 720, height: 660, resizable: false },
+  window: { width: 1600, height: 1000, resizable: true, minWidth: 700, minHeight: 560 },
 
   mount({ win, fs }) {
     const sfx = new Sfx();
+    const music = new Music(sfx);
     const game = new Game(sfx);
 
     // ---- DOM ----
@@ -64,9 +66,9 @@ export const pinball: AppManifest = {
       h(
         'div',
         { class: 'pb-keys' },
-        h('span', {}, h('kbd', {}, 'Z'), h('kbd', {}, '/'), ' flippers'),
-        h('span', {}, h('kbd', {}, 'Space'), ' plunger'),
-        h('span', {}, h('kbd', {}, 'P'), ' pause')
+        h('span', {}, h('kbd', {}, '\u2190'), h('kbd', {}, '\u2192'), ' flippers'),
+        h('span', {}, h('kbd', {}, '\u2191'), ' hold to launch'),
+        h('span', {}, h('kbd', {}, 'F2'), ' new game')
       )
     );
     win.body.classList.add('pb');
@@ -91,27 +93,9 @@ export const pinball: AppManifest = {
       void fs.write(SAVE_PATH, JSON.stringify({ high, saved: Date.now() })).catch(() => undefined);
     };
 
-    // ---- pause handling ----
-    let userPaused = false;
-    let autoPaused = false;
-    const paused = () => userPaused || autoPaused;
-    const syncPause = () => {
-      if (paused()) {
-        sfx.suspend();
-        releaseAll();
-        game.persistHigh();
-      }
-    };
-    const setUser = (v: boolean) => {
-      userPaused = v;
-      if (!v) sfx.unlock();
-      syncPause();
-      buildMenus();
-    };
-
     // ---- input ----
     const held = new Set<string>();
-    const flipKeys: Record<string, 0 | 1> = { KeyZ: 0, ShiftLeft: 0, Slash: 1, ShiftRight: 1 };
+    const flipKeys: Record<string, 0 | 1> = { ArrowLeft: 0, KeyZ: 0, ShiftLeft: 0, ArrowRight: 1, Slash: 1, ShiftRight: 1 };
     const refreshFlippers = () => {
       game.setFlipper(0, [...held].some((k) => flipKeys[k] === 0));
       game.setFlipper(1, [...held].some((k) => flipKeys[k] === 1));
@@ -121,20 +105,19 @@ export const pinball: AppManifest = {
       refreshFlippers();
       game.setPlunger(false);
     };
-    const isPlunger = (c: string) => c === 'Space' || c === 'ArrowDown';
+    const isPlunger = (c: string) => c === 'ArrowUp' || c === 'Space' || c === 'ArrowDown';
 
     win.body.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       sfx.unlock();
+      music.start();
       if (e.code in flipKeys || isPlunger(e.code)) e.preventDefault();
       if (e.repeat) return;
-      if (e.code === 'KeyP' || e.code === 'Escape') return void setUser(!userPaused);
       if (e.code === 'F2') {
         e.preventDefault();
         return newGame();
       }
       if (e.code === 'KeyM') return toggleMute();
-      if (paused()) return;
       if (e.code in flipKeys) {
         held.add(e.code);
         refreshFlippers();
@@ -159,7 +142,7 @@ export const pinball: AppManifest = {
     canvas.addEventListener('pointerdown', (e) => {
       win.body.focus();
       sfx.unlock();
-      if (paused()) return;
+      music.start();
       if (game.phase === 'over') return newGame();
       const z = pointerZone(e);
       pointerHeld.set(e.pointerId, z);
@@ -177,26 +160,12 @@ export const pinball: AppManifest = {
     canvas.addEventListener('pointerup', pointerUp);
     canvas.addEventListener('pointercancel', pointerUp);
 
-    const onBlur = () => {
-      autoPaused = true;
-      syncPause();
-    };
-    const onFocus = () => {
-      autoPaused = false;
-    };
-    const onVis = () => (document.hidden ? onBlur() : undefined);
-    const winEl = win.body.closest('.win') as HTMLElement | null;
-    const watch = winEl
-      ? new MutationObserver(() => (winEl.classList.contains('active') ? onFocus() : onBlur()))
-      : null;
-    if (winEl) watch!.observe(winEl, { attributes: true, attributeFilter: ['class'] });
+    // Losing focus never pauses the game, but a key released elsewhere must not stay "held".
+    const onBlur = () => releaseAll();
     window.addEventListener('blur', onBlur);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVis);
 
     // ---- menus ----
     const newGame = () => {
-      userPaused = false;
       game.persistHigh();
       game.newGame();
       sfx.unlock();
@@ -206,14 +175,19 @@ export const pinball: AppManifest = {
       sfx.setMuted(!sfx.muted);
       buildMenus();
     };
+    const toggleMusic = () => {
+      sfx.unlock();
+      music.setEnabled(!music.enabled);
+      buildMenus();
+    };
     function buildMenus(): void {
       const menus: MenuDef[] = [
         {
           label: 'Game',
           items: [
             { label: 'New Game', shortcut: 'F2', action: newGame },
-            { label: 'Pause', shortcut: 'P', checked: userPaused, action: () => setUser(!userPaused) },
             { separator: true },
+            { label: 'Music', checked: music.enabled, action: toggleMusic },
             { label: 'Mute Sound', shortcut: 'M', checked: sfx.muted, action: toggleMute },
           ],
         },
@@ -222,21 +196,35 @@ export const pinball: AppManifest = {
     }
     buildMenus();
 
-    // ---- layout ----
-    let lastW = 0;
+    // ---- layout: the table fills the window height; the score panel scales with it and sits beside the table ----
+    let lastKey = '';
+    const PANEL_W = 232;
     const fit = () => {
-      const w = stage.clientWidth;
-      const hh = stage.clientHeight;
-      if (!w || !hh) return;
-      const cssW = Math.floor(Math.min(w, (hh * W) / H));
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const key = cssW * 10 + dpr;
-      if (key === lastW) return;
-      lastW = key;
+      const bw = win.body.clientWidth;
+      const bh = win.body.clientHeight;
+      if (!bw || !bh) return;
+      // The panel grows a little faster than the table so wide windows are filled; 520 = its minimum natural height.
+      const clamp = (v: number) => Math.max(0.8, Math.min(1.9, v * 1.3, bh / 520));
+      let s = Math.min((bh - 8) / H, (bw - PANEL_W * 0.8) / W);
+      for (let i = 0; i < 3; i++) s = Math.min((bh - 8) / H, (bw - PANEL_W * clamp(s)) / W);
+      s = Math.max(0.2, s);
+      const u = clamp(s);
+      const cssW = Math.floor(W * s);
+      const cssH = Math.floor(H * s);
+      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3, 1600 / cssW)); // cap texture size on huge screens
+      const key = `${cssW}|${cssH}|${dpr}|${u}|${bh}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      stage.style.width = `${cssW}px`;
+      stage.style.height = `${cssH}px`;
+      // CSS zoom scales the whole panel (text, bars, bezels) with the table.
+      panel.style.setProperty('zoom', String(u));
+      panel.style.width = `${PANEL_W}px`;
+      panel.style.height = `${bh / u}px`;
       renderer.resize(cssW, dpr);
     };
     const ro = new ResizeObserver(fit);
-    ro.observe(stage);
+    ro.observe(win.body);
     fit();
 
     // ---- panel ----
@@ -271,7 +259,7 @@ export const pinball: AppManifest = {
       saveEl.classList.toggle('on', game.saveT > 0);
       set('save', saveEl, game.saveT > 0 ? `BALL SAVE ${Math.ceil(game.saveT)}s` : game.phase === 'ready' ? `SAVE ${BALL_SAVE_SECONDS}s` : 'BALL SAVE');
       set('ticker', ticker, game.ticker);
-      const ov = paused() ? ['PAUSED', userPaused ? 'Press P to resume' : 'Click the window to resume'] : game.phase === 'over' ? ['GAME OVER', `Final score ${fmt(game.score)} - press Space or F2`] : null;
+      const ov = game.phase === 'over' ? ['GAME OVER', `Final score ${fmt(game.score)} - press Up or F2`] : null;
       const key = ov ? ov.join('|') : '';
       if (cache.ov !== key) {
         cache.ov = key;
@@ -286,18 +274,17 @@ export const pinball: AppManifest = {
     let acc = 0;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      const dt = Math.min(0.05, (now - last) / 1000);
+      // Clamp the delta: after a throttled / hidden tab the first frame must not hand the physics a huge step.
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
-      if (!paused()) {
-        acc += dt;
-        let n = 0;
-        while (acc >= STEP && n < 24) {
-          game.step(STEP);
-          acc -= STEP;
-          n++;
-        }
-        if (n >= 24) acc = 0;
+      acc += dt;
+      let n = 0;
+      while (acc >= STEP && n < 24) {
+        game.step(STEP);
+        acc -= STEP;
+        n++;
       }
+      if (n >= 24) acc = 0;
       if (canvas.width > 40) renderer.draw(game, now);
       updatePanel();
     };
@@ -312,13 +299,11 @@ export const pinball: AppManifest = {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      watch?.disconnect();
       window.removeEventListener('blur', onBlur);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVis);
       game.persistHigh();
+      music.dispose();
       sfx.setMuted(true);
-      sfx.suspend();
+      sfx.dispose();
     };
   },
 };
