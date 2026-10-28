@@ -1,4 +1,5 @@
 import { bus } from './events';
+import { play } from './sound';
 import type { AppManifest, MenuDef, Rect, WindowHandle } from './types';
 
 /**
@@ -140,29 +141,63 @@ export function snapWindow(id: string, state: WinState): void {
 
 /* ---------- lifecycle ---------- */
 
+/** Default geometry: generous and centered; extra windows cascade gently from the center. */
+function initialRect(cfg: NonNullable<AppManifest['window']>): Rect {
+  const wa = workArea();
+  const resizable = cfg.resizable !== false;
+  const baseW = cfg.width ?? 760;
+  const baseH = cfg.height ?? 520;
+  const width = Math.round(Math.min(resizable ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
+  const height = Math.round(Math.min(resizable ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
+  const visible = allWindows().filter((w) => !w.minimized).length;
+  const off = visible ? ((cascade++ % 6) + 1) * 24 : ((cascade = 0), 0);
+  const x = Math.round((wa.w - width) / 2) + off;
+  const y = Math.round(wa.y + (wa.h - height) / 2) + off;
+  return {
+    x: Math.min(Math.max(8, x), wa.w - width - 8),
+    y: Math.min(Math.max(wa.y + 6, y), wa.y + wa.h - height),
+    w: width,
+    h: height,
+  };
+}
+
+/** Double-click on the title bar: put the window back in the middle of the screen. */
+export function centerWindow(id: string): void {
+  const w = wins.get(id);
+  if (!w) return;
+  if (w.state !== 'normal') {
+    w.state = 'normal';
+    w.el.classList.remove('maximized', 'snapped');
+  }
+  const size = w.restoreRect ?? w.rect;
+  w.restoreRect = null;
+  const wa = workArea();
+  const width = Math.min(size.w, wa.w - 16);
+  const height = Math.min(size.h, wa.h - 8);
+  withAnimation(w, () =>
+    setRect(w, { x: Math.round((wa.w - width) / 2), y: Math.round(wa.y + (wa.h - height) / 2), w: width, h: height }),
+  );
+}
+
 export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => void | (() => void)): Win {
   const id = `w${++seq}`;
   const cfg = manifest.window ?? {};
-  const wa = workArea();
-  const width = Math.min(cfg.width ?? 640, wa.w - 24);
-  const height = Math.min(cfg.height ?? 440, wa.h - 24);
-  const off = (cascade++ % 8) * 26;
-  const x = Math.max(8, Math.round((wa.w - width) / 2) - 90 + off);
-  const y = Math.max(wa.y + 8, Math.min(wa.y + Math.round((wa.h - height) / 2) - 50 + off, wa.y + wa.h - height));
+  const { x, y, w: width, h: height } = initialRect(cfg);
 
   const el = document.createElement('div');
   el.className = 'win';
   el.setAttribute('role', 'dialog');
   el.tabIndex = -1;
   el.dataset.app = manifest.id;
+  // Controls sit on the right (Windows placement) but keep the macOS traffic-light look.
   el.innerHTML = `
     <div class="win-titlebar">
+      <div class="win-title"><span class="win-icon">${manifest.icon}</span><span class="win-title-text"></span></div>
       <div class="win-controls">
-        <button class="wc wc-close" title="Close" aria-label="Close"></button>
         <button class="wc wc-min" title="Minimize" aria-label="Minimize"></button>
         <button class="wc wc-max" title="Maximize" aria-label="Maximize"></button>
+        <button class="wc wc-close" title="Close" aria-label="Close"></button>
       </div>
-      <div class="win-title"><span class="win-icon">${manifest.icon}</span><span class="win-title-text"></span></div>
     </div>
     <div class="win-body"></div>`;
 
@@ -197,7 +232,7 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
   titlebar.addEventListener('dblclick', (e) => {
-    if (!(e.target as HTMLElement).closest('.win-controls')) toggleMaximize(id);
+    if (!(e.target as HTMLElement).closest('.win-controls')) centerWindow(id);
   });
   enableDrag(w, titlebar);
 
@@ -268,17 +303,103 @@ function focusTopmost(): void {
   }
 }
 
-function genieKeyframes(w: Win): Keyframe[] {
-  const from = w.el.getBoundingClientRect();
-  const t = minimizeTarget(w.appId);
-  if (!t) return [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(40px) scale(.6)' }];
-  const dx = t.left + t.width / 2 - (from.left + from.width / 2);
-  const dy = t.top + t.height / 2 - (from.top + from.height / 2);
-  return [
-    { opacity: 1, transform: 'none' },
-    { opacity: 0.6, transform: `translate(${dx * 0.6}px, ${dy * 0.55}px) scale(.45, .35)`, offset: 0.6 },
-    { opacity: 0, transform: `translate(${dx}px, ${dy}px) scale(.06)` },
-  ];
+/* ---------- genie ---------- */
+
+const GENIE_STRIPS = 30;
+const GENIE_MS = 560;
+
+/** Clones keep what cloneNode loses: typed text and canvas pixels. */
+function copyLiveState(src: HTMLElement, dst: HTMLElement): void {
+  const sf = src.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+  const df = dst.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+  sf.forEach((f, i) => {
+    if (df[i]) {
+      df[i].value = f.value;
+      df[i].scrollTop = f.scrollTop;
+    }
+  });
+  const sc = src.querySelectorAll('canvas');
+  const dc = dst.querySelectorAll('canvas');
+  sc.forEach((c, i) => {
+    try {
+      dc[i]?.getContext('2d')?.drawImage(c, 0, 0);
+    } catch {
+      /* tainted or 0-size canvas */
+    }
+  });
+}
+
+/**
+ * The window is sliced into horizontal strips (clones clipped with clip-path).
+ * Lower strips start earlier, so mid-flight the window narrows into a funnel
+ * that pours into the dock icon — the classic genie.
+ */
+function genie(w: Win, reverse: boolean): Promise<void> {
+  const target = minimizeTarget(w.appId);
+  const r = w.rect;
+  if (!target || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const frames = [
+      { opacity: 1, transform: 'none' },
+      { opacity: 0, transform: 'translateY(30px) scale(.9)' },
+    ];
+    w.el.style.display = '';
+    w.el.style.visibility = '';
+    const a = w.el.animate(reverse ? [...frames].reverse() : frames, { duration: 200, easing: 'ease' });
+    return a.finished.then(() => undefined, () => undefined);
+  }
+
+  const layer = document.createElement('div');
+  layer.className = 'genie-layer';
+  document.body.append(layer);
+
+  const stripH = r.h / GENIE_STRIPS;
+  const tcx = target.left + target.width / 2;
+  const sx = target.width / r.w;
+  const sy = target.height / r.h;
+  const per = GENIE_MS * 0.5;
+  const anims: Promise<unknown>[] = [];
+
+  for (let i = 0; i < GENIE_STRIPS; i++) {
+    const clone = w.el.cloneNode(true) as HTMLElement;
+    copyLiveState(w.el, clone);
+    clone.classList.add('genie-strip');
+    clone.classList.remove('anim', 'dragging', 'resizing');
+    const top = i * stripH;
+    Object.assign(clone.style, {
+      display: '',
+      visibility: 'visible',
+      left: `${r.x}px`,
+      top: `${r.y}px`,
+      width: `${r.w}px`,
+      height: `${r.h}px`,
+      zIndex: '1',
+      clipPath: `inset(${Math.max(0, top - 1.5)}px -40px ${Math.max(0, r.h - top - stripH - 1.5)}px -40px)`,
+      transformOrigin: `${r.w / 2}px ${top + stripH / 2}px`,
+    });
+    layer.append(clone);
+
+    const dx = tcx - (r.x + r.w / 2);
+    const dy = target.top + target.height * ((i + 0.5) / GENIE_STRIPS) - (r.y + top + stripH / 2);
+    // 0 for the bottom strip, 1 for the top one.
+    const lag = (GENIE_STRIPS - 1 - i) / (GENIE_STRIPS - 1);
+    const frames: Keyframe[] = [
+      { transform: 'none', opacity: 1 },
+      { transform: `translate(${dx * 0.85}px, ${dy * 0.25}px) scale(${1 - (1 - sx) * 0.9}, ${1 - (1 - sy) * 0.25})`, opacity: 1, offset: 0.45 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0.4 },
+    ];
+    const delay = (reverse ? 1 - lag : lag) * (GENIE_MS - per);
+    const a = clone.animate(frames, {
+      duration: per,
+      delay,
+      fill: 'both',
+      direction: reverse ? 'reverse' : 'normal',
+      easing: reverse ? 'cubic-bezier(.2,.7,.3,1)' : 'cubic-bezier(.55,0,.75,.2)',
+    });
+    anims.push(a.finished);
+  }
+
+  if (!reverse) w.el.style.display = 'none';
+  return Promise.allSettled(anims).then(() => layer.remove());
 }
 
 export function minimizeWindow(id: string): void {
@@ -286,10 +407,10 @@ export function minimizeWindow(id: string): void {
   if (!w || w.minimized) return;
   w.minimized = true;
   w.el.classList.remove('active');
-  const anim = w.el.animate(genieKeyframes(w), { duration: 320, easing: 'cubic-bezier(.4,0,.2,1)' });
-  anim.onfinish = () => {
+  play('minimize');
+  void genie(w, false).then(() => {
     if (w.minimized) w.el.style.display = 'none';
-  };
+  });
   bus.emit('window:minimize', w);
   if (activeId === id) {
     activeId = null;
@@ -299,8 +420,12 @@ export function minimizeWindow(id: string): void {
 
 function restore(w: Win): void {
   w.minimized = false;
+  w.el.style.visibility = 'hidden';
   w.el.style.display = '';
-  w.el.animate([...genieKeyframes(w)].reverse(), { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  play('restore');
+  void genie(w, true).then(() => {
+    w.el.style.visibility = '';
+  });
   bus.emit('window:restore', w);
 }
 

@@ -1,6 +1,6 @@
 import { icons } from '../../assets/icons';
 import type { AppManifest } from '../../core/types';
-import { wallpapers } from '../../shell/wallpapers';
+import { wallpaperThumb, wallpapers } from '../../shell/wallpapers';
 import { h } from '../../ui/dom';
 import './settings.css';
 
@@ -8,7 +8,7 @@ export const settingsApp: AppManifest = {
   id: 'settings',
   name: 'Settings',
   icon: icons.settings,
-  description: 'Personalize MWX7',
+  description: 'Personalize MWX 7',
   keywords: ['preferences', 'control panel', 'wallpaper', 'personalize', 'system'],
   pinned: true,
   singleInstance: true,
@@ -34,7 +34,7 @@ export const settingsApp: AppManifest = {
                 drawWalls();
               },
             },
-            h('span', { class: 'set-wall-thumb', style: `background:${w.css}` }),
+            h('span', { class: 'set-wall-thumb', style: `background:${wallpaperThumb(w.id)}` }),
             h('span', {}, w.name),
           ),
         ),
@@ -46,15 +46,20 @@ export const settingsApp: AppManifest = {
     const name = h('input', { class: 'set-input', value: s.userName, maxLength: 24 });
     name.addEventListener('change', () => os.settings.set({ userName: name.value.trim() || 'User' }));
 
-    const boot = h('input', { type: 'checkbox', checked: s.showBootScreen });
-    boot.addEventListener('change', () => os.settings.set({ showBootScreen: boot.checked }));
+    const boot = h('input', { type: 'checkbox', checked: s.bootSequence });
+    boot.addEventListener('change', () => os.settings.set({ bootSequence: boot.checked }));
+
+    const sounds = h('input', { type: 'checkbox', checked: s.sounds });
+    sounds.addEventListener('change', () => os.settings.set({ sounds: sounds.checked }));
+    const volume = h('input', { type: 'range', min: 0, max: 100, value: String(Math.round(s.volume * 100)), class: 'set-range' });
+    volume.addEventListener('change', () => os.settings.set({ volume: Number(volume.value) / 100 }));
 
     const reset = h(
       'button',
       {
         class: 'btn danger',
         onclick: () => {
-          if (confirm('Erase all MWX7 data in this browser (documents and settings)?')) {
+          if (confirm('Erase all MWX 7 data in this browser (documents and settings)?')) {
             Object.keys(localStorage)
               .filter((k) => k.startsWith('mwx7:'))
               .forEach((k) => localStorage.removeItem(k));
@@ -62,7 +67,7 @@ export const settingsApp: AppManifest = {
           }
         },
       },
-      'Reset MWX7…',
+      'Reset MWX 7…',
     );
 
     win.body.append(
@@ -72,6 +77,7 @@ export const settingsApp: AppManifest = {
         h('div', { class: 'set-side-head', html: icons.settings }),
         h('a', { href: '#wall' }, 'Desktop'),
         h('a', { href: '#user' }, 'User'),
+        h('a', { href: '#sound' }, 'Sound'),
         h('a', { href: '#system' }, 'System'),
       ),
       h(
@@ -81,10 +87,19 @@ export const settingsApp: AppManifest = {
         h('div', { id: 'user' }, section('User account', h('label', { class: 'set-row' }, h('span', {}, 'Display name'), name))),
         h(
           'div',
+          { id: 'sound' },
+          section(
+            'Sound',
+            h('label', { class: 'set-row' }, h('span', {}, 'Play system sounds'), sounds),
+            h('label', { class: 'set-row' }, h('span', {}, 'Volume'), volume),
+          ),
+        ),
+        h(
+          'div',
           { id: 'system' },
           section(
             'System',
-            h('label', { class: 'set-row' }, h('span', {}, 'Show boot screen on start'), boot),
+            h('label', { class: 'set-row' }, h('span', {}, 'Full startup (power button, BIOS, boot logo)'), boot),
             h('div', { class: 'set-row' }, h('span', {}, 'Storage: this browser (localStorage)'), reset),
           ),
         ),

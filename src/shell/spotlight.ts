@@ -53,7 +53,7 @@ export function mountSpotlight(): void {
     return order.flatMap((k) => hits.filter((x) => x.r.kind === k).sort((a, b) => b.s - a.s).map((x) => x.r));
   };
 
-  const open = () => {
+  const open = (initial = '') => {
     if (overlay) {
       overlay.querySelector('input')?.focus();
       return;
@@ -113,6 +113,10 @@ export function mountSpotlight(): void {
     };
 
     input.addEventListener('input', update);
+    if (initial) {
+      input.value = initial;
+      void update();
+    }
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') close();
       else if (e.key === 'ArrowDown') {
@@ -133,7 +137,7 @@ export function mountSpotlight(): void {
     });
   };
 
-  bus.on('spotlight:open', open);
+  bus.on('spotlight:open', ({ query }) => open(query ?? ''));
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
       e.preventDefault();

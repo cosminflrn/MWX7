@@ -4,14 +4,23 @@ import type { Settings } from './types';
 const KEY = 'mwx7:settings';
 
 const defaults: Settings = {
-  wallpaper: 'aurora',
+  wallpaper: 'serenity',
   userName: 'User',
-  showBootScreen: true,
+  bootSequence: true,
+  sounds: true,
+  volume: 0.7,
 };
+
+// Wallpapers retired in v0.2 → their closest successor.
+const RENAMED: Record<string, string> = { aurora: 'wave', meadow: 'serenity' };
 
 let current: Settings = { ...defaults };
 try {
-  current = { ...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+  const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings> & { showBootScreen?: boolean };
+  if (saved.wallpaper && RENAMED[saved.wallpaper]) saved.wallpaper = RENAMED[saved.wallpaper];
+  if (typeof saved.showBootScreen === 'boolean' && saved.bootSequence === undefined) saved.bootSequence = saved.showBootScreen;
+  delete saved.showBootScreen;
+  current = { ...defaults, ...saved };
 } catch {
   /* keep defaults */
 }

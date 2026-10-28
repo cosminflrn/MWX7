@@ -4,10 +4,22 @@
   --font-ui: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Ubuntu, Roboto, Arial, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
 
-  /* Aero glass */
+  /* Aero glass (Win7 "Sky" color) */
+  --glass-tint: linear-gradient(180deg, rgba(120, 175, 225, 0.5), rgba(95, 150, 205, 0.42));
+  --glass-tint-inactive: linear-gradient(180deg, rgba(175, 196, 218, 0.48), rgba(160, 182, 206, 0.42));
+  --glass-streaks: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0) 0 22%,
+    rgba(255, 255, 255, 0.1) 22.5% 24%,
+    rgba(255, 255, 255, 0) 25% 46%,
+    rgba(255, 255, 255, 0.07) 46.5% 50%,
+    rgba(255, 255, 255, 0) 51% 70%,
+    rgba(255, 255, 255, 0.05) 70.5% 71.5%,
+    rgba(255, 255, 255, 0) 72%
+  );
   --glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.18) 46%, rgba(190, 215, 240, 0.22));
   --glass-bg-inactive: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1));
-  --glass-blur: blur(18px) saturate(170%);
+  --glass-blur: blur(14px) saturate(150%) brightness(1.05);
   --glass-border: rgba(255, 255, 255, 0.55);
   --glass-edge: rgba(10, 30, 60, 0.45);
   --glass-dark: rgba(16, 28, 46, 0.55);
@@ -31,8 +43,8 @@
   /* Shape + depth */
   --radius-win: 10px;
   --radius-menu: 9px;
-  --shadow-win: 0 22px 60px rgba(0, 10, 30, 0.45), 0 4px 14px rgba(0, 10, 30, 0.3);
-  --shadow-win-inactive: 0 12px 30px rgba(0, 10, 30, 0.28);
+  --shadow-win: 0 0 22px rgba(0, 0, 0, 0.5), 0 14px 40px rgba(0, 10, 30, 0.35);
+  --shadow-win-inactive: 0 0 14px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 10, 30, 0.2);
   --shadow-pop: 0 14px 40px rgba(0, 10, 30, 0.38);
 
   --menubar-h: 28px;

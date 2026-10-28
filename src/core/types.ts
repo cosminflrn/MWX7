@@ -1,5 +1,5 @@
 /**
- * MWX7 public contracts.
+ * MWX 7 public contracts.
  * Apps and shell components talk to the core ONLY through these types.
  * Changing anything here is a breaking change — see SPEC.md.
  */
@@ -89,7 +89,11 @@ export interface VFS {
 export interface Settings {
   wallpaper: string;
   userName: string;
-  showBootScreen: boolean;
+  /** Power button → BIOS → boot logo before the logon screen */
+  bootSequence: boolean;
+  sounds: boolean;
+  /** 0..1 */
+  volume: number;
 }
 
 export interface OSApi {

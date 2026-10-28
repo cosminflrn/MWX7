@@ -13,7 +13,7 @@ export interface OSEvents {
   'fs:change': { path: string };
   notify: { title: string; body?: string; icon?: string };
   'startmenu:toggle': { anchor?: DOMRect };
-  'spotlight:open': void;
+  'spotlight:open': { query?: string };
 }
 
 type Handler<T> = (payload: T) => void;

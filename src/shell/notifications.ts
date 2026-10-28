@@ -1,5 +1,6 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
+import { play } from '../core/sound';
 import { h } from '../ui/dom';
 
 /** macOS-style banners, top-right, in Aero glass. */
@@ -19,6 +20,7 @@ export function mountNotifications(host: HTMLElement): void {
     };
     toast.addEventListener('click', dismiss);
     host.append(toast);
+    play('notify');
     toast.animate([{ opacity: 0, transform: 'translateX(60px)' }, { opacity: 1, transform: 'none' }], {
       duration: 260,
       easing: 'cubic-bezier(.2,.8,.2,1)',

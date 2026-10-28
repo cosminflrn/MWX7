@@ -9,7 +9,8 @@
 
 .about-logo svg { width: 72px; height: 72px; filter: drop-shadow(0 4px 10px rgba(10, 60, 140, 0.35)); }
 .about h1 { margin: 8px 0 2px; font-size: 26px; font-weight: 600; color: #123a6e; }
-.about h1 sup { font-size: 14px; color: #1fa3c9; }
+.about h1 { letter-spacing: 0.03em; }
+.about-seven { font-weight: 300; color: #1f74d8; }
 .about-tag { margin: 0 0 14px; color: #4a5d74; font-size: 13px; }
 .about-small { color: #7b8aa0; font-size: 12px; }
 

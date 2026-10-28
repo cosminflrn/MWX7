@@ -8,7 +8,7 @@ import { h } from '../ui/dom';
 import { openMenu } from '../ui/menu';
 
 /**
- * The MWX7 dock: a macOS dock (magnification, bounce) with Win7 superbar
+ * The MWX 7 dock: a macOS dock (magnification, bounce) with Win7 superbar
  * behaviour (click running app = focus / minimize, glow indicator, right-click
  * jump list) and the Start orb as its first item.
  */

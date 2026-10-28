@@ -4,15 +4,24 @@ import { listApps } from '../core/registry';
 import { settings } from '../core/settings';
 import { h } from '../ui/dom';
 import { openMenu } from '../ui/menu';
-import { wallpaperCss, wallpapers } from './wallpapers';
+import { wallpaperBackground, wallpapers } from './wallpapers';
 
 /** Wallpaper + XP-style desktop icons (left column) + desktop context menu. */
 export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void {
-  const applyWallpaper = () => {
-    desktop.style.background = wallpaperCss(settings.get().wallpaper);
+  let current = '';
+  let token = 0;
+  const applyWallpaper = async () => {
+    const t = ++token;
+    const bg = await wallpaperBackground(settings.get().wallpaper);
+    if (t === token && bg !== current) desktop.style.background = current = bg;
   };
-  applyWallpaper();
-  bus.on('settings:change', applyWallpaper);
+  void applyWallpaper();
+  bus.on('settings:change', () => void applyWallpaper());
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => void applyWallpaper(), 400);
+  });
 
   const select = (el: HTMLElement | null) => {
     iconLayer.querySelectorAll('.desk-icon.selected').forEach((n) => n.classList.remove('selected'));
@@ -56,7 +65,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
         { separator: true },
         { label: 'New Text Document', action: () => launch('notepad') },
         { separator: true },
-        { label: 'About MWX7', action: () => launch('about') },
+        { label: 'About MWX 7', action: () => launch('about') },
       ],
       { x: e.clientX, y: e.clientY },
     );

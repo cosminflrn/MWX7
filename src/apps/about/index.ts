@@ -4,11 +4,11 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 export const about: AppManifest = {
   id: 'about',
-  name: 'About MWX7',
+  name: 'About MWX 7',
   icon: icons.about,
   description: 'Version and credits',
   keywords: ['version', 'info', 'credits', 'system'],
@@ -25,19 +25,19 @@ export const about: AppManifest = {
         h('div', { class: 'about-logo', html: app.icon }),
         h('h1', {}, app.name),
         h('p', { class: 'about-tag' }, app.description ?? ''),
-        h('p', { class: 'about-small' }, `Part of MWX7 ${VERSION}`),
+        h('p', { class: 'about-small' }, `Part of MWX 7 ${VERSION}`),
       );
       return;
     }
     win.body.append(
       h('div', { class: 'about-logo', html: icons.orb }),
-      h('h1', {}, 'MWX', h('sup', {}, '7')),
-      h('p', { class: 'about-tag' }, 'The dream desktop — macOS polish, XP warmth, 7’s glass.'),
+      h('h1', {}, 'MWX ', h('span', { class: 'about-seven' }, '7')),
+      h('p', { class: 'about-tag' }, 'The dream desktop.'),
       h(
         'dl',
         { class: 'about-specs' },
         h('dt', {}, 'Version'),
-        h('dd', {}, `${VERSION} “Genesis”`),
+        h('dd', {}, `${VERSION} “Fidelity”`),
         h('dt', {}, 'Processor'),
         h('dd', {}, navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'),
         h('dt', {}, 'Storage'),

@@ -12,7 +12,7 @@ import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountMenubar } from './shell/menubar';
 import { mountNotifications } from './shell/notifications';
-import { bootScreen } from './shell/screens';
+import { startup } from './shell/screens';
 import { mountSpotlight } from './shell/spotlight';
 import { mountStartMenu } from './shell/startmenu';
 
@@ -45,11 +45,11 @@ async function start(): Promise<void> {
     if (!(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) e.preventDefault();
   });
 
-  await bootScreen();
+  await startup();
 
   if (!localStorage.getItem('mwx7:welcomed')) {
     localStorage.setItem('mwx7:welcomed', '1');
-    notify('Welcome to MWX7', 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
+    notify('Welcome to MWX 7', 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
   }
 }
 

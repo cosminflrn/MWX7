@@ -18,13 +18,13 @@ export function mountMenubar(bar: HTMLElement): void {
   const systemMenu: MenuDef = {
     label: '◆',
     items: [
-      { label: 'About MWX7', action: () => launch('about') },
+      { label: 'About MWX 7', action: () => launch('about') },
       { separator: true },
       { label: 'Settings…', action: () => launch('settings') },
-      { label: 'Spotlight Search', shortcut: 'Ctrl+Space', action: () => bus.emit('spotlight:open') },
+      { label: 'Spotlight Search', shortcut: 'Ctrl+Space', action: () => bus.emit('spotlight:open', {}) },
       { separator: true },
-      { label: 'Log Off…', action: () => logOff() },
-      { label: 'Turn Off…', action: () => shutDown() },
+      { label: 'Log Off…', action: () => void logOff() },
+      { label: 'Shut Down…', action: () => void shutDown() },
     ],
   };
 
@@ -80,7 +80,7 @@ export function mountMenubar(bar: HTMLElement): void {
           ]
         : [
             { label: 'Personalize…', action: () => launch('settings') },
-            { label: 'About MWX7', action: () => launch('about') },
+            { label: 'About MWX 7', action: () => launch('about') },
           ],
     };
     left.append(menuButton(appMenu, 'mb-app'));
@@ -93,7 +93,7 @@ export function mountMenubar(bar: HTMLElement): void {
     class: 'mb-item mb-icon',
     title: 'Spotlight (Ctrl+Space)',
     html: icons.search,
-    onclick: () => bus.emit('spotlight:open'),
+    onclick: () => bus.emit('spotlight:open', {}),
   });
   const clock = h('div', { class: 'mb-clock' });
   right.append(searchBtn, clock);
