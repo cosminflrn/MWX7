@@ -305,128 +305,140 @@ function focusTopmost(): void {
 
 /* ---------- genie ---------- */
 
-const GENIE_STRIPS = 30;
-const GENIE_MS = 560;
+const GENIE_MS = 520;
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth = (x: number) => x * x * (3 - 2 * x);
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/** Clones keep what cloneNode loses: typed text and canvas pixels. */
-function copyLiveState(src: HTMLElement, dst: HTMLElement): void {
-  const sf = src.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
-  const df = dst.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
-  sf.forEach((f, i) => {
-    if (df[i]) {
-      df[i].value = f.value;
-      df[i].scrollTop = f.scrollTop;
-    }
-  });
-  const sc = src.querySelectorAll('canvas');
-  const dc = dst.querySelectorAll('canvas');
-  sc.forEach((c, i) => {
-    try {
-      dc[i]?.getContext('2d')?.drawImage(c, 0, 0);
-    } catch {
-      /* tainted or 0-size canvas */
-    }
-  });
+/**
+ * Rasterizes the window once (DOM → canvas). The glass is replaced by a solid
+ * frame colour because backdrop blur can't be captured.
+ */
+async function snapshot(w: Win): Promise<HTMLCanvasElement | null> {
+  const { toCanvas } = await import('html-to-image');
+  const active = w.el.classList.contains('active');
+  const job = toCanvas(w.el, {
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
+    skipFonts: true,
+    filter: (n) => !(n instanceof HTMLElement && n.classList.contains('rz')),
+    style: {
+      left: '0',
+      top: '0',
+      margin: '0',
+      transform: 'none',
+      backdropFilter: 'none',
+      boxShadow: 'none',
+      background: active ? 'linear-gradient(#c2d8ef, #9ebddf)' : 'linear-gradient(#dbe4ee, #c4d0dd)',
+    },
+  }).catch(() => null);
+  const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), 450));
+  return Promise.race([job, timeout]);
 }
 
 /**
- * The window is sliced into horizontal strips (clones clipped with clip-path).
- * Lower strips start earlier, so mid-flight the window narrows into a funnel
- * that pours into the dock icon — the classic genie.
+ * macOS-style genie: the snapshot is redrawn every frame in 2px rows. Each row
+ * gets its own horizontal squeeze (an S-curve funnel toward the dock icon) and
+ * its own vertical position, with lower rows leading — so the window bends and
+ * pours into the icon as one continuous surface.
  */
-function genie(w: Win, reverse: boolean): Promise<void> {
-  const target = minimizeTarget(w.appId);
-  const r = w.rect;
-  if (!target || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const frames = [
-      { opacity: 1, transform: 'none' },
-      { opacity: 0, transform: 'translateY(30px) scale(.9)' },
-    ];
-    w.el.style.display = '';
-    w.el.style.visibility = '';
-    const a = w.el.animate(reverse ? [...frames].reverse() : frames, { duration: 200, easing: 'ease' });
-    return a.finished.then(() => undefined, () => undefined);
-  }
+function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean): Promise<void> {
+  const cv = document.createElement('canvas');
+  cv.className = 'genie-layer';
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(window.innerWidth * dpr);
+  cv.height = Math.round(window.innerHeight * dpr);
+  const ctx = cv.getContext('2d')!;
+  ctx.scale(dpr, dpr);
+  ctx.imageSmoothingQuality = 'high';
+  document.body.append(cv);
 
-  const layer = document.createElement('div');
-  layer.className = 'genie-layer';
-  document.body.append(layer);
+  const rows = Math.max(40, Math.ceil(r.h / 2));
+  const srcRow = snap.height / rows;
+  const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
 
-  const stripH = r.h / GENIE_STRIPS;
-  const tcx = target.left + target.width / 2;
-  const sx = target.width / r.w;
-  const sy = target.height / r.h;
-  const per = GENIE_MS * 0.5;
-  const anims: Promise<unknown>[] = [];
-
-  for (let i = 0; i < GENIE_STRIPS; i++) {
-    const clone = w.el.cloneNode(true) as HTMLElement;
-    copyLiveState(w.el, clone);
-    clone.classList.add('genie-strip');
-    clone.classList.remove('anim', 'dragging', 'resizing');
-    const top = i * stripH;
-    Object.assign(clone.style, {
-      display: '',
-      visibility: 'visible',
-      left: `${r.x}px`,
-      top: `${r.y}px`,
-      width: `${r.w}px`,
-      height: `${r.h}px`,
-      zIndex: '1',
-      clipPath: `inset(${Math.max(0, top - 1.5)}px -40px ${Math.max(0, r.h - top - stripH - 1.5)}px -40px)`,
-      transformOrigin: `${r.w / 2}px ${top + stripH / 2}px`,
-    });
-    layer.append(clone);
-
-    const dx = tcx - (r.x + r.w / 2);
-    const dy = target.top + target.height * ((i + 0.5) / GENIE_STRIPS) - (r.y + top + stripH / 2);
-    // 0 for the bottom strip, 1 for the top one.
-    const lag = (GENIE_STRIPS - 1 - i) / (GENIE_STRIPS - 1);
-    const frames: Keyframe[] = [
-      { transform: 'none', opacity: 1 },
-      { transform: `translate(${dx * 0.85}px, ${dy * 0.25}px) scale(${1 - (1 - sx) * 0.9}, ${1 - (1 - sy) * 0.25})`, opacity: 1, offset: 0.45 },
-      { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0.4 },
-    ];
-    const delay = (reverse ? 1 - lag : lag) * (GENIE_MS - per);
-    const a = clone.animate(frames, {
-      duration: per,
-      delay,
-      fill: 'both',
-      direction: reverse ? 'reverse' : 'normal',
-      easing: reverse ? 'cubic-bezier(.2,.7,.3,1)' : 'cubic-bezier(.55,0,.75,.2)',
-    });
-    anims.push(a.finished);
-  }
-
-  if (!reverse) w.el.style.display = 'none';
-  return Promise.allSettled(anims).then(() => layer.remove());
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const frame = (now: number) => {
+      const p = Math.min(1, (now - start) / GENIE_MS);
+      const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const P = reverse ? 1 - e : e;
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.globalAlpha = 1 - 0.35 * Math.pow(P, 3);
+      let y0 = Y(0, P);
+      for (let i = 0; i < rows; i++) {
+        const v1 = (i + 1) / rows;
+        const y1 = Y(v1, P);
+        const qh = smooth(clamp01(P * 2.2 - (1 - (i + 0.5) / rows) * 1.2));
+        const left = lerp(r.x, t.left, qh);
+        const right = lerp(r.x + r.w, t.right, qh);
+        if (y1 - y0 > 0.02) ctx.drawImage(snap, 0, i * srcRow, snap.width, srcRow, left, y0, right - left, y1 - y0 + 0.6);
+        y0 = y1;
+      }
+      if (p < 1) requestAnimationFrame(frame);
+      else {
+        cv.remove();
+        resolve();
+      }
+    };
+    requestAnimationFrame(frame);
+  });
 }
+
+function fade(w: Win, reverse: boolean): Promise<void> {
+  const frames = [
+    { opacity: 1, transform: 'none' },
+    { opacity: 0, transform: 'translateY(30px) scale(.9)' },
+  ];
+  w.el.style.display = '';
+  w.el.style.visibility = '';
+  const a = w.el.animate(reverse ? [...frames].reverse() : frames, { duration: 220, easing: 'ease' });
+  return a.finished.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+const snaps = new WeakMap<Win, HTMLCanvasElement>();
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function minimizeWindow(id: string): void {
   const w = wins.get(id);
   if (!w || w.minimized) return;
   w.minimized = true;
   w.el.classList.remove('active');
-  play('minimize');
-  void genie(w, false).then(() => {
-    if (w.minimized) w.el.style.display = 'none';
-  });
   bus.emit('window:minimize', w);
   if (activeId === id) {
     activeId = null;
     focusTopmost();
   }
+  const target = minimizeTarget(w.appId);
+  void (async () => {
+    const snap = target && !reducedMotion() ? await snapshot(w) : null;
+    if (!w.minimized) return;
+    play('minimize');
+    if (snap && target) {
+      snaps.set(w, snap);
+      w.el.style.display = 'none';
+      await runGenie(snap, w.rect, target, false);
+    } else await fade(w, false);
+    if (w.minimized) w.el.style.display = 'none';
+  })();
 }
 
 function restore(w: Win): void {
   w.minimized = false;
-  w.el.style.visibility = 'hidden';
-  w.el.style.display = '';
   play('restore');
-  void genie(w, true).then(() => {
-    w.el.style.visibility = '';
-  });
+  const snap = snaps.get(w);
+  const target = minimizeTarget(w.appId);
   bus.emit('window:restore', w);
+  if (!snap || !target || reducedMotion()) {
+    void fade(w, true);
+    return;
+  }
+  w.el.style.display = 'none';
+  void runGenie(snap, w.rect, target, true).then(() => {
+    if (!w.minimized) w.el.style.display = '';
+  });
 }
 
 export function closeWindow(id: string, force = false): void {
@@ -439,12 +451,15 @@ export function closeWindow(id: string, force = false): void {
   } catch (err) {
     console.error(err);
   }
+  if (!force) play('close');
+  w.el.style.pointerEvents = 'none';
+  // Win7-style close: the window recedes and fades.
   const anim = w.el.animate(
     [
       { opacity: 1, transform: 'none' },
-      { opacity: 0, transform: 'scale(.96)' },
+      { opacity: 0, transform: 'scale(.88) translateY(14px)' },
     ],
-    { duration: 140, easing: 'ease-in' },
+    { duration: 210, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' },
   );
   anim.onfinish = () => w.el.remove();
   bus.emit('window:close', w);

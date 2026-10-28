@@ -9,6 +9,8 @@
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   </head>
   <body>
+    <!-- Covers the desktop until the logon screen is up, so it never flashes during boot. -->
+    <div id="curtain" style="position:fixed;inset:0;background:#000;z-index:499999"></div>
     <div id="app"></div>
     <noscript>MWX 7 needs JavaScript to boot.</noscript>
     <script type="module" src="/src/main.ts"></script>

@@ -87,4 +87,4 @@
   font: inherit;
 }
 
-.set-range { width: 200px; accent-color: var(--accent); }
+.set-col { flex-direction: column; align-items: flex-start; }

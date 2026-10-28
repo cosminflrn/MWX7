@@ -61,8 +61,16 @@ export function mountDock(dock: HTMLElement): void {
     const wanted = [...pinned, ...running];
     for (const [id, el] of itemFor) {
       if (!wanted.includes(id)) {
-        el.remove();
         itemFor.delete(id);
+        // The icon folds away instead of vanishing.
+        el.classList.add('leaving');
+        el.animate(
+          [
+            { width: `${el.offsetWidth}px`, opacity: 1, transform: 'none' },
+            { width: '0px', opacity: 0, transform: 'scale(.4) translateY(10px)' },
+          ],
+          { duration: 260, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' },
+        ).onfinish = () => el.remove();
       }
     }
     let prev: Element = sep;

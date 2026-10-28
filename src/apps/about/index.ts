@@ -4,7 +4,7 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const about: AppManifest = {
   id: 'about',
@@ -37,11 +37,11 @@ export const about: AppManifest = {
         'dl',
         { class: 'about-specs' },
         h('dt', {}, 'Version'),
-        h('dd', {}, `${VERSION} “Fidelity”`),
+        h('dd', {}, `${VERSION} “Aero”`),
         h('dt', {}, 'Processor'),
         h('dd', {}, navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'),
         h('dt', {}, 'Storage'),
-        h('dd', {}, 'This browser (IndexedDB)'),
+        h('dd', {}, 'Memory — this session only'),
         h('dt', {}, 'Built by'),
         h('dd', {}, 'Cosmin & Claude'),
       ),

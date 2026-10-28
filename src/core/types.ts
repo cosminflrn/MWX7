@@ -106,6 +106,8 @@ export interface VFS {
 export interface Settings {
   wallpaper: string;
   userName: string;
+  /** URL of the account picture ('' = generic silhouette) */
+  avatar: string;
   /** Power button → BIOS → boot logo before the logon screen */
   bootSequence: boolean;
   sounds: boolean;

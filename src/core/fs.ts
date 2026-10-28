@@ -107,8 +107,11 @@ function readLegacy(): string | null {
   }
 }
 
+/** MWX 7 is session-only by design: files live in memory and reset on reload. */
+const PERSIST = false;
+
 async function init(): Promise<void> {
-  db = await openDB();
+  db = PERSIST ? await openDB() : null;
   if (db) {
     try {
       const tx = db.transaction(STORE, 'readonly');
@@ -126,7 +129,7 @@ async function init(): Promise<void> {
     }
   }
 
-  const legacy = readLegacy();
+  const legacy = PERSIST ? readLegacy() : null;
   freshInstall = legacy === null;
   const now = Date.now();
   const touched = new Set<string>();

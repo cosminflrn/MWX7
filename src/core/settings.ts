@@ -1,29 +1,20 @@
 import { bus } from './events';
 import type { Settings } from './types';
 
-const KEY = 'mwx7:settings';
-
+/**
+ * Settings live in memory only: by design MWX 7 remembers nothing between
+ * sessions — every reload is a fresh machine that goes through setup again.
+ */
 const defaults: Settings = {
-  wallpaper: 'serenity',
+  wallpaper: 'meadow',
   userName: 'User',
+  avatar: '',
   bootSequence: true,
   sounds: true,
-  volume: 0.7,
+  volume: 0.8,
 };
 
-// Wallpapers retired in v0.2 → their closest successor.
-const RENAMED: Record<string, string> = { aurora: 'wave', meadow: 'serenity' };
-
 let current: Settings = { ...defaults };
-try {
-  const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings> & { showBootScreen?: boolean };
-  if (saved.wallpaper && RENAMED[saved.wallpaper]) saved.wallpaper = RENAMED[saved.wallpaper];
-  if (typeof saved.showBootScreen === 'boolean' && saved.bootSequence === undefined) saved.bootSequence = saved.showBootScreen;
-  delete saved.showBootScreen;
-  current = { ...defaults, ...saved };
-} catch {
-  /* keep defaults */
-}
 
 export const settings = {
   get(): Settings {
@@ -31,11 +22,22 @@ export const settings = {
   },
   set(patch: Partial<Settings>): void {
     current = { ...current, ...patch };
-    try {
-      localStorage.setItem(KEY, JSON.stringify(current));
-    } catch {
-      /* ignore quota errors */
-    }
     bus.emit('settings:change', { ...current });
   },
 };
+
+/** Wipe anything older versions persisted, so the browser keeps nothing from MWX 7. */
+export function forgetPersistedData(): void {
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('mwx7:'))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* storage blocked */
+  }
+  try {
+    indexedDB.deleteDatabase('mwx7');
+  } catch {
+    /* not available */
+  }
+}

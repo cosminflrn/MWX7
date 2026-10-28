@@ -1,0 +1,4 @@
+System sound samples: FluidR3_GM soundfont by Frank Wen, MIT License,
+via https://github.com/gleitz/midi-js-soundfonts (FluidR3_GM).
+Instruments: acoustic_grand_piano, string_ensemble_1, pad_2_warm, orchestral_harp, celesta, vibraphone.
+All MWX 7 melodies and arrangements are original.

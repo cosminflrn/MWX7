@@ -2,7 +2,7 @@ import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
-import { activeWindow, closeWindow, minimizeWindow, toggleMaximize, type Win } from '../core/wm';
+import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, openMenu } from '../ui/menu';
 import { logOff, shutDown } from './screens';
@@ -27,16 +27,6 @@ export function mountMenubar(bar: HTMLElement): void {
       { label: 'Shut Down…', action: () => void shutDown() },
     ],
   };
-
-  const windowMenu = (w: Win | null): MenuDef => ({
-    label: 'Window',
-    items: [
-      { label: 'Minimize', disabled: !w, action: () => w && minimizeWindow(w.id) },
-      { label: 'Zoom', disabled: !w, action: () => w && toggleMaximize(w.id) },
-      { separator: true },
-      { label: 'Close Window', disabled: !w, action: () => w && closeWindow(w.id) },
-    ],
-  });
 
   const showMenu = (btn: HTMLElement, menu: MenuDef) => {
     const r = btn.getBoundingClientRect();
@@ -76,7 +66,11 @@ export function mountMenubar(bar: HTMLElement): void {
         ? [
             { label: `About ${appName}`, action: () => launch('about', { app: w.appId }) },
             { separator: true },
-            { label: `Quit ${appName}`, action: () => closeWindow(w.id) },
+            { label: 'Minimize', action: () => minimizeWindow(w.id) },
+            { label: w.state === 'max' ? 'Restore' : 'Maximize', action: () => toggleMaximize(w.id) },
+            { label: 'Center', action: () => centerWindow(w.id) },
+            { separator: true },
+            { label: `Close ${appName}`, action: () => closeWindow(w.id) },
           ]
         : [
             { label: 'Personalize…', action: () => launch('settings') },
@@ -85,7 +79,6 @@ export function mountMenubar(bar: HTMLElement): void {
     };
     left.append(menuButton(appMenu, 'mb-app'));
     for (const m of w?.menus ?? []) left.append(menuButton(m));
-    left.append(menuButton(windowMenu(w)));
   };
 
   // Right side: Spotlight + clock

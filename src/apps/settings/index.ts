@@ -1,5 +1,6 @@
 import { icons } from '../../assets/icons';
 import type { AppManifest } from '../../core/types';
+import { avatarPicker } from '../../shell/avatars';
 import { wallpaperThumb, wallpapers } from '../../shell/wallpapers';
 import { h } from '../../ui/dom';
 import './settings.css';
@@ -46,31 +47,12 @@ export const settingsApp: AppManifest = {
     const name = h('input', { class: 'set-input', value: s.userName, maxLength: 24 });
     name.addEventListener('change', () => os.settings.set({ userName: name.value.trim() || 'User' }));
 
-    const boot = h('input', { type: 'checkbox', checked: s.bootSequence });
-    boot.addEventListener('change', () => os.settings.set({ bootSequence: boot.checked }));
-
     const sounds = h('input', { type: 'checkbox', checked: s.sounds });
     sounds.addEventListener('change', () => os.settings.set({ sounds: sounds.checked }));
-    const volume = h('input', { type: 'range', min: 0, max: 100, value: String(Math.round(s.volume * 100)), class: 'set-range' });
-    volume.addEventListener('change', () => os.settings.set({ volume: Number(volume.value) / 100 }));
 
-    const reset = h(
-      'button',
-      {
-        class: 'btn danger',
-        onclick: () => {
-          if (confirm('Erase all MWX 7 data in this browser (documents and settings)?')) {
-            Object.keys(localStorage)
-              .filter((k) => k.startsWith('mwx7:'))
-              .forEach((k) => localStorage.removeItem(k));
-            // The file system lives in IndexedDB since VFS v2.
-            const del = indexedDB.deleteDatabase('mwx7');
-            del.onsuccess = del.onerror = del.onblocked = () => location.reload();
-          }
-        },
-      },
-      'Reset MWX 7…',
-    );
+    const picture = avatarPicker(s.avatar, (url) => os.settings.set({ avatar: url }));
+
+    const restart = h('button', { class: 'btn', onclick: () => location.reload() }, 'Restart MWX 7');
 
     win.body.append(
       h(
@@ -86,14 +68,21 @@ export const settingsApp: AppManifest = {
         'div',
         { class: 'set-main' },
         h('div', { id: 'wall' }, section('Desktop background', grid)),
-        h('div', { id: 'user' }, section('User account', h('label', { class: 'set-row' }, h('span', {}, 'Display name'), name))),
+        h(
+          'div',
+          { id: 'user' },
+          section(
+            'User account',
+            h('label', { class: 'set-row' }, h('span', {}, 'Display name'), name),
+            h('div', { class: 'set-row set-col' }, h('span', {}, 'Account picture'), picture),
+          ),
+        ),
         h(
           'div',
           { id: 'sound' },
           section(
             'Sound',
             h('label', { class: 'set-row' }, h('span', {}, 'Play system sounds'), sounds),
-            h('label', { class: 'set-row' }, h('span', {}, 'Volume'), volume),
           ),
         ),
         h(
@@ -101,8 +90,7 @@ export const settingsApp: AppManifest = {
           { id: 'system' },
           section(
             'System',
-            h('label', { class: 'set-row' }, h('span', {}, 'Full startup (power button, BIOS, boot logo)'), boot),
-            h('div', { class: 'set-row' }, h('span', {}, 'Storage: this browser'), reset),
+            h('div', { class: 'set-row' }, h('span', {}, 'MWX 7 keeps nothing after you close or reload it.'), restart),
           ),
         ),
       ),

@@ -6,17 +6,21 @@ import './styles/shell.css';
 import { registerAll } from './apps';
 import { ICON_DEFS, icons } from './assets/icons';
 import { seedFS } from './core/fs';
+import { forgetPersistedData, settings } from './core/settings';
+import { play } from './core/sound';
 import { notify } from './core/os';
 import { initWM } from './core/wm';
 import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountMenubar } from './shell/menubar';
 import { mountNotifications } from './shell/notifications';
+import { mountSelection } from './shell/selection';
 import { startup } from './shell/screens';
 import { mountSpotlight } from './shell/spotlight';
 import { mountStartMenu } from './shell/startmenu';
 
 async function start(): Promise<void> {
+  forgetPersistedData();
   document.body.insertAdjacentHTML('afterbegin', ICON_DEFS);
   registerAll();
   await seedFS();
@@ -45,12 +49,21 @@ async function start(): Promise<void> {
     if (!(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) e.preventDefault();
   });
 
+  // A soft, satisfying click for every left / right mouse press.
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.pointerType !== 'mouse') return;
+      if (e.button === 0) play('click');
+      else if (e.button === 2) play('rclick');
+    },
+    true,
+  );
+
+  mountSelection($('desktop'), $('desktop-icons'));
   await startup();
 
-  if (!localStorage.getItem('mwx7:welcomed')) {
-    localStorage.setItem('mwx7:welcomed', '1');
-    notify('Welcome to MWX 7', 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
-  }
+  notify(`Welcome, ${settings.get().userName}`, 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
 }
 
 void start();

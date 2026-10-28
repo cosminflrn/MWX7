@@ -63,3 +63,10 @@ svg {
   padding: 24px;
   color: #8a1f17;
 }
+
+/* Raster / data-URI icons fill whatever box the shell gives them. */
+.icon-img {
+  display: block;
+  object-fit: contain;
+  -webkit-user-drag: none;
+}

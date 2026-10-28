@@ -30,7 +30,7 @@
   cursor: default;
 }
 
-.desk-icon-img svg {
+.desk-icon-img svg, .desk-icon-img img {
   width: 48px;
   height: 48px;
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
@@ -101,9 +101,9 @@
 .mb-item:hover { background: rgba(0, 0, 0, 0.07); }
 .mb-item.open { background: rgba(0, 0, 0, 0.12); }
 
-.mb-orb svg { width: 17px; height: 17px; }
+.mb-orb svg, .mb-orb img { width: 17px; height: 17px; }
 .mb-app { font-weight: 600; }
-.mb-icon svg { width: 14px; height: 14px; }
+.mb-icon svg, .mb-icon img { width: 14px; height: 14px; }
 
 .mb-clock {
   padding: 0 8px;
@@ -200,13 +200,13 @@
 .dock-shelf.magnify .dock-item { transition: width 0.06s linear, height 0.06s linear; }
 
 .dock-icon,
-.dock-icon svg,
-.dock-orb svg {
+.dock-icon svg, .dock-icon img,
+.dock-orb svg, .dock-orb img {
   width: 100%;
   height: 100%;
 }
 
-.dock-icon svg { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)); }
+.dock-icon svg, .dock-icon img { filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)); }
 
 .dock-item::before {
   content: attr(data-label);
@@ -244,17 +244,8 @@
 }
 
 .dock-item.running .dock-dot { opacity: 1; }
-
-/* Win7 superbar: the focused app sits on a soft glass highlight */
-.dock-item.focused::after {
-  content: '';
-  position: absolute;
-  inset: -3px -3px -5px;
-  z-index: -1;
-  border-radius: 9px;
-  background: radial-gradient(ellipse at 50% 100%, rgba(170, 225, 255, 0.45), transparent 72%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-}
+.dock-item.leaving { pointer-events: none; }
+.dock-item.leaving .dock-dot { opacity: 0; }
 
 .dock-orb { filter: drop-shadow(0 0 6px rgba(80, 180, 255, 0.4)); transition: width 0.18s ease-out, height 0.18s ease-out, filter 0.2s; }
 .dock-orb:hover { filter: drop-shadow(0 0 12px rgba(120, 210, 255, 0.85)) brightness(1.12); }
@@ -281,7 +272,7 @@
 .start-menu {
   position: fixed;
   z-index: 150000;
-  width: 430px;
+  width: 480px;
   max-width: calc(100vw - 16px);
   display: flex;
   flex-direction: column;
@@ -312,7 +303,7 @@
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
-.sm-avatar svg { width: 46px; height: 46px; border-radius: 4px; }
+.sm-avatar svg, .sm-avatar img { width: 46px; height: 46px; border-radius: 4px; }
 .sm-user { color: #fff; font-size: 16px; text-shadow: 0 0 8px rgba(0, 20, 60, 0.9), 0 1px 2px rgba(0, 0, 0, 0.6); }
 
 .sm-body {
@@ -326,7 +317,7 @@
   flex: 1.3;
   display: flex;
   flex-direction: column;
-  min-height: 330px;
+  min-height: min(470px, calc(100vh - 290px));
   padding: 6px;
   background: #fff;
 }
@@ -352,11 +343,11 @@
   cursor: default;
 }
 
-.sm-app-icon svg { width: 32px; height: 32px; }
+.sm-app-icon svg, .sm-app-icon img { width: 32px; height: 32px; }
 .sm-app-text { display: flex; flex-direction: column; font-size: 13px; color: #1e1e1e; }
 .sm-place { color: #fff; font-size: 13px; text-shadow: 0 0 6px rgba(0, 10, 40, 0.9); }
 .sm-place-icon { color: #fff; }
-.sm-place-icon svg { width: 22px; height: 22px; }
+.sm-place-icon svg, .sm-place-icon img { width: 22px; height: 22px; }
 
 .sm-app:hover {
   background: linear-gradient(#f2f8ff, #dcebfc);
@@ -386,7 +377,7 @@
 }
 
 .sm-search:focus-within { border-color: #5a95e0; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 2px rgba(90, 150, 230, 0.25); }
-.sm-search svg { width: 14px; height: 14px; flex: none; }
+.sm-search svg, .sm-search img { width: 14px; height: 14px; flex: none; }
 .sm-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-style: italic; color: #222; }
 .sm-search input:focus-visible { box-shadow: none; }
 .sm-search input:not(:placeholder-shown) { font-style: normal; }
@@ -413,7 +404,7 @@
   cursor: default;
 }
 
-.sm-foot-btn svg { width: 18px; height: 18px; }
+.sm-foot-btn svg, .sm-foot-btn img { width: 18px; height: 18px; }
 .sm-foot-btn:hover { background: linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.12) 51%, rgba(255, 255, 255, 0.25)); }
 
 /* ===== Spotlight ===== */
@@ -446,7 +437,7 @@
 
 .sp-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
 .sp-glass { color: #6b7686; }
-.sp-glass svg { width: 21px; height: 21px; }
+.sp-glass svg, .sp-glass img { width: 21px; height: 21px; }
 
 .sp-input {
   flex: 1;
@@ -482,7 +473,7 @@
   cursor: default;
 }
 
-.sp-row-icon svg { width: 24px; height: 24px; }
+.sp-row-icon svg, .sp-row-icon img { width: 24px; height: 24px; }
 .sp-row-title { font-size: 14px; }
 .sp-row-sub { color: #7a8494; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sp-row.sel { color: #fff; background: linear-gradient(#3f8ef0, #2a76de); }
@@ -516,7 +507,7 @@
   cursor: default;
 }
 
-.toast-icon svg { width: 34px; height: 34px; }
+.toast-icon svg, .toast-icon img { width: 34px; height: 34px; }
 .toast-text { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: #3d4652; }
 .toast-text b { font-size: 13px; font-weight: 600; color: #111; }
 
@@ -554,7 +545,7 @@
   transition: box-shadow 0.3s, opacity 0.3s;
 }
 
-.power-btn svg { width: 100%; height: 100%; }
+.power-btn svg, .power-btn img { width: 100%; height: 100%; }
 .power-btn:hover { opacity: 1; box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #4a8fd6, 0 0 22px rgba(80, 160, 255, 0.55), inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.8); }
 .power-btn.on { opacity: 1; box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #5fb4ff, 0 0 40px rgba(90, 180, 255, 0.9), inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6); }
 .power-hint { margin: 0; color: #59616c; font-size: 13px; letter-spacing: 0.02em; }
@@ -593,7 +584,7 @@
   letter-spacing: 0.12em;
 }
 
-.bios-badge-mark svg { width: 34px; height: 34px; }
+.bios-badge-mark svg, .bios-badge-mark img { width: 34px; height: 34px; }
 
 /* Boot logo: four lights converge, the orb forms */
 .bootlogo {
@@ -614,7 +605,7 @@
   animation: bl-orb 1.4s 1.15s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, bl-breathe 2.6s 2.6s ease-in-out infinite;
 }
 
-.bl-orb svg { width: 100%; height: 100%; }
+.bl-orb svg, .bl-orb img { width: 100%; height: 100%; }
 
 @keyframes bl-orb {
   0% { opacity: 0; transform: scale(0.6); filter: drop-shadow(0 0 0 rgba(90, 190, 255, 0)) brightness(2); }
@@ -702,7 +693,7 @@
 }
 
 .logon-tile:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 28px rgba(150, 210, 255, 0.75), 0 8px 30px rgba(0, 20, 60, 0.45); }
-.logon-pic svg { width: 118px; height: 118px; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
+.logon-pic svg, .logon-pic img { width: 118px; height: 118px; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 
 .logon-name {
   font-size: 25px;
@@ -725,7 +716,7 @@
 }
 
 .logon-go:hover { filter: brightness(1.15); }
-.logon-go svg { width: 100%; height: 100%; }
+.logon-go svg, .logon-go img { width: 100%; height: 100%; }
 
 .logon-welcome {
   font-size: 32px;
@@ -752,7 +743,7 @@
   text-shadow: 0 1px 6px rgba(0, 10, 40, 0.7);
 }
 
-.logon-brand svg { width: 34px; height: 34px; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4)); }
+.logon-brand svg, .logon-brand img { width: 34px; height: 34px; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4)); }
 .logon-brand b { font-weight: 600; letter-spacing: 0.04em; }
 .logon-seven { font-weight: 300; color: #d6ecff; }
 
@@ -770,7 +761,7 @@
   cursor: pointer;
 }
 
-.logon-power svg { width: 100%; height: 100%; }
+.logon-power svg, .logon-power img { width: 100%; height: 100%; }
 .logon-power:hover { filter: brightness(1.15); }
 
 @keyframes spin {
@@ -783,4 +774,155 @@
   .mb-item:not(.mb-logo):not(.mb-app):not(.mb-icon) { display: none; }
   .bios { font-size: 11px; padding: 14px; }
   .bios-badge { display: none; }
+}
+
+/* ===== BIOS power-saver badge ===== */
+.bios-badge {
+  padding: 0;
+  border: 0;
+  width: 200px;
+}
+
+.bios-badge svg { width: 100%; height: auto; }
+
+/* ===== First-run setup (Windows 7 OOBE style) ===== */
+.oobe { background: #062a63; }
+
+.oobe-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 30% 35%, rgba(120, 220, 255, 0.35), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 75% 70%, rgba(80, 190, 160, 0.3), transparent 70%),
+    linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.07) 42%, transparent 55%),
+    linear-gradient(160deg, #0a4a9c, #0b3a7e 45%, #062a63);
+}
+
+.oobe-window {
+  position: relative;
+  width: min(700px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+  border-radius: 9px;
+  background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.06) 36px), var(--glass-tint);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 30px rgba(0, 0, 0, 0.55);
+  color: #000;
+}
+
+.oobe-titlebar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 12.5px;
+  text-shadow: 0 0 8px #fff, 0 0 14px rgba(255, 255, 255, 0.8);
+}
+
+.oobe-title-icon svg { width: 16px; height: 16px; }
+
+.oobe-body {
+  padding: 22px 34px 18px;
+  background: linear-gradient(#ffffff, #f4f8fc);
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.oobe-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 22px; color: #1d3b6b; }
+.oobe-brand svg { width: 32px; height: 32px; }
+.oobe-brand b { font-weight: 600; letter-spacing: 0.04em; }
+.oobe-seven { font-weight: 300; color: #2a6fd0; }
+.oobe-body h1 { margin: 0 0 4px; font-size: 17px; font-weight: 400; color: #1e3287; }
+.oobe-lead { margin: 0 0 16px; font-size: 12.5px; color: #4a5566; }
+.oobe-label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0 4px; font-size: 12.5px; color: #1e1e1e; }
+.oobe-pc { font-size: 12px; color: #6b7686; }
+.oobe-error { min-height: 16px; margin-top: 6px; color: #c42b1c; font-size: 12px; }
+
+/* Win7 text box */
+.oobe-input,
+.set-input {
+  width: 320px;
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #abadb3;
+  border-top-color: #8f9195;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+}
+
+.oobe-input:hover,
+.set-input:hover { border-color: #7eb4ea; }
+.oobe-input:focus,
+.set-input:focus { border-color: #3d7bad; box-shadow: none; }
+
+.oobe-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f0f0f0;
+  border-top: 1px solid #dfdfdf;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
+.oobe-copy { font-size: 11px; color: #8a8f98; }
+
+/* Win7 command button */
+.oobe-next,
+.btn {
+  min-width: 86px;
+  padding: 4px 14px;
+  border: 1px solid #707070;
+  border-radius: 3px;
+  background: linear-gradient(#f2f2f2 0%, #ebebeb 49%, #dddddd 50%, #cfcfcf 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+  color: #000;
+  font-size: 12.5px;
+  cursor: default;
+}
+
+.oobe-next:hover:not(:disabled),
+.btn:hover { border-color: #3c7fb1; background: linear-gradient(#eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%); }
+.oobe-next:active:not(:disabled),
+.btn:active { border-color: #2c628b; background: linear-gradient(#e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%); }
+.oobe-next:disabled { color: #8f8f8f; border-color: #adb2b5; background: #f4f4f4; }
+
+/* ===== Account pictures ===== */
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.avatar-opt {
+  aspect-ratio: 1;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  cursor: default;
+}
+
+.avatar-opt svg,
+.avatar-opt img { width: 100%; height: 100%; border-radius: 2px; object-fit: cover; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.2); }
+.avatar-opt:hover { border-color: #b8d6fb; background: linear-gradient(#fafbfd, #ebf3fd); }
+.avatar-opt.sel { border-color: #7da2ce; background: linear-gradient(#dcebfc, #c1dbfc); }
+.avatar-img { object-fit: cover; }
+
+/* ===== Rubber-band selection (Win7) ===== */
+.rubber-band {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid rgba(51, 153, 255, 0.95);
+  background: rgba(51, 153, 255, 0.22);
+  pointer-events: none;
 }

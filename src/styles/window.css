@@ -95,7 +95,7 @@
 
 .win:not(.active) .win-title { color: rgba(0, 0, 0, 0.62); }
 .win:not(.active) .win-title-text { text-shadow: 0 0 8px rgba(255, 255, 255, 0.7), 0 0 14px rgba(255, 255, 255, 0.4); }
-.win-icon svg { width: 16px; height: 16px; flex: none; }
+.win-icon svg, .win-icon img { width: 16px; height: 16px; flex: none; }
 .win.maximized .win-titlebar { padding: 0 10px; }
 
 /* Traffic lights — on the right, Windows order (minimize, maximize, close) */
@@ -157,20 +157,16 @@
   user-select: text;
 }
 
-/* Genie: strips are flat copies — no live blur, so 16 of them stay cheap */
+/* Genie: one canvas the size of the viewport, above everything but menus */
 .genie-layer {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 99500;
   pointer-events: none;
 }
 
-.genie-strip {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  background: linear-gradient(180deg, rgba(190, 215, 240, 0.97), rgba(140, 180, 220, 0.97)) !important;
-  box-shadow: none !important;
-}
 
 /* Resize handles */
 .rz { position: absolute; z-index: 2; touch-action: none; }

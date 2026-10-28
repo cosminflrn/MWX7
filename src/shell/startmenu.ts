@@ -3,12 +3,15 @@ import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { listApps } from '../core/registry';
 import { settings } from '../core/settings';
+import { play } from '../core/sound';
 import { h } from '../ui/dom';
+import { avatarHtml } from './avatars';
 import { logOff, shutDown } from './screens';
 
 /**
- * XP two-column Start menu in Win7 glass. It is centered on the orb and glued
- * to it: when the orb grows under dock magnification, the menu rises with it.
+ * XP two-column Start menu in Win7 glass. Horizontally centered on the screen;
+ * vertically it always floats just above the tallest dock icon, so it rises and
+ * settles with the dock's magnification wherever the pointer is.
  */
 export function mountStartMenu(): void {
   let el: HTMLElement | null = null;
@@ -17,13 +20,11 @@ export function mountStartMenu(): void {
   const orb = () => document.querySelector<HTMLElement>('.dock-orb');
 
   const place = () => {
-    const o = orb();
-    if (!el || !o) return;
-    const r = o.getBoundingClientRect();
-    const w = el.offsetWidth;
-    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
-    el.style.left = `${Math.round(left)}px`;
-    el.style.bottom = `${Math.round(window.innerHeight - r.top + 10)}px`;
+    if (!el) return;
+    let top = window.innerHeight - 80;
+    document.querySelectorAll<HTMLElement>('#dock .dock-item').forEach((i) => (top = Math.min(top, i.getBoundingClientRect().top)));
+    el.style.left = `${Math.round((window.innerWidth - el.offsetWidth) / 2)}px`;
+    el.style.bottom = `${Math.round(window.innerHeight - top + 12)}px`;
   };
 
   const loop = () => {
@@ -37,6 +38,7 @@ export function mountStartMenu(): void {
     el = null;
     cancelAnimationFrame(follow);
     orb()?.classList.remove('pressed');
+    play('menuClose');
     node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(8px) scale(.98)' }], {
       duration: 120,
       easing: 'ease-in',
@@ -72,7 +74,7 @@ export function mountStartMenu(): void {
     el = h(
       'div',
       { class: 'start-menu', role: 'menu' },
-      h('div', { class: 'sm-header' }, h('span', { class: 'sm-avatar', html: icons.avatar }), h('span', { class: 'sm-user' }, user)),
+      h('div', { class: 'sm-header' }, h('span', { class: 'sm-avatar', html: avatarHtml() }), h('span', { class: 'sm-user' }, user)),
       h(
         'div',
         { class: 'sm-body' },
@@ -86,7 +88,7 @@ export function mountStartMenu(): void {
         h(
           'div',
           { class: 'sm-right' },
-          placeRow(user, icons.avatar, () => launch('settings')),
+          placeRow(user, avatarHtml(), () => launch('settings')),
           placeRow('Documents', icons.folder, () => launch('notepad', { openDialog: true })),
           h('div', { class: 'sm-sep' }),
           placeRow('Computer', icons.computer, () => launch('about')),
@@ -105,6 +107,7 @@ export function mountStartMenu(): void {
     );
 
     document.body.append(el);
+    play('menuOpen');
     place();
     loop();
     orb()?.classList.add('pressed');
