@@ -4,6 +4,7 @@ import { activeWindow, allWindows, centerWindow, closeWindow, focusWindow, minim
 import type { Win } from '../core/wm';
 import '../styles/switcher.css';
 import { h } from '../ui/dom';
+import { windowThumbnail } from './peek';
 import { closeMenu } from '../ui/menu';
 import { closeCalendar } from './calendar';
 
@@ -39,74 +40,14 @@ const lastFocus = new WeakMap<HTMLElement, HTMLElement>();
 
 /* ---------- thumbnails ---------- */
 
-const thumbs = new Map<string, string>();
-const captured = new Map<string, number>();
-const inflight = new Set<string>();
-
-/** Rasterizes a window at low resolution (backdrop blur can't be captured, so the glass becomes a solid frame). */
-async function capture(w: Win): Promise<boolean> {
-  if (w.minimized || w.el.style.display === 'none' || inflight.has(w.id) || w.el.offsetWidth < 40) return false;
-  inflight.add(w.id);
-  try {
-    const { toCanvas } = await import('html-to-image');
-    const active = w.el.classList.contains('active');
-    const job = toCanvas(w.el, {
-      pixelRatio: 1,
-      skipFonts: true,
-      filter: (n) => !(n instanceof HTMLElement && n.classList.contains('rz')),
-      style: {
-        // html-to-image inlines every computed property, logical ones included, and they beat plain left/top.
-        left: '0',
-        top: '0',
-        insetInlineStart: '0',
-        insetBlockStart: '0',
-        margin: '0',
-        transform: 'none',
-        backdropFilter: 'none',
-        boxShadow: 'none',
-        background: active ? 'linear-gradient(#c2d8ef, #9ebddf)' : 'linear-gradient(#dbe4ee, #c4d0dd)',
-      },
-    }).catch(() => null);
-    const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), 900));
-    const canvas = await Promise.race([job, timeout]);
-    if (!canvas || !canvas.width || !canvas.height) return false;
-    const k = Math.min(1, (THUMB_W * 2) / canvas.width, (THUMB_H * 2) / canvas.height);
-    const small = document.createElement('canvas');
-    small.width = Math.max(1, Math.round(canvas.width * k));
-    small.height = Math.max(1, Math.round(canvas.height * k));
-    const ctx = small.getContext('2d')!;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(canvas, 0, 0, small.width, small.height);
-    thumbs.set(w.id, small.toDataURL('image/png'));
-    captured.set(w.id, performance.now());
-    return true;
-  } catch {
-    return false;
-  } finally {
-    inflight.delete(w.id);
-  }
-}
-
-/** Keeps the cache warm after focus changes so the panel rarely opens with empty tiles. */
-function warm(w: Win | undefined): void {
-  if (!w || performance.now() - (captured.get(w.id) ?? -1e9) < 2500) return;
-  const run = () => void capture(w);
-  const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o: object) => void }).requestIdleCallback;
-  if (ric) ric.call(window, run, { timeout: 800 });
-  else window.setTimeout(run, 120);
-}
+// Thumbnails are scaled live copies of each window's DOM (shared with Aero Peek),
+// so they are instant, exact, and work for minimized windows too.
 
 /* ---------- focus bookkeeping ---------- */
 
-let lastActiveId: string | null = null;
-
 function trackFocus(w: Win | null): void {
   if (!w) return;
-  const prev = lastActiveId ? allWindows().find((x) => x.id === lastActiveId) : undefined;
-  lastActiveId = w.id;
   mru = [w.id, ...mru.filter((id) => id !== w.id)];
-  warm(prev);
-  warm(w);
 }
 
 function orderedWindows(): Win[] {
@@ -140,9 +81,7 @@ const DESKTOP_ICON = `<svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearG
 
 function thumbFor(item: Item): HTMLElement {
   if (item.kind === 'desktop') return h('div', { class: 'sw-fallback sw-desktop', html: DESKTOP_ICON });
-  const url = thumbs.get(item.win.id);
-  if (url) return h('img', { class: 'sw-img', src: url, alt: '', draggable: false });
-  return h('div', { class: 'sw-fallback', html: item.win.manifest.icon });
+  return windowThumbnail(item.win, THUMB_W, THUMB_H);
 }
 
 function buildTile(item: Item, i: number): HTMLElement {
@@ -219,17 +158,6 @@ function openSwitcher(mod: Mod, backwards: boolean): void {
   select(backwards ? items.length - 1 : wins.length > 1 && activeWindow() ? 1 : 0);
   play('menuOpen');
 
-  // Refresh the live thumbnails: visible windows first, front-most first. Tiles swap in as each finishes.
-  const visible = wins.filter((w) => !w.minimized).sort((a, b) => b.z - a.z);
-  void (async () => {
-    for (const w of visible) {
-      if (!session || session.root !== root) return;
-      if (!(await capture(w))) continue;
-      const i = items.findIndex((it) => it.kind === 'win' && it.win === w);
-      const thumb = tiles[i]?.querySelector('.sw-thumb');
-      if (thumb && root.isConnected) thumb.replaceChildren(thumbFor(items[i]!));
-    }
-  })();
 }
 
 function dismiss(): Session | null {
@@ -280,6 +208,10 @@ function onKeyDownOpen(e: KeyboardEvent, s: Session): void {
     return;
   }
   eat(e);
+  if (e.code === 'Backquote') {
+    select(s.sel + (e.shiftKey ? -1 : 1));
+    return;
+  }
   switch (e.key) {
     case 'Tab':
       select(s.sel + (e.shiftKey ? -1 : 1));
@@ -351,7 +283,9 @@ function onKeyDown(e: KeyboardEvent): void {
   }
   if (e.metaKey || e.isComposing) return;
 
-  if (e.key === 'Tab' && (e.ctrlKey || e.altKey)) {
+  // Alt+` is the fallback chord: browsers reserve Ctrl+Tab and the OS takes Alt+Tab.
+  const backquote = e.code === 'Backquote' && e.altKey && !e.ctrlKey;
+  if ((e.key === 'Tab' && (e.ctrlKey || e.altKey)) || backquote) {
     if (!allWindows().length) return;
     eat(e);
     openSwitcher(e.altKey ? 'alt' : 'ctrl', e.shiftKey);
@@ -388,8 +322,6 @@ export function mountSwitcher(): void {
   bus.on('window:focus', trackFocus);
   bus.on('window:close', (w) => {
     mru = mru.filter((id) => id !== w.id);
-    thumbs.delete(w.id);
-    captured.delete(w.id);
     stash = stash.filter((x) => x !== w);
     if (session) {
       // A window vanished while the panel is up (e.g. an app closing itself): rebuild is overkill, just drop out.

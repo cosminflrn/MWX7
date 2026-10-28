@@ -19,7 +19,7 @@ const THUMB_H = 118;
  * canvas pixels included), like Windows 7's DWM thumbnails. Works for
  * minimized windows too, since the copy is laid out independently.
  */
-function thumbnail(w: Win): HTMLElement {
+export function windowThumbnail(w: Win, maxW = THUMB_W, maxH = THUMB_H): HTMLElement {
   const clone = w.el.cloneNode(true) as HTMLElement;
   clone.querySelectorAll('.rz').forEach((n) => n.remove());
   const srcFields = w.el.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
@@ -34,7 +34,7 @@ function thumbnail(w: Win): HTMLElement {
       /* empty canvas */
     }
   });
-  const scale = Math.min(THUMB_W / w.rect.w, THUMB_H / w.rect.h);
+  const scale = Math.min(maxW / w.rect.w, maxH / w.rect.h);
   clone.removeAttribute('id');
   clone.classList.add('peek-clone');
   clone.classList.remove('peek-target');
@@ -83,7 +83,7 @@ function openPeek(appId: string, anchor: HTMLElement): void {
   panel.addEventListener('pointerleave', scheduleClose);
 
   for (const w of wins) {
-    const shot = h('div', { class: 'peek-shot' }, thumbnail(w));
+    const shot = h('div', { class: 'peek-shot' }, windowThumbnail(w));
     const close = h('button', { class: 'peek-close', 'aria-label': 'Close', title: 'Close' }, '×');
     const tile = h(
       'div',

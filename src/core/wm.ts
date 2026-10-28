@@ -322,8 +322,11 @@ async function snapshot(w: Win): Promise<HTMLCanvasElement | null> {
     skipFonts: true,
     filter: (n) => !(n instanceof HTMLElement && n.classList.contains('rz')),
     style: {
+      // html-to-image also inlines the logical inset properties, which would win over left/top.
       left: '0',
       top: '0',
+      insetInlineStart: '0',
+      insetBlockStart: '0',
       margin: '0',
       transform: 'none',
       backdropFilter: 'none',
