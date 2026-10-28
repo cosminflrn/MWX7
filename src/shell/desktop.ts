@@ -1,13 +1,23 @@
 import { bus } from '../core/events';
 import { launch } from '../core/os';
-import { listApps } from '../core/registry';
 import { settings } from '../core/settings';
-import { h } from '../ui/dom';
 import { openMenu } from '../ui/menu';
 import { mountAmbience } from './ambience';
+import { mountDeskIcons } from './deskicons';
+import { fs } from '../core/fs';
 import { createWallpaperLayer, resolveWallpaperId, wallpapers } from './wallpapers';
 
-/** Wallpaper + XP-style desktop icons (left column) + desktop context menu. */
+/** Creates "New folder", "New folder (2)", … on the desktop, like Windows. */
+async function createOnDesktop(base: string, folder: boolean): Promise<void> {
+  const dot = base.lastIndexOf('.');
+  const [stem, ext] = !folder && dot > 0 ? [base.slice(0, dot), base.slice(dot)] : [base, ''];
+  let name = base;
+  for (let n = 2; await fs.exists(`/Desktop/${name}`); n++) name = `${stem} (${n})${ext}`;
+  if (folder) await fs.mkdir(`/Desktop/${name}`);
+  else await fs.write(`/Desktop/${name}`, '');
+}
+
+/** Live wallpaper + desktop icons + desktop context menu. */
 export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void {
   // Live wallpaper: the first child of #desktop, so icons and windows paint above it.
   let wallId = resolveWallpaperId(settings.get().wallpaper);
@@ -29,38 +39,10 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
   });
   mountAmbience();
 
-  const select = (el: HTMLElement | null) => {
-    iconLayer.querySelectorAll('.desk-icon.selected').forEach((n) => n.classList.remove('selected'));
-    el?.classList.add('selected');
-  };
-
-  for (const app of listApps().filter((a) => a.desktop)) {
-    const icon = h(
-      'button',
-      {
-        class: 'desk-icon',
-        title: app.description ?? app.name,
-        onclick: (e: MouseEvent) => {
-          e.stopPropagation();
-          select(e.currentTarget as HTMLElement);
-        },
-        ondblclick: () => launch(app.id),
-        onkeydown: (e: KeyboardEvent) => {
-          if (e.key === 'Enter') launch(app.id);
-        },
-      },
-      h('span', { class: 'desk-icon-img', html: app.icon }),
-      h('span', { class: 'desk-icon-label' }, app.name),
-    );
-    iconLayer.append(icon);
-  }
-
-  desktop.addEventListener('pointerdown', (e) => {
-    if (e.target === desktop || e.target === iconLayer) select(null);
-  });
+  mountDeskIcons(iconLayer);
 
   desktop.addEventListener('contextmenu', (e) => {
-    if (e.target !== desktop && e.target !== iconLayer) return;
+    if ((e.target as HTMLElement).closest('.desk-icon, .win')) return;
     e.preventDefault();
     const current = resolveWallpaperId(settings.get().wallpaper);
     const idx = wallpapers.findIndex((w) => w.id === current);
@@ -69,7 +51,8 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
         { label: 'Next Wallpaper', action: () => settings.set({ wallpaper: wallpapers[(idx + 1) % wallpapers.length].id }) },
         { label: 'Personalize…', action: () => launch('settings') },
         { separator: true },
-        { label: 'New Text Document', action: () => launch('notepad') },
+        { label: 'New Folder', action: () => void createOnDesktop('New folder', true) },
+        { label: 'New Text Document', action: () => void createOnDesktop('New Text Document.txt', false) },
         { separator: true },
         { label: 'About MWX 7', action: () => launch('about') },
       ],

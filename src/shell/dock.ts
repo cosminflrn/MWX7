@@ -4,7 +4,12 @@ import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
 import { activeWindow, closeWindow, focusWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
+import { fs } from '../core/fs';
+import { notify } from '../core/os';
+import { play } from '../core/sound';
+import { confirmDialog } from '../ui/dialog';
 import { h } from '../ui/dom';
+import { attachPeek } from './peek';
 import { openMenu } from '../ui/menu';
 
 /**
@@ -30,6 +35,64 @@ export function mountDock(dock: HTMLElement): void {
 
   const sep = h('div', { class: 'dock-sep' });
   shelf.append(orb, sep);
+
+  // Trash lives at the far end, after its own separator (like macOS).
+  const trashIcon = h('span', { class: 'dock-icon', html: icons.trash });
+  const trash = h(
+    'button',
+    {
+      class: 'dock-item dock-trash',
+      'data-label': 'Trash',
+      'aria-label': 'Trash',
+      onclick: () => openTrash(),
+      oncontextmenu: (e: MouseEvent) => {
+        e.preventDefault();
+        void (async () => {
+          const empty = !(await fs.list('/Trash')).length;
+          const r = trash.getBoundingClientRect();
+          openMenu(
+            [
+              { label: 'Open', action: openTrash },
+              { separator: true },
+              { label: 'Empty Trash…', disabled: empty, action: () => void emptyTrash() },
+            ],
+            { x: r.left, y: r.top - 8 },
+            { above: true, anchor: trash },
+          );
+        })();
+      },
+    },
+    trashIcon,
+  );
+  shelf.append(h('div', { class: 'dock-sep' }), trash);
+
+  const openTrash = () => {
+    if (getApp('explorer')) launch('explorer', { path: '/Trash' });
+    else notify('Trash', 'File Explorer is needed to browse the Trash.', icons.trash);
+  };
+  const emptyTrash = async () => {
+    const items = await fs.list('/Trash');
+    if (!items.length) return;
+    const ok = await confirmDialog({
+      title: 'Empty Trash',
+      message: `Are you sure you want to permanently delete ${items.length === 1 ? `“${items[0].name}”` : `these ${items.length} items`}?`,
+      detail: 'You can’t undo this action.',
+      icon: icons.trashFull,
+      okLabel: 'Yes',
+      cancelLabel: 'No',
+    });
+    if (!ok) return;
+    for (const it of items) await fs.remove(it.path);
+    play('empty');
+  };
+  const refreshTrash = async () => {
+    const full = (await fs.list('/Trash')).length > 0;
+    trashIcon.innerHTML = full ? icons.trashFull : icons.trash;
+    trash.dataset.label = full ? 'Trash (full)' : 'Trash';
+  };
+  void refreshTrash();
+  // A move into or out of /Trash reports either path, so any change re-checks (cheap: memory only).
+  bus.on('fs:change', () => void refreshTrash());
   const itemFor = new Map<string, HTMLElement>();
 
   const makeItem = (appId: string) => {
@@ -49,6 +112,7 @@ export function mountDock(dock: HTMLElement): void {
       h('span', { class: 'dock-icon', html: app.icon }),
       h('span', { class: 'dock-dot' }),
     );
+    attachPeek(btn, app.id);
     return btn;
   };
 

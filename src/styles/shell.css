@@ -7,17 +7,14 @@
 
 #desktop-icons {
   position: absolute;
-  top: calc(var(--menubar-h) + 12px);
-  left: 10px;
-  bottom: 96px;
-  display: flex;
-  flex-direction: column;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 4px;
+  inset: 0;
+  pointer-events: none;
 }
 
 .desk-icon {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
   width: 94px;
   padding: 5px 3px 6px;
   display: flex;
@@ -927,3 +924,104 @@
   background: rgba(51, 153, 255, 0.22);
   pointer-events: none;
 }
+
+.desk-icon.dragging { z-index: 3; opacity: 0.85; }
+.desk-icon.snapping { transition: left 0.18s cubic-bezier(.2,.8,.2,1), top 0.18s cubic-bezier(.2,.8,.2,1); }
+.desk-icon-label { max-width: 88px; overflow-wrap: anywhere; }
+
+/* ===== Message box (Win7) ===== */
+.msgbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 10, 30, 0.12);
+}
+
+.msgbox {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0 7px 7px;
+  border-radius: 8px;
+  background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.06) 32px), var(--glass-tint);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 0 26px rgba(0, 0, 0, 0.5);
+}
+
+.msgbox-title { height: 28px; display: flex; align-items: center; padding: 0 4px; font-size: 12.5px; text-shadow: 0 0 8px #fff, 0 0 14px rgba(255, 255, 255, 0.8); }
+.msgbox-body { display: flex; gap: 14px; align-items: flex-start; padding: 18px 18px 20px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.msgbox-icon img, .msgbox-icon svg { width: 40px; height: 40px; }
+.msgbox-main { font-size: 13px; color: #1e3287; margin-top: 2px; }
+.msgbox-detail { margin-top: 6px; font-size: 12px; color: #4a5566; }
+.msgbox-buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; background: #f0f0f0; border-top: 1px solid #dfdfdf; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+
+/* ===== Aero Peek ===== */
+.peek-pop {
+  position: fixed;
+  z-index: 98000;
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06)), rgba(40, 70, 110, 0.5);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 8px 26px rgba(0, 10, 30, 0.45);
+}
+
+.peek-tile {
+  width: 200px;
+  padding: 4px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: default;
+}
+
+.peek-tile:hover {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: linear-gradient(rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.2);
+}
+
+.peek-head { display: flex; align-items: center; gap: 6px; height: 22px; color: #fff; font-size: 12px; text-shadow: 0 0 6px rgba(0, 10, 40, 0.9); }
+.peek-icon img, .peek-icon svg { width: 16px; height: 16px; }
+.peek-title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.peek-close {
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.peek-tile:hover .peek-close { opacity: 1; }
+.peek-close:hover { background: linear-gradient(#e8a493, #c7381c); border-color: rgba(0, 0, 0, 0.5); }
+
+.peek-shot {
+  height: 122px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.peek-thumb { position: relative; overflow: hidden; pointer-events: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45); border-radius: 4px; }
+.peek-clone { pointer-events: none; transition: none !important; box-shadow: none !important; }
+.peek-tile.minimized .peek-shot { opacity: 0.75; }
+
+body.peeking .win:not(.peek-target) { opacity: 0.05 !important; transition: opacity 0.25s; }
+body.peeking .win.peek-target { z-index: 98500 !important; }
+.win { transition: opacity 0.25s; }
+
+/* The thumbnails replace the dock label while Peek is open. */
+body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }

@@ -24,7 +24,8 @@ export type SoundName =
   | 'click'
   | 'rclick'
   | 'menuOpen'
-  | 'menuClose';
+  | 'menuClose'
+  | 'empty';
 
 let ac: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -253,6 +254,22 @@ export function play(name: SoundName): void {
       break;
     case 'close':
       swoosh(ctx, t, 1800, 600, 0.18, 0.018);
+      break;
+    case 'empty':
+      // Paper crumpling: a quick cluster of tiny filtered crackles.
+      for (let i = 0; i < 18; i++) {
+        const at = t + Math.random() * 0.42;
+        const src = noise(ctx, 0.03);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = 1200 + Math.random() * 4200;
+        bp.Q.value = 2;
+        const a = ctx.createGain();
+        a.gain.setValueAtTime(0.05 + Math.random() * 0.05, at);
+        a.gain.exponentialRampToValueAtTime(0.0001, at + 0.025 + Math.random() * 0.03);
+        src.connect(bp).connect(a).connect(master!);
+        src.start(at);
+      }
       break;
   }
 }

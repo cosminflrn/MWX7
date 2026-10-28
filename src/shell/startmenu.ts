@@ -1,7 +1,7 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
-import { listApps } from '../core/registry';
+import { getApp, listApps } from '../core/registry';
 import { settings } from '../core/settings';
 import { play } from '../core/sound';
 import { h } from '../ui/dom';
@@ -44,6 +44,9 @@ export function mountStartMenu(): void {
       easing: 'ease-in',
     }).onfinish = () => node.remove();
   };
+
+  /** Folders open in Explorer once it's installed; Notepad's Open dialog is the fallback. */
+  const browse = (path: string) => (getApp('explorer') ? launch('explorer', { path }) : launch('notepad', { openDialog: true }));
 
   const run = (fn: () => void) => () => {
     close();
@@ -89,9 +92,11 @@ export function mountStartMenu(): void {
           'div',
           { class: 'sm-right' },
           placeRow(user, avatarHtml(), () => launch('settings')),
-          placeRow('Documents', icons.folder, () => launch('notepad', { openDialog: true })),
+          placeRow('Documents', icons.documents, () => browse('/Documents')),
+          placeRow('Pictures', icons.pictures, () => browse('/Pictures')),
+          placeRow('Music', icons.music, () => browse('/Music')),
           h('div', { class: 'sm-sep' }),
-          placeRow('Computer', icons.computer, () => launch('about')),
+          placeRow('Computer', icons.computer, () => browse('/')),
           placeRow('Settings', icons.settings, () => launch('settings')),
           h('div', { class: 'sm-sep' }),
           placeRow('Search', icons.search, () => bus.emit('spotlight:open', {})),
