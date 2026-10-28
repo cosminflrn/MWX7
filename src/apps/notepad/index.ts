@@ -21,9 +21,11 @@ export const notepad: AppManifest = {
     let path: string | null = null;
     let dirty = false;
     let wrap = true;
+    let statusBar = true;
 
     const text = h('textarea', { class: 'np-text', spellcheck: false, wrap: 'soft' });
-    const status = h('div', { class: 'np-status' });
+    const posText = h('span', { class: 'np-pos' });
+    const status = h('div', { class: 'np-status' }, h('span', { class: 'np-status-fill' }), posText);
     win.body.classList.add('np');
     win.body.append(text, status);
 
@@ -32,7 +34,7 @@ export const notepad: AppManifest = {
       const before = text.value.slice(0, text.selectionStart);
       const line = before.split('\n').length;
       const col = before.length - before.lastIndexOf('\n');
-      status.textContent = `Ln ${line}, Col ${col}   ·   ${text.value.length} characters`;
+      posText.textContent = `Ln ${line}, Col ${col}`;
     };
     const setDirty = (d: boolean) => {
       if (dirty !== d) {
@@ -58,6 +60,7 @@ export const notepad: AppManifest = {
     const saveAs = () =>
       showSheet(win.body, (close) => {
         const input = h('input', { class: 'sheet-input', value: path ? basename(path) : 'Untitled.txt' });
+        const title = h('div', { class: 'np-dlg-title' }, 'Save As');
         const submit = async () => {
           let name = input.value.trim().replace(/[\\/]/g, '-');
           if (!name) return;
@@ -74,10 +77,8 @@ export const notepad: AppManifest = {
         return h(
           'div',
           { class: 'sheet-form' },
-          h('label', {}, 'Save As:'),
-          input,
-          h('div', { class: 'sheet-hint' }, `Where: ${DOCS}`),
-          h('div', { class: 'sheet-actions' }, h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: submit }, 'Save')),
+          h('div', { class: 'np-dlg-body' }, title, h('label', {}, 'File name:'), input, h('div', { class: 'sheet-hint' }, `Save in: ${DOCS}`)),
+          h('div', { class: 'sheet-actions' }, h('button', { class: 'btn primary', onclick: submit }, 'Save'), h('button', { class: 'btn', onclick: close }, 'Cancel')),
         );
       });
 
@@ -123,11 +124,28 @@ export const notepad: AppManifest = {
         return h(
           'div',
           { class: 'sheet-form' },
-          h('label', {}, 'Open from Documents'),
-          list,
-          h('div', { class: 'sheet-actions' }, h('button', { class: 'btn', onclick: close }, 'Cancel'), h('button', { class: 'btn primary', onclick: openSel }, 'Open')),
+          h('div', { class: 'np-dlg-body' }, h('div', { class: 'np-dlg-title' }, 'Open'), h('label', {}, 'Look in: Documents'), list),
+          h('div', { class: 'sheet-actions' }, h('button', { class: 'btn primary', onclick: openSel }, 'Open'), h('button', { class: 'btn', onclick: close }, 'Cancel')),
         );
       });
+    };
+
+    // execCommand keeps the native undo stack intact, which setRangeText would not
+    const exec = (cmd: string) => {
+      text.focus();
+      document.execCommand(cmd);
+      updateStatus();
+    };
+    const paste = async () => {
+      try {
+        const clip = await navigator.clipboard.readText();
+        text.focus();
+        text.setRangeText(clip, text.selectionStart, text.selectionEnd, 'end');
+        setDirty(true);
+        updateStatus();
+      } catch {
+        os.notify('Notepad', 'Clipboard access was not allowed. Use Ctrl+V instead.', icons.notepad);
+      }
     };
 
     const newDoc = () => {
@@ -151,6 +169,13 @@ export const notepad: AppManifest = {
         {
           label: 'Edit',
           items: [
+            { label: 'Undo', shortcut: 'Ctrl+Z', action: () => exec('undo') },
+            { separator: true },
+            { label: 'Cut', shortcut: 'Ctrl+X', action: () => exec('cut') },
+            { label: 'Copy', shortcut: 'Ctrl+C', action: () => exec('copy') },
+            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void paste() },
+            { label: 'Delete', shortcut: 'Del', action: () => exec('delete') },
+            { separator: true },
             { label: 'Select All', shortcut: 'Ctrl+A', action: () => text.select() },
             {
               label: 'Time/Date',
@@ -168,6 +193,20 @@ export const notepad: AppManifest = {
               action: () => {
                 wrap = !wrap;
                 text.wrap = wrap ? 'soft' : 'off';
+                buildMenus();
+              },
+            },
+          ],
+        },
+        {
+          label: 'View',
+          items: [
+            {
+              label: 'Status Bar',
+              checked: statusBar,
+              action: () => {
+                statusBar = !statusBar;
+                status.hidden = !statusBar;
                 buildMenus();
               },
             },
