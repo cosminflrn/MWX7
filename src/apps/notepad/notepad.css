@@ -1,24 +1,106 @@
+/* Windows 7 Notepad. Everything is scoped under .np. */
 .np {
   display: flex;
   flex-direction: column;
+  background: #fff;
 }
 
 .np-text {
   flex: 1;
+  min-height: 0;
+  margin: 0;
   border: 0;
+  border-radius: 0;
   outline: 0;
   resize: none;
-  padding: 10px 12px;
-  font: 14px/1.5 ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
-  color: #1b2430;
+  padding: 1px 3px;
+  font: 13px/1.28 var(--font-mono);
+  color: #000;
   background: #fff;
+  tab-size: 8;
 }
 
+.np-text::selection { background: #3399ff; color: #fff; }
+
+/* Win7 status bar: flat grey, hairline above, one sectioned pane on the right */
 .np-status {
   flex: none;
-  padding: 3px 10px;
-  font-size: 11.5px;
-  color: #4b5a6c;
-  background: linear-gradient(#f4f7fb, #e4eaf2);
-  border-top: 1px solid #ccd6e2;
+  display: flex;
+  align-items: stretch;
+  height: 22px;
+  font: 12px/20px var(--font-ui);
+  color: #000;
+  background: #f0f0f0;
+  border-top: 1px solid #d5dfe5;
+  box-shadow: inset 0 1px 0 #fff;
 }
+
+.np-status[hidden] { display: none; }
+.np-status-fill { flex: 1; }
+
+.np-pos {
+  width: 150px;
+  padding: 0 10px 0 8px;
+  border-left: 1px solid #c9ced4;
+  box-shadow: -1px 0 0 #fff;
+  white-space: nowrap;
+}
+
+/* ---- Win7 dialog look for the Save As / Open sheets ---- */
+.np .sheet-backdrop { background: rgba(255, 255, 255, 0.25); align-items: flex-start; }
+
+.np .sheet {
+  width: min(360px, 94%);
+  margin-top: 28px;
+  background: #fff;
+  border: 1px solid #5f7690;
+  border-radius: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 6px 22px rgba(0, 20, 50, 0.4);
+  font: 12px var(--font-ui);
+  color: #000;
+}
+
+.np .sheet-form { gap: 0; padding: 0; }
+.np-dlg-body { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 16px; background: #fff; }
+.np-dlg-title { margin-bottom: 4px; font-size: 15px; font-weight: 400; color: #1e3287; }
+.np .sheet-form label { font-weight: 400; font-size: 12px; }
+
+.np .sheet-input {
+  padding: 3px 5px;
+  border: 1px solid #abadb3;
+  border-top-color: #8f9195;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.np .sheet-input:hover { border-color: #7eb4ea; }
+.np .sheet-input:focus { border-color: #3d7bad; box-shadow: none; }
+.np .sheet-hint { font-size: 12px; color: #666; }
+
+.np .sheet-actions {
+  margin: 0;
+  padding: 10px 12px;
+  gap: 8px;
+  background: #f0f0f0;
+  border-top: 1px solid #dfdfdf;
+}
+
+/* default button: Win7 shows it with a blue-tinted border */
+.np .sheet-actions .btn,
+.np .sheet-actions .btn.primary {
+  color: #000;
+  border-color: #707070;
+  background: linear-gradient(#f2f2f2 0%, #ebebeb 49%, #dddddd 50%, #cfcfcf 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.np .sheet-actions .btn.primary { border-color: #3c7fb1; box-shadow: inset 0 0 0 1px #8ad0f5; }
+.np .sheet-actions .btn:hover { border-color: #3c7fb1; background: linear-gradient(#eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%); }
+.np .sheet-actions .btn:active { border-color: #2c628b; background: linear-gradient(#e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%); }
+
+.np .sheet-list { max-height: 200px; border: 1px solid #abadb3; border-radius: 0; }
+.np .sheet-file { padding: 3px 6px; }
+.np .sheet-file:hover { background: linear-gradient(#fafbfd, #ebf3fd); box-shadow: inset 0 0 0 1px #b8d6fb; }
+.np .sheet-file.sel { background: linear-gradient(#dcebfc, #c1dbfc); color: #000; box-shadow: inset 0 0 0 1px #7da2ce; }
+.np .sheet-file.sel small { color: #555; }
