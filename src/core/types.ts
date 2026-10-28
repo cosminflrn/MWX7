@@ -72,8 +72,18 @@ export interface WindowHandle {
 export interface FileEntry {
   path: string;
   name: string;
+  /** '' for folders */
   content: string;
   modified: number;
+  /** Absent means 'file' (v0.1 entries had no type). */
+  type?: 'file' | 'dir';
+}
+
+export interface FileStat {
+  type: 'file' | 'dir';
+  modified: number;
+  /** UTF-8 byte length of the content; 0 for folders */
+  size: number;
 }
 
 /** Virtual filesystem. Paths are absolute, e.g. /Documents/Notes.txt */
@@ -84,6 +94,13 @@ export interface VFS {
   write(path: string, content: string): Promise<void>;
   remove(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
+  /** Creates the folder and any missing parents; no-op if it already exists. */
+  mkdir(path: string): Promise<void>;
+  /** Renames/moves a file or folder (recursively) to an exact new path. Fails if `to` exists. */
+  rename(from: string, to: string): Promise<void>;
+  /** Moves a file or folder into `toDir`, keeping its name. */
+  move(from: string, toDir: string): Promise<void>;
+  stat(path: string): Promise<FileStat | null>;
 }
 
 export interface Settings {
