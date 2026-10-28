@@ -45,5 +45,8 @@ Real footage wallpapers + ambience, KDE Oxygen icons, Selawik font, real-photo a
 ## ✅ v0.4 “Explorer”
 Explorer (#8), Aero Peek (#7), grid desktop icons with drag & /Desktop files (#10), Trash in the dock (#13), Alt+` / Ctrl+Tab switcher and window shortcuts (#2), clock calendar (#3), Windows 7 Calculator, Notepad and Control Panel.
 
+## ✅ v0.5 “Paint”
+Paint with the Windows 7 Ribbon (#9), Mission Control (#11).
+
 ## Next
-Mission Control (#11), Paint (#9), touch & small screens (#14), Internet-style browser app, Media Player with the Music folder, more Control Panel pages.
+Touch & small screens (#14), a Media Player for the Music folder, an Internet-style browser app, more Control Panel pages.
