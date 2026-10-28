@@ -88,7 +88,7 @@ export const notepad: AppManifest = {
     };
 
     const openDialog = async () => {
-      const files = await fs.list(DOCS);
+      const files = (await fs.list(DOCS)).filter((f) => f.type !== 'dir');
       showSheet(win.body, (close) => {
         const list = h('div', { class: 'sheet-list' });
         if (!files.length) list.append(h('div', { class: 'sheet-hint' }, 'No documents yet.'));
