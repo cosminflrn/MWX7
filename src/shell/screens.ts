@@ -5,7 +5,7 @@ import { allWindows, closeWindow } from '../core/wm';
 import { h } from '../ui/dom';
 import { avatarHtml, avatarPicker } from './avatars';
 import { openCommander } from './commander';
-import { wallpaperBackground } from './wallpapers';
+import { createWallpaperLayer } from './wallpapers';
 
 /**
  * Full-screen moments: power button → BIOS POST → boot logo → logon,
@@ -185,7 +185,7 @@ async function bootLogo(): Promise<void> {
 
 export async function logon(): Promise<void> {
   const user = settings.get().userName;
-  const bg = await wallpaperBackground('serenity');
+  const bg = createWallpaperLayer('meadow');
   const arrow = h('button', { class: 'logon-go', 'aria-label': 'Sign in', html: '<svg viewBox="0 0 24 24"><path d="M5 12h12M12 6l6 6-6 6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' });
   const tile = h('button', { class: 'logon-tile', 'aria-label': `Sign in as ${user}` }, h('span', { class: 'logon-pic', html: avatarHtml() }));
   const center = h(
@@ -199,7 +199,7 @@ export async function logon(): Promise<void> {
   const screen = h(
     'div',
     { class: 'screen logon' },
-    h('div', { class: 'logon-bg', style: `background:${bg}` }),
+    h('div', { class: 'logon-bg' }, bg.el),
     h('div', { class: 'logon-shade' }),
     center,
     h('div', { class: 'logon-brand' }, h('span', { html: icons.orb }), h('b', {}, 'MWX'), h('span', { class: 'logon-seven' }, '7')),
@@ -230,6 +230,7 @@ export async function logon(): Promise<void> {
   await wait(1300);
   play('startup');
   await fadeOut(screen, 700);
+  bg.destroy();
 }
 
 /* ---------- 3b. first-run setup (Windows 7 OOBE style) ---------- */
@@ -314,11 +315,11 @@ export async function startup(): Promise<void> {
 /* ---------- session end ---------- */
 
 async function transition(message: string): Promise<HTMLElement> {
-  const bg = await wallpaperBackground('serenity');
+  const bg = createWallpaperLayer('meadow');
   const screen = h(
     'div',
     { class: 'screen logon' },
-    h('div', { class: 'logon-bg', style: `background:${bg}` }),
+    h('div', { class: 'logon-bg' }, bg.el),
     h('div', { class: 'logon-shade' }),
     h('div', { class: 'logon-center' }, h('div', { class: 'logon-spinner' }), h('div', { class: 'logon-welcome' }, message)),
   );
