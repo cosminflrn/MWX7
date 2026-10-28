@@ -18,6 +18,7 @@ import { mountSelection } from './shell/selection';
 import { startup } from './shell/screens';
 import { mountSpotlight } from './shell/spotlight';
 import { mountStartMenu } from './shell/startmenu';
+import { mountSwitcher } from './shell/switcher';
 
 /** Selawik (OFL): Microsoft's open-source, metric-compatible companion to Segoe UI. */
 function loadFonts(): void {
@@ -58,6 +59,7 @@ async function start(): Promise<void> {
   mountDock($('dock'));
   mountStartMenu();
   mountSpotlight();
+  mountSwitcher();
   mountNotifications($('notifications'));
 
   // Keep the browser's own context menu off the shell (apps' text fields keep theirs).

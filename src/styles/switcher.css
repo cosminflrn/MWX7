@@ -1,0 +1,148 @@
+/* ===== Aero window switcher (Win7 Alt+Tab): dark glass panel, live thumbnails ===== */
+.sw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at center, rgba(0, 8, 20, 0.2), rgba(0, 8, 20, 0.06) 70%);
+  animation: sw-fade 110ms ease-out;
+}
+.sw-overlay.closing { opacity: 0; transition: opacity 100ms ease-in; pointer-events: none; }
+
+.sw-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(1240px, 100%);
+  max-height: 100%;
+  padding: 12px 18px 16px;
+  border-radius: 8px;
+  background: rgba(20, 30, 45, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 18px 50px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-family: var(--font-ui);
+  animation: sw-pop 130ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* Aero gloss: a soft light sheet over the upper half, like the window frames. */
+.sw-panel::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 46%, rgba(255, 255, 255, 0) 47%);
+  pointer-events: none;
+}
+
+.sw-caption {
+  position: relative;
+  max-width: 100%;
+  min-height: 22px;
+  font-size: 15px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.85), 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+.sw-grid {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  overflow: auto;
+  max-height: calc(100vh - 160px);
+  scrollbar-width: thin;
+}
+
+.sw-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 178px;
+  padding: 8px 8px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: default;
+  transition: background 90ms, border-color 90ms, box-shadow 90ms;
+}
+.sw-tile:hover {
+  background: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.sw-tile.sel {
+  background: linear-gradient(rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.2));
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 12px rgba(150, 205, 255, 0.5);
+}
+
+.sw-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.sw-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 2px 8px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.is-min .sw-img { opacity: 0.82; }
+
+/* No snapshot yet (or the app can't be rasterized): a glass pane with the app icon. */
+.sw-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 128px;
+  height: 90px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.sw-fallback svg,
+.sw-fallback img { width: 52px; height: 52px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
+.sw-desktop svg { width: 64px; height: 64px; }
+
+.sw-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 16px;
+}
+.sw-ico { display: inline-flex; flex: none; }
+.sw-ico svg,
+.sw-ico img { width: 16px; height: 16px; }
+.sw-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+}
+
+@keyframes sw-fade { from { opacity: 0; } }
+@keyframes sw-pop { from { opacity: 0; transform: scale(0.96); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sw-overlay, .sw-panel { animation: none; }
+}

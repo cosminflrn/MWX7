@@ -5,6 +5,7 @@ import type { MenuDef } from '../core/types';
 import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, openMenu } from '../ui/menu';
+import { toggleCalendar } from './calendar';
 import { logOff, shutDown } from './screens';
 
 /** macOS-style global menu bar with Win7 glass, showing the focused app's menus. */
@@ -88,7 +89,14 @@ export function mountMenubar(bar: HTMLElement): void {
     html: icons.search,
     onclick: () => bus.emit('spotlight:open', {}),
   });
-  const clock = h('div', { class: 'mb-clock' });
+  // A button, not a label: it opens the calendar flyout and shows the pressed state while that is open.
+  const clock: HTMLButtonElement = h('button', {
+    class: 'mb-item mb-clock',
+    type: 'button',
+    'aria-haspopup': 'dialog',
+    'aria-expanded': 'false',
+    onclick: () => toggleCalendar(clock),
+  });
   right.append(searchBtn, clock);
 
   const tick = () => {

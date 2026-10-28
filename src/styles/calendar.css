@@ -1,0 +1,144 @@
+/* ===== Clock flyout (Win7 date & time flyout): Aero glass frame around a white body ===== */
+.cal-fly {
+  position: fixed;
+  z-index: 160000;
+  right: 8px;
+  width: 296px;
+  padding: 6px;
+  border-radius: 9px;
+  background: var(--glass-streaks), var(--glass-tint);
+  background-color: rgba(70, 110, 160, 0.35);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 0 0 1px var(--glass-border),
+    0 0 0 1px var(--glass-edge),
+    var(--shadow-pop);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: #1c2733;
+  transform-origin: top right;
+  animation: cal-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  user-select: none;
+}
+.cal-fly.closing { opacity: 0; transform: translateY(-4px); transition: opacity 90ms, transform 90ms; pointer-events: none; }
+
+.cal-body {
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(20, 50, 90, 0.5);
+  overflow: hidden;
+}
+
+.cal-top { padding: 12px 16px 10px; border-bottom: 1px solid #dfe6ee; background: linear-gradient(#fff, #f6f9fd); }
+.cal-time {
+  font-size: 38px;
+  font-weight: 300;
+  line-height: 44px;
+  letter-spacing: -0.01em;
+  color: #1e395b;
+  font-variant-numeric: tabular-nums;
+}
+.cal-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: #1b5faa;
+  cursor: pointer;
+  text-align: left;
+}
+.cal-link:hover { color: #2f86e8; text-decoration: underline; }
+.cal-link:focus-visible { outline: 1px dotted #1b5faa; outline-offset: 2px; }
+.cal-date { font-size: 13px; margin-top: 2px; }
+
+.cal-cal { padding: 8px 10px 4px; }
+.cal-nav { display: flex; align-items: center; gap: 2px; margin-bottom: 4px; }
+.cal-title {
+  flex: 1;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: #1e395b;
+  text-align: left;
+  cursor: default;
+}
+.cal-arrow {
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: #3b6aa0;
+  cursor: default;
+}
+.cal-title:hover,
+.cal-arrow:hover { background: linear-gradient(#f5faff, #e2effc); border-color: #b8d6f3; }
+.cal-title:active,
+.cal-arrow:active { background: linear-gradient(#dcebfc, #c4def9); border-color: #7da2ce; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  animation: cal-zoom 120ms ease-out;
+}
+.cal-grid.wide { grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.cal-dow {
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  font-size: 11px;
+  color: #3b6aa0;
+  border-bottom: 1px solid #dfe6ee;
+  margin-bottom: 2px;
+}
+.cal-cell {
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: #1c2733;
+  text-align: center;
+  cursor: default;
+}
+.cal-grid.wide .cal-cell { height: 54px; font-size: 13px; }
+.cal-cell.dim { color: #9aa4b1; }
+.cal-cell:hover { background: linear-gradient(#f5faff, #e2effc); border-color: #bcd8f2; }
+.cal-cell.sel { background: linear-gradient(#eef6fe, #d9eafb); border-color: #7da2ce; }
+.cal-cell.today {
+  background: linear-gradient(#d9ebfd, #b3d3f3 50%, #a6caf0 51%, #bcd9f6);
+  border-color: #6b97c8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  color: #10243d;
+  font-weight: 600;
+}
+.cal-cell.today:hover { background: linear-gradient(#e3f1ff, #c2dcf7 50%, #b4d3f3 51%, #c8e0f9); }
+.cal-cell:focus-visible { outline: 1px dotted #1b5faa; outline-offset: -3px; }
+
+.cal-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 8px 16px 10px;
+  border-top: 1px solid #dfe6ee;
+  background: linear-gradient(#f6f9fd, #eef3f9);
+}
+
+@keyframes cal-in { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes cal-zoom { from { opacity: 0; transform: scale(0.97); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-fly, .cal-grid { animation: none; }
+}
