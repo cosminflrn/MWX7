@@ -8,20 +8,19 @@ import './settings.css';
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
 const VERSION = '0.5.0';
 
-type PageId = 'home' | 'personalization' | 'accounts' | 'sound' | 'system';
+type SectionId = 'personalization' | 'accounts' | 'sound' | 'system';
 
-interface Page {
-  id: PageId;
+interface Section {
+  id: SectionId;
   title: string;
   icon: string;
-  blurb: string;
 }
 
-const PAGES: Page[] = [
-  { id: 'personalization', title: 'Personalization', icon: icons.pictures, blurb: 'Change the desktop background' },
-  { id: 'accounts', title: 'User Accounts', icon: icons.avatar, blurb: 'Change your account name and picture' },
-  { id: 'sound', title: 'Sound', icon: icons.music, blurb: 'Turn system sounds on or off' },
-  { id: 'system', title: 'System', icon: icons.computer, blurb: 'View basic information about this computer' },
+const SECTIONS: Section[] = [
+  { id: 'personalization', title: 'Personalization', icon: icons.pictures },
+  { id: 'accounts', title: 'User account', icon: icons.avatar },
+  { id: 'sound', title: 'Sound', icon: icons.music },
+  { id: 'system', title: 'System', icon: icons.computer },
 ];
 
 export const settingsApp: AppManifest = {
@@ -39,12 +38,12 @@ export const settingsApp: AppManifest = {
     const s = os.settings.get();
 
     const side = h('aside', { class: 'set-side' });
-    const crumbs = h('div', { class: 'set-crumbs' });
     const content = h('div', { class: 'set-content' });
 
     const heading = (text: string) => h('h1', { class: 'set-h1' }, text);
     const lead = (text: string) => h('p', { class: 'set-lead' }, text);
     const sub = (text: string) => h('h2', { class: 'set-h2' }, text);
+    const section = (id: SectionId, ...kids: (HTMLElement | string)[]) => h('section', { class: 'set-section', id: `set-${id}`, 'data-sec': id }, ...kids);
 
     // ---- Personalization -------------------------------------------------
     const personalization = () => {
@@ -72,9 +71,8 @@ export const settingsApp: AppManifest = {
         );
       };
       draw();
-      return h(
-        'div',
-        {},
+      return section(
+        'personalization',
         heading('Change the visuals and sounds on your computer'),
         lead('Click a picture to use it as your desktop background.'),
         sub('Desktop Background'),
@@ -97,9 +95,8 @@ export const settingsApp: AppManifest = {
         os.settings.set({ avatar: url });
         big.innerHTML = avatarHtml(url);
       });
-      return h(
-        'div',
-        {},
+      return section(
+        'accounts',
         heading('Make changes to your user account'),
         h('div', { class: 'set-user' }, big, h('div', { class: 'set-user-info' }, shownName, h('div', { class: 'set-muted' }, 'Local account'))),
         sub('Change your account name'),
@@ -115,9 +112,8 @@ export const settingsApp: AppManifest = {
     const sound = () => {
       const box = h('input', { type: 'checkbox', id: 'set-sounds', checked: os.settings.get().sounds });
       box.addEventListener('change', () => os.settings.set({ sounds: box.checked }));
-      return h(
-        'div',
-        {},
+      return section(
+        'sound',
         heading('Change how MWX 7 sounds'),
         lead('Choose whether the system plays sounds for events such as starting up, notifications and minimizing windows.'),
         sub('System sounds'),
@@ -129,9 +125,8 @@ export const settingsApp: AppManifest = {
     const system = () => {
       const row = (k: string, v: string) => h('div', { class: 'set-spec' }, h('dt', {}, k), h('dd', {}, v));
       const threads = navigator.hardwareConcurrency;
-      return h(
-        'div',
-        {},
+      return section(
+        'system',
         heading('View basic information about your computer'),
         sub('MWX 7 edition'),
         h(
@@ -153,52 +148,46 @@ export const settingsApp: AppManifest = {
       );
     };
 
-    // ---- Control Panel Home ---------------------------------------------
-    const home = () =>
-      h(
-        'div',
-        {},
-        heading('Adjust your computer’s settings'),
-        h(
-          'div',
-          { class: 'set-cats' },
-          ...PAGES.map((p) =>
-            h(
-              'a',
-              { class: 'set-cat', href: `#${p.id}`, onclick: (e: Event) => (e.preventDefault(), go(p.id)) },
-              h('span', { class: 'set-cat-icon', html: p.icon }),
-              h('span', { class: 'set-cat-text' }, h('span', { class: 'set-cat-title' }, p.title), h('span', { class: 'set-cat-sub' }, p.blurb)),
-            ),
-          ),
-        ),
-      );
+    const builders: Record<SectionId, () => HTMLElement> = { personalization, accounts, sound, system };
+    const sections = SECTIONS.map((x) => builders[x.id]());
+    content.append(...sections);
 
-    const builders: Record<PageId, () => HTMLElement> = { home, personalization, accounts, sound, system };
+    const links = new Map<SectionId, HTMLElement>();
+    const mark = (id: SectionId) => links.forEach((el, k) => el.classList.toggle('cur', k === id));
 
-    const go = (id: PageId) => {
-      const page = PAGES.find((p) => p.id === id);
-      win.setTitle(page ? page.title : 'Control Panel');
-      content.replaceChildren(builders[id]());
-      content.scrollTop = 0;
-      crumbs.replaceChildren(
-        h('a', { class: 'set-crumb', href: '#home', onclick: (e: Event) => (e.preventDefault(), go('home')) }, 'Control Panel'),
-        ...(page ? [h('span', { class: 'set-crumb-sep' }, '▸'), h('span', { class: 'set-crumb cur' }, page.title)] : []),
-      );
-      side.querySelectorAll('a').forEach((a) => a.classList.toggle('cur', a.dataset.page === id));
+    const jump = (id: SectionId) => {
+      const target = sections[SECTIONS.findIndex((x) => x.id === id)];
+      content.scrollTo({ top: target.offsetTop - content.offsetTop, behavior: 'smooth' });
+      mark(id);
     };
 
-    const sideLink = (id: PageId, label: string) =>
-      h('a', { class: 'set-link', href: `#${id}`, 'data-page': id, onclick: (e: Event) => (e.preventDefault(), go(id)) }, label);
+    for (const sec of SECTIONS) {
+      const el = h(
+        'button',
+        { class: 'set-link', type: 'button', onclick: () => jump(sec.id) },
+        h('span', { class: 'set-link-icon', html: sec.icon }),
+        h('span', { class: 'set-link-text' }, sec.title),
+      );
+      links.set(sec.id, el);
+      side.append(el);
+    }
 
-    side.append(
-      sideLink('home', 'Control Panel Home'),
-      h('div', { class: 'set-side-rule' }),
-      ...PAGES.map((p) => sideLink(p.id, p.title)),
+    win.setTitle('Settings');
+    win.body.append(side, content);
+    mark('personalization');
+
+    // Highlight whichever section occupies the top band of the scroll area.
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) if (e.isIntersecting) mark((e.target as HTMLElement).dataset.sec as SectionId);
+      },
+      { root: content, rootMargin: '0px 0px -70% 0px', threshold: 0 },
     );
+    sections.forEach((el) => io.observe(el));
 
-    win.body.append(side, h('div', { class: 'set-right' }, crumbs, content));
+    const wanted = typeof args.page === 'string' ? (args.page as SectionId) : undefined;
+    if (wanted && SECTIONS.some((x) => x.id === wanted)) requestAnimationFrame(() => jump(wanted));
 
-    const wanted = typeof args.page === 'string' ? (args.page as PageId) : 'home';
-    go(wanted in builders ? wanted : 'home');
+    return () => io.disconnect();
   },
 };

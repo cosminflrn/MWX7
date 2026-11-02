@@ -88,8 +88,9 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 1px;
-  animation: cal-zoom 120ms ease-out;
 }
+.cal-view { position: relative; overflow: hidden; }
+.cal-grid.leaving { position: absolute; top: 0; left: 0; right: 0; pointer-events: none; }
 .cal-grid.wide { grid-template-columns: repeat(4, 1fr); gap: 2px; }
 .cal-dow {
   height: 22px;
@@ -137,8 +138,7 @@
 }
 
 @keyframes cal-in { from { opacity: 0; transform: translateY(-6px); } }
-@keyframes cal-zoom { from { opacity: 0; transform: scale(0.97); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .cal-fly, .cal-grid { animation: none; }
+  .cal-fly { animation: none; }
 }

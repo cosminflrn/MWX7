@@ -63,7 +63,8 @@ function openCalendar(anchor: HTMLElement): void {
   const titleEl = h('button', { class: 'cal-title', type: 'button', onclick: () => zoomOut() });
   const prevEl = h('button', { class: 'cal-arrow', type: 'button', 'aria-label': 'Previous', html: '&#9666;', onclick: () => step(-1) });
   const nextEl = h('button', { class: 'cal-arrow', type: 'button', 'aria-label': 'Next', html: '&#9656;', onclick: () => step(1) });
-  const gridEl = h('div', { class: 'cal-grid' });
+  let gridEl = h('div', { class: 'cal-grid' });
+  const viewEl = h('div', { class: 'cal-view' }, gridEl);
   const todayEl = h('button', { class: 'cal-link', type: 'button', onclick: () => goToday() }, 'Today');
   const settingsEl = h(
     'button',
@@ -85,7 +86,7 @@ function openCalendar(anchor: HTMLElement): void {
       'div',
       { class: 'cal-body' },
       h('div', { class: 'cal-top' }, timeEl, dateEl),
-      h('div', { class: 'cal-cal' }, h('div', { class: 'cal-nav' }, titleEl, prevEl, nextEl), gridEl),
+      h('div', { class: 'cal-cal' }, h('div', { class: 'cal-nav' }, titleEl, prevEl, nextEl), viewEl),
       h('div', { class: 'cal-foot' }, todayEl, settingsEl),
     ),
   );
@@ -106,9 +107,10 @@ function openCalendar(anchor: HTMLElement): void {
   const cell = (label: string, onClick: () => void, cls = '', aria?: string) =>
     h('button', { class: `cal-cell ${cls}`.trim(), type: 'button', 'aria-label': aria ?? label, onclick: onClick }, label);
 
-  function renderGrid(): void {
+  /** Fills `target` with the cells for the current view and updates the title. */
+  function fillGrid(target: HTMLElement): void {
     const next: HTMLElement[] = [];
-    gridEl.classList.toggle('wide', view !== 'days');
+    target.classList.toggle('wide', view !== 'days');
     if (view === 'days') {
       titleEl.textContent = fmt({ month: 'long', year: 'numeric' }, cursor);
       const fw = firstWeekday();
@@ -143,16 +145,41 @@ function openCalendar(anchor: HTMLElement): void {
         next.push(cell(String(y), () => zoomIn(new Date(y, cursor.getMonth(), 1)), `${isNow ? 'today' : ''} ${y < decade || y > decade + 9 ? 'dim' : ''}`));
       }
     }
-    gridEl.replaceChildren(...next);
+    target.replaceChildren(...next);
   }
 
-  /** Re-render with the little zoom Win7 plays when you change level. */
-  const renderAnimated = () => {
-    renderGrid();
-    gridEl.style.animation = 'none';
-    void gridEl.offsetWidth;
-    gridEl.style.animation = '';
-  };
+  type Motion = { kind: 'slide'; dir: 1 | -1 } | { kind: 'zoom'; dir: 1 | -1 };
+  const EASE = 'cubic-bezier(.2,.8,.2,1)';
+  const calm = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /**
+   * Swaps in a freshly built grid. With a motion, the old grid leaves while the new one arrives:
+   * months slide sideways in the direction of travel (220 ms); zoom levels scale and fade like Win7 (200 ms).
+   */
+  function renderGrid(motion?: Motion): void {
+    viewEl.querySelectorAll('.cal-grid.leaving').forEach((n) => n.remove());
+    const old = gridEl;
+    const fresh = h('div', { class: 'cal-grid' });
+    fillGrid(fresh);
+    gridEl = fresh;
+    if (!motion || calm()) {
+      old.replaceWith(fresh);
+      return;
+    }
+    old.classList.add('leaving');
+    viewEl.append(fresh);
+    const done = () => old.remove();
+    if (motion.kind === 'slide') {
+      const opt = { duration: 220, easing: EASE, fill: 'both' as const };
+      old.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-motion.dir * 100}%)`, opacity: 0 }], opt).onfinish = done;
+      fresh.animate([{ transform: `translateX(${motion.dir * 100}%)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], opt);
+    } else {
+      // dir 1 = zooming out to a coarser level (old shrinks away, new settles in from larger); -1 = the reverse
+      const opt = { duration: 200, easing: EASE, fill: 'both' as const };
+      old.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: `scale(${motion.dir === 1 ? 0.8 : 1.2})`, opacity: 0 }], opt).onfinish = done;
+      fresh.animate([{ transform: `scale(${motion.dir === 1 ? 1.2 : 0.8})`, opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], opt);
+    }
+  }
 
   /* -- navigation -- */
 
@@ -160,23 +187,25 @@ function openCalendar(anchor: HTMLElement): void {
     if (view === 'days') cursor = addMonths(cursor, dir);
     else if (view === 'months') cursor = new Date(cursor.getFullYear() + dir, cursor.getMonth(), 1);
     else cursor = new Date(cursor.getFullYear() + dir * 10, cursor.getMonth(), 1);
-    renderGrid();
+    renderGrid({ kind: 'slide', dir });
   }
   function zoomOut(): void {
     if (view === 'days') view = 'months';
     else if (view === 'months') view = 'years';
     else return;
-    renderAnimated();
+    renderGrid({ kind: 'zoom', dir: 1 });
   }
   function zoomIn(d: Date): void {
     cursor = new Date(d.getFullYear(), d.getMonth(), 1);
     view = view === 'years' ? 'months' : 'days';
-    renderAnimated();
+    renderGrid({ kind: 'zoom', dir: -1 });
   }
   function pick(d: Date): void {
     selected = d;
-    cursor = new Date(d.getFullYear(), d.getMonth(), 1);
-    renderGrid();
+    const next = new Date(d.getFullYear(), d.getMonth(), 1);
+    const dir = next.getTime() === cursor.getTime() ? 0 : next > cursor ? 1 : -1;
+    cursor = next;
+    renderGrid(dir && view === 'days' ? { kind: 'slide', dir } : undefined);
   }
   function goToday(): void {
     today = new Date();
@@ -191,29 +220,6 @@ function openCalendar(anchor: HTMLElement): void {
     if (el.contains(t) || anchor.contains(t)) return; // the clock button toggles itself
     close();
   };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      close();
-      return;
-    }
-    // Arrow keys move the selected day, like the Win7 calendar; leave typing in apps alone.
-    const ae = document.activeElement as HTMLElement | null;
-    if (view !== 'days' || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (ae && ae !== document.body && !el.contains(ae)) return;
-    const move: Record<string, () => Date> = {
-      ArrowLeft: () => addDays(selected, -1),
-      ArrowRight: () => addDays(selected, 1),
-      ArrowUp: () => addDays(selected, -7),
-      ArrowDown: () => addDays(selected, 7),
-      PageUp: () => addMonths(selected, -1),
-      PageDown: () => addMonths(selected, 1),
-    };
-    const fn = move[e.key];
-    if (fn) {
-      e.preventDefault();
-      pick(fn());
-    }
-  };
   const tick = window.setInterval(updateClock, 1000);
 
   function close(): void {
@@ -221,7 +227,6 @@ function openCalendar(anchor: HTMLElement): void {
     current = null;
     window.clearInterval(tick);
     document.removeEventListener('pointerdown', onDown, true);
-    document.removeEventListener('keydown', onKey, true);
     anchor.classList.remove('open');
     anchor.setAttribute('aria-expanded', 'false');
     el.classList.add('closing');
@@ -234,7 +239,6 @@ function openCalendar(anchor: HTMLElement): void {
   el.style.top = `${Math.round(anchor.getBoundingClientRect().bottom) + 3}px`;
   document.body.append(el);
   document.addEventListener('pointerdown', onDown, true);
-  document.addEventListener('keydown', onKey, true);
   anchor.classList.add('open');
   anchor.setAttribute('aria-expanded', 'true');
   current = { el, anchor, close };
