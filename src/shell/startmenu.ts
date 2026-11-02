@@ -4,6 +4,7 @@ import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import { settings } from '../core/settings';
 import { play } from '../core/sound';
+import { activeWindow, allWindows, blurWindows, focusWindow } from '../core/wm';
 import { h } from '../ui/dom';
 import { avatarHtml } from './avatars';
 import { logOff, shutDown } from './screens';
@@ -24,16 +25,15 @@ export function mountStartMenu(): void {
    * the dock — just above fully magnified icons. It only moves when the
    * pointer enters or leaves the dock, never while gliding along it.
    */
-  // High enough to clear magnified icons, their labels and Aero Peek thumbnails.
-  const RAISE = 228;
+  // Clears fully magnified icons; their labels and Aero Peek previews are layered above the menu instead.
+  const RAISE = 30;
   const place = () => {
     if (!el) return;
     const shelf = document.querySelector<HTMLElement>('#dock .dock-shelf');
     const top = shelf ? shelf.getBoundingClientRect().top : window.innerHeight - 80;
     const raised = document.getElementById('dock')?.classList.contains('hover') ? RAISE : 0;
     el.style.left = `${Math.round((window.innerWidth - el.offsetWidth) / 2)}px`;
-    const room = top - 10 - (28 + 8) - el.offsetHeight;
-    el.style.bottom = `${Math.round(window.innerHeight - top + 10 + Math.max(0, Math.min(raised, room)))}px`;
+    el.style.bottom = `${Math.round(window.innerHeight - top + 10 + raised)}px`;
   };
 
   const loop = () => {
@@ -41,10 +41,18 @@ export function mountStartMenu(): void {
     follow = requestAnimationFrame(loop);
   };
 
-  const close = () => {
+  // Opening the menu takes focus from the active window (Win7); closing it without a choice gives it back.
+  let prevWin: string | null = null;
+  const close = (restoreFocus = true) => {
     if (!el) return;
     const node = el;
     el = null;
+    const back = prevWin;
+    prevWin = null;
+    if (restoreFocus && back && !activeWindow()) {
+      const w = allWindows().find((v) => v.id === back);
+      if (w && !w.minimized) focusWindow(w.id);
+    }
     cancelAnimationFrame(follow);
     orb()?.classList.remove('pressed');
     play('menuClose');
@@ -58,7 +66,7 @@ export function mountStartMenu(): void {
   const browse = (path: string) => (getApp('explorer') ? launch('explorer', { path }) : launch('notepad', { openDialog: true }));
 
   const run = (fn: () => void) => () => {
-    close();
+    close(false);
     fn();
   };
 
@@ -120,6 +128,8 @@ export function mountStartMenu(): void {
       ),
     );
 
+    prevWin = activeWindow()?.id ?? null;
+    blurWindows();
     document.body.append(el);
     play('menuOpen');
     place();
@@ -138,12 +148,13 @@ export function mountStartMenu(): void {
     'pointerdown',
     (e) => {
       const t = e.target as HTMLElement;
-      if (el && !el.contains(t) && !t.closest('.dock-orb')) close();
+      // Clicking a window or the dock hands focus to that instead.
+      if (el && !el.contains(t) && !t.closest('.dock-orb')) close(!t.closest('.win, #dock, .peek-pop'));
     },
     true,
   );
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
   });
-  bus.on('window:open', close);
+  bus.on('window:open', () => close(false));
 }
