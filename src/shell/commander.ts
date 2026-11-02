@@ -18,12 +18,13 @@ export function ensureVgaFont(): void {
   document.head.appendChild(st);
 }
 
-const COLS = 80;
-const ROWS = 25;
-const PANEL_W = 40;
+// The text grid is sized from the viewport (see layout()), so these are live values, not constants.
+let COLS = 80;
+let ROWS = 25;
+let PANEL_W = 40; // left panel width; the right panel takes the remainder
+let FKW = 8; // F-key cell width
 const LIST_TOP = 3; // first file row inside a panel
-const LIST_ROWS = 17;
-const COL_NAME = 13;
+let LIST_ROWS = 17;
 const COL_SIZE = 9;
 const COL_DATE = 8;
 const COL_TIME = 5;
@@ -44,8 +45,12 @@ const at = (fg: number, bg: number) => (bg << 4) | fg;
 /* ---------- text-mode screen buffer ---------- */
 
 class Buffer {
-  ch: string[] = new Array(COLS * ROWS).fill(' ');
-  at: number[] = new Array(COLS * ROWS).fill(at(GREY, BLACK));
+  ch: string[] = [];
+  at: number[] = [];
+  resize(): void {
+    this.ch = new Array(COLS * ROWS).fill(' ');
+    this.at = new Array(COLS * ROWS).fill(at(GREY, BLACK));
+  }
 
   clear(a: number): void {
     this.ch.fill(' ');
@@ -204,14 +209,9 @@ function run(): Promise<void> {
     const buf = new Buffer();
     const screen = h('div', { class: 'cmdr-screen' });
     ensureVgaFont();
-    const root = h('div', { class: 'mwx-cmdr', tabindex: -1 }, screen, h('div', { class: 'cmdr-crt' }));
+    const root = h('div', { class: 'mwx-cmdr', tabindex: -1 }, screen);
     const rowEls: HTMLElement[] = [];
     const rowCache: string[] = [];
-    for (let y = 0; y < ROWS; y++) {
-      const r = h('div', { class: 'cmdr-row' });
-      rowEls.push(r);
-      screen.append(r);
-    }
     document.body.append(root);
 
     const panels: Panel[] = [
@@ -235,35 +235,59 @@ function run(): Promise<void> {
 
     /* ----- layout: fit the 80x25 grid to the viewport ----- */
     function layout(): void {
-      // The font is an 8x16 bitmap: only whole-number scales stay pixel-crisp, so letterbox instead of stretching.
-      const k = Math.max(1, Math.floor(Math.min(window.innerWidth / (COLS * 8), window.innerHeight / (ROWS * 16))));
+      // The font is an 8x16 bitmap: only whole-number scales stay pixel-crisp. Pick the biggest scale that still leaves
+      // at least 80x25 cells, then let the grid grow to as many cols/rows as fit (no letterbox, no fractional scaling).
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const k = Math.max(1, Math.floor(Math.min(W / 640, H / 400)));
       const lh = 16 * k;
+      COLS = Math.max(80, Math.floor(W / (8 * k)));
+      ROWS = Math.max(25, Math.floor(H / lh));
+      PANEL_W = Math.floor(COLS / 2);
+      FKW = Math.max(8, Math.floor(COLS / 10));
+      LIST_ROWS = ROWS - 8;
       root.style.setProperty('--cw', 8 * k + 'px');
       root.style.setProperty('--fs', lh + 'px');
       root.style.setProperty('--lh', lh + 'px');
-      screen.style.left = Math.floor((window.innerWidth - 8 * k * COLS) / 2) + 'px';
-      screen.style.top = Math.floor((window.innerHeight - lh * ROWS) / 2) + 'px';
+      screen.style.width = 8 * k * COLS + 'px';
+      buf.resize();
+      while (rowEls.length < ROWS) {
+        const r = h('div', { class: 'cmdr-row' });
+        rowEls.push(r);
+        screen.append(r);
+      }
+      while (rowEls.length > ROWS) rowEls.pop()!.remove();
+      rowCache.length = 0;
+      for (const p of panels) fit(p);
     }
+
+    const onResize = () => {
+      layout();
+      render();
+    };
 
     /* ----- drawing ----- */
     function drawPanel(i: number): void {
       const p = panels[i]!;
-      const x0 = i * PANEL_W;
+      const x0 = i === 0 ? 0 : PANEL_W;
+      const PW = i === 0 ? PANEL_W : COLS - PANEL_W;
+      const COL_NAME = PW - 2 - 3 - COL_SIZE - COL_DATE - COL_TIME; // the name column soaks up the spare width
+      const bot = ROWS - 3;
       const isActive = i === active;
       const base = at(LCYAN, BLUE);
       const sepX = [1 + COL_NAME, 2 + COL_NAME + COL_SIZE, 3 + COL_NAME + COL_SIZE + COL_DATE].map((s) => x0 + s);
-      buf.fill(x0, 1, PANEL_W, 22, base);
+      buf.fill(x0, 1, PW, bot, base);
 
       // Top border with the path.
-      buf.put(x0, 1, '╔' + '═'.repeat(PANEL_W - 2) + '╗', base);
+      buf.put(x0, 1, '╔' + '═'.repeat(PW - 2) + '╗', base);
       for (const sx of sepX) buf.put(sx, 1, '╤', base);
       let title = dosPath(p.path);
-      if (title.length > PANEL_W - 8) title = '..' + title.slice(title.length - (PANEL_W - 10));
-      buf.put(x0 + Math.floor((PANEL_W - title.length - 2) / 2), 1, ' ' + title + ' ', isActive ? at(BLACK, CYAN) : at(WHITE, BLUE));
+      if (title.length > PW - 8) title = '..' + title.slice(title.length - (PW - 10));
+      buf.put(x0 + Math.floor((PW - title.length - 2) / 2), 1, ' ' + title + ' ', isActive ? at(BLACK, CYAN) : at(WHITE, BLUE));
 
       // Column header.
       buf.put(x0, 2, '║', base);
-      buf.put(x0 + PANEL_W - 1, 2, '║', base);
+      buf.put(x0 + PW - 1, 2, '║', base);
       const head = [
         center('Name', COL_NAME),
         center('Size', COL_SIZE),
@@ -277,7 +301,7 @@ function run(): Promise<void> {
       for (let r = 0; r < LIST_ROWS; r++) {
         const y = LIST_TOP + r;
         buf.put(x0, y, '║', base);
-        buf.put(x0 + PANEL_W - 1, y, '║', base);
+        buf.put(x0 + PW - 1, y, '║', base);
         for (const sx of sepX) buf.put(sx, y, '│', base);
         const it = p.items[p.top + r];
         if (!it) continue;
@@ -297,18 +321,18 @@ function run(): Promise<void> {
       }
 
       // Separator + mini status line.
-      buf.put(x0, 20, '╟' + '─'.repeat(PANEL_W - 2) + '╢', base);
-      for (const sx of sepX) buf.put(sx, 20, '┴', base);
-      buf.put(x0, 21, '║', base);
-      buf.put(x0 + PANEL_W - 1, 21, '║', base);
+      buf.put(x0, bot - 2, '╟' + '─'.repeat(PW - 2) + '╢', base);
+      for (const sx of sepX) buf.put(sx, bot - 2, '┴', base);
+      buf.put(x0, bot - 1, '║', base);
+      buf.put(x0 + PW - 1, bot - 1, '║', base);
       const it = p.items[p.sel];
       if (it) {
         const left = it.up ? 'UP--DIR' : it.name.toUpperCase();
         const right = it.up ? '' : it.dir ? 'SUB-DIR' : fmtSize(it.size) + ' bytes';
-        const room = PANEL_W - 2 - right.length - 1;
-        buf.put(x0 + 1, 21, padR(left.length > room ? left.slice(0, room - 1) + '»' : left, room) + ' ' + right, at(WHITE, BLUE));
+        const room = PW - 2 - right.length - 1;
+        buf.put(x0 + 1, bot - 1, padR(left.length > room ? left.slice(0, room - 1) + '»' : left, room) + ' ' + right, at(WHITE, BLUE));
       }
-      buf.put(x0, 22, '╚' + '═'.repeat(PANEL_W - 2) + '╝', base);
+      buf.put(x0, bot, '╚' + '═'.repeat(PW - 2) + '╝', base);
     }
 
     function drawFKeys(y: number, only?: number[]): void {
@@ -316,9 +340,10 @@ function run(): Promise<void> {
       FKEYS.forEach((label, i) => {
         if (only && !only.includes(i + 1)) return;
         const num = String(i + 1);
-        const x = i * 8;
+        const x = i * FKW;
+        const w = FKW + (i === 9 ? COLS - FKW * 10 : 0);
         buf.put(x, y, num, at(WHITE, BLACK));
-        buf.put(x + num.length, y, padR(label, 8 - num.length - 1), at(BLACK, CYAN));
+        buf.put(x + num.length, y, padR(label, w - num.length - 1), at(BLACK, CYAN));
       });
     }
 
@@ -369,17 +394,17 @@ function run(): Promise<void> {
       buf.clear(at(GREY, BLACK));
       buf.fill(0, 0, COLS, 1, at(BLACK, CYAN));
       buf.put(2, 0, 'Left', at(BLACK, CYAN));
-      buf.put(12, 0, 'Files', at(BLACK, CYAN));
-      buf.put(23, 0, 'Commands', at(BLACK, CYAN));
-      buf.put(36, 0, 'Options', at(BLACK, CYAN));
+      buf.put(Math.floor(COLS * 0.15), 0, 'Files', at(BLACK, CYAN));
+      buf.put(Math.floor(COLS * 0.29), 0, 'Commands', at(BLACK, CYAN));
+      buf.put(Math.floor(COLS * 0.45), 0, 'Options', at(BLACK, CYAN));
       buf.put(COLS - 7, 0, 'Right', at(BLACK, CYAN));
       drawPanel(0);
       drawPanel(1);
       let prompt = dosPath(cur().path) + '>';
       if (prompt.length > COLS - 4) prompt = '..' + prompt.slice(prompt.length - (COLS - 6));
-      buf.put(0, 23, prompt + cmd, at(GREY, BLACK));
-      if (blink && !dialog) buf.put(Math.min(COLS - 1, prompt.length + cmd.length), 23, '_', at(GREY, BLACK));
-      drawFKeys(24);
+      buf.put(0, ROWS - 2, prompt + cmd, at(GREY, BLACK));
+      if (blink && !dialog) buf.put(Math.min(COLS - 1, prompt.length + cmd.length), ROWS - 2, '_', at(GREY, BLACK));
+      drawFKeys(ROWS - 1);
       if (dialog) drawDialog(dialog);
     }
 
@@ -391,7 +416,7 @@ function run(): Promise<void> {
       buf.put(1, 0, v.title.length > COLS - tail.length - 4 ? '..' + v.title.slice(-(COLS - tail.length - 8)) : v.title, at(BLACK, CYAN));
       buf.put(COLS - tail.length - 1, 0, tail, at(BLACK, CYAN));
       for (let r = 0; r < ROWS - 2; r++) buf.put(0, 1 + r, v.lines[v.top + r] ?? '', at(WHITE, BLUE));
-      drawFKeys(24, [1, 3, 10]);
+      drawFKeys(ROWS - 1, [1, 3, 10]);
       if (dialog) drawDialog(dialog);
     }
 
@@ -652,7 +677,7 @@ function run(): Promise<void> {
       await new Promise((r) => window.setTimeout(r, 750));
       window.clearInterval(timer);
       window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('resize', layout);
+      window.removeEventListener('resize', onResize);
       root.remove();
       resolve();
     }
@@ -770,7 +795,7 @@ function run(): Promise<void> {
           });
         }
       } else if (mode === 'main') {
-        if (row === 24) fkey(Math.min(10, Math.floor(col / 8) + 1));
+        if (row === ROWS - 1) fkey(Math.min(10, Math.floor(col / FKW) + 1));
         else if (row === 0) fkey(2);
         else if (row >= LIST_TOP && row < LIST_TOP + LIST_ROWS) {
           const pi = col < PANEL_W ? 0 : 1;
@@ -784,9 +809,9 @@ function run(): Promise<void> {
             if (dbl) void run1(enter);
           }
         }
-      } else if (mode === 'view' && row === 24) {
-        fkey(Math.min(10, Math.floor(col / 8) + 1));
-        if (Math.floor(col / 8) === 9 || Math.floor(col / 8) === 2) {
+      } else if (mode === 'view' && row === ROWS - 1) {
+        fkey(Math.min(10, Math.floor(col / FKW) + 1));
+        if (Math.floor(col / FKW) === 9 || Math.floor(col / FKW) === 2) {
           mode = 'main';
           viewer = null;
         }
@@ -811,7 +836,7 @@ function run(): Promise<void> {
     /* ----- go ----- */
     // Capture phase on window: runs before the BIOS screen's own key handlers.
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('resize', layout);
+    window.addEventListener('resize', onResize);
     const timer = window.setInterval(() => {
       blink = !blink;
       render();

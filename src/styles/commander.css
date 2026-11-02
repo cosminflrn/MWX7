@@ -18,7 +18,7 @@
   font-weight: normal;
   font-variant-ligatures: none;
   -webkit-font-smoothing: none;
-  -moz-osx-font-smoothing: grayscale;
+  -moz-osx-font-smoothing: unset;
   font-smooth: never;
   text-rendering: optimizeSpeed;
 }
@@ -26,8 +26,6 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: calc(var(--cw) * 80);
-  transform-origin: 0 0;
 }
 .mwx-cmdr .cmdr-row {
   height: var(--lh);
@@ -41,17 +39,6 @@
   height: var(--lh);
   overflow: hidden;
 }
-/* CRT: faint scanlines + a very light vignette over the grid; the phosphor glow is a text-shadow on the text spans. */
-.mwx-cmdr .cmdr-crt {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0.16) 3px, rgba(0, 0, 0, 0) 4px),
-    radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 62%, rgba(0, 0, 0, 0.28) 100%);
-}
-.mwx-cmdr .cmdr-row span { text-shadow: 0 0 3px currentColor; }
-
 .mwx-cmdr .f0 { color: #000000; }  .mwx-cmdr .b0 { background: #000000; }
 .mwx-cmdr .f1 { color: #0000aa; }  .mwx-cmdr .b1 { background: #0000aa; }
 .mwx-cmdr .f2 { color: #00aa00; }  .mwx-cmdr .b2 { background: #00aa00; }
