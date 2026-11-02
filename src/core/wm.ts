@@ -32,7 +32,8 @@ export interface Win {
 export const MENUBAR_H = 28;
 export const DOCK_RESERVE = 70;
 /** Height of the dock when it stretches into a full-width bar under a maximized window. */
-export const DOCK_FULL_H = 48;
+/** A full-screen window ends exactly at the dock's top edge. */
+export const DOCK_FULL_H = 64;
 const SNAP_EDGE = 6;
 
 let layer: HTMLElement;
@@ -96,11 +97,33 @@ function stateRect(state: WinState): Rect | null {
   }
 }
 
+/**
+ * State changes (full screen, snap, restore, center) animate with FLIP: the window jumps to its
+ * final layout once, then a GPU transform carries it from the old rectangle — like Windows 7's
+ * DWM. Animating left/top/width/height re-laid out the app every frame, which stuttered.
+ */
 function withAnimation(w: Win, fn: () => void): void {
-  w.el.classList.add('anim');
+  const before = w.el.getBoundingClientRect();
+  w.el.getAnimations().forEach((a) => a.id === 'flip' && a.cancel());
   fn();
-  window.clearTimeout(Number(w.el.dataset.animTimer));
-  w.el.dataset.animTimer = String(window.setTimeout(() => w.el.classList.remove('anim'), 380));
+  const after = w.el.getBoundingClientRect();
+  if (!after.width || !after.height || reducedMotion()) return;
+  const dx = before.left - after.left;
+  const dy = before.top - after.top;
+  const sx = before.width / after.width;
+  const sy = before.height / after.height;
+  if (Math.abs(dx) + Math.abs(dy) < 1 && Math.abs(sx - 1) + Math.abs(sy - 1) < 0.01) return;
+  w.el.classList.add('anim');
+  const a = w.el.animate(
+    [
+      { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+      { transformOrigin: '0 0', transform: 'none' },
+    ],
+    { duration: 320, easing: 'cubic-bezier(.22,.9,.24,1)', id: 'flip' },
+  );
+  const done = () => w.el.classList.remove('anim');
+  a.onfinish = done;
+  a.oncancel = done;
 }
 
 function applyState(w: Win, animate = true): void {
@@ -393,8 +416,8 @@ function solidGlass(): string {
   const cs = getComputedStyle(document.documentElement);
   const [r, g, b] = cs.getPropertyValue('--glass-rgb').split(',').map((v) => Number(v) || 0);
   const a = Math.min(0.9, Number(cs.getPropertyValue('--glass-a')) || 0.46);
-  const mix = (c: number, k: number) => Math.round(c * a * k + 205 * (1 - a * k));
-  return `linear-gradient(rgb(${mix(r, 0.8)},${mix(g, 0.8)},${mix(b, 0.8)}), rgb(${mix(r, 1.05)},${mix(g, 1.05)},${mix(b, 1.05)}))`;
+  // Translucent like the real frame (the canvas keeps alpha), just without the blur.
+  return `linear-gradient(rgba(255,255,255,.34), rgba(255,255,255,.1) 34px, rgba(255,255,255,.04)), rgba(${r},${g},${b},${Math.min(0.92, a + 0.22).toFixed(2)})`;
 }
 
 async function snapshot(w: Win, budget = 450): Promise<HTMLCanvasElement | null> {
@@ -551,17 +574,20 @@ export function minimizeWindow(id: string): void {
     const snap = fresh ?? cached;
     if (!w.minimized) return;
     play('minimize');
-    w.el.classList.remove('active');
-    if (activeId === id) {
-      activeId = null;
-      focusTopmost();
-    }
+    // Focus only moves on once the window has poured into the dock, so it keeps its active look throughout.
     if (snap && target) {
       snaps.set(w, snap);
       w.el.style.display = 'none';
       await runGenie(snap, w.rect, target, false);
     } else await fade(w, false);
-    if (w.minimized) w.el.style.display = 'none';
+    if (w.minimized) {
+      w.el.style.display = 'none';
+      w.el.classList.remove('active');
+      if (activeId === id) {
+        activeId = null;
+        focusTopmost();
+      }
+    }
   })();
 }
 

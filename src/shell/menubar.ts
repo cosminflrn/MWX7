@@ -10,6 +10,8 @@ import { openOverview } from './overview';
 import { logOff, shutDown } from './screens';
 
 /** Two overlapping windows: the Overview (all windows at once) glyph. */
+const DESKTOP_GLYPH =
+  '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2.5" y="4" width="19" height="13" rx="1.8"/><path d="M8 20.5h8M12 17v3.5"/></svg>';
 const OVERVIEW_GLYPH =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="12" height="9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9.5" y="10" width="12" height="9" rx="1.6" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.8"/></svg>';
 
@@ -155,12 +157,13 @@ export function mountMenubar(bar: HTMLElement): void {
     html: OVERVIEW_GLYPH,
     onclick: () => openOverview(),
   });
-  // Win7 "Show desktop" strip at the far right: hover peeks through every window, click minimizes them all.
+  // Show desktop: hover peeks through every window, click minimizes them all (again = bring them back).
   let peekT = 0;
   const showDesk = h('button', {
-    class: 'mb-showdesk',
+    class: 'mb-item mb-icon',
     title: 'Show desktop',
     'aria-label': 'Show desktop',
+    html: DESKTOP_GLYPH,
     onclick: () => {
       window.clearTimeout(peekT);
       document.body.classList.remove('peeking');
@@ -168,13 +171,13 @@ export function mountMenubar(bar: HTMLElement): void {
     },
   });
   showDesk.addEventListener('pointerenter', () => {
-    peekT = window.setTimeout(() => document.body.classList.add('peeking'), 450);
+    peekT = window.setTimeout(() => document.body.classList.add('peeking'), 500);
   });
   showDesk.addEventListener('pointerleave', () => {
     window.clearTimeout(peekT);
     document.body.classList.remove('peeking');
   });
-  right.append(searchBtn, overviewBtn, clock, controls, showDesk);
+  right.append(searchBtn, overviewBtn, showDesk, clock, controls);
 
   const tick = () => {
     const d = new Date();

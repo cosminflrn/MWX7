@@ -9,6 +9,15 @@ import '../styles/commander.css';
  * Everything goes through the real VFS, so changes persist.
  */
 
+/** Registers the VGA bitmap font (public/fonts/vga). Injected at runtime so the relative Vite base resolves. */
+export function ensureVgaFont(): void {
+  if (document.getElementById('mwx-vga-font')) return;
+  const st = document.createElement('style');
+  st.id = 'mwx-vga-font';
+  st.textContent = `@font-face{font-family:'Web437 IBM VGA 8x16';src:url('${import.meta.env.BASE_URL}fonts/vga/WebPlus_IBM_VGA_8x16.woff') format('woff');font-display:block}`;
+  document.head.appendChild(st);
+}
+
 const COLS = 80;
 const ROWS = 25;
 const PANEL_W = 40;
@@ -194,8 +203,8 @@ function run(): Promise<void> {
   return new Promise<void>((resolve) => {
     const buf = new Buffer();
     const screen = h('div', { class: 'cmdr-screen' });
-    const probe = h('span', { class: 'cmdr-probe' }, 'M'.repeat(40));
-    const root = h('div', { class: 'mwx-cmdr', tabindex: -1 }, screen, probe);
+    ensureVgaFont();
+    const root = h('div', { class: 'mwx-cmdr', tabindex: -1 }, screen, h('div', { class: 'cmdr-crt' }));
     const rowEls: HTMLElement[] = [];
     const rowCache: string[] = [];
     for (let y = 0; y < ROWS; y++) {
@@ -226,17 +235,13 @@ function run(): Promise<void> {
 
     /* ----- layout: fit the 80x25 grid to the viewport ----- */
     function layout(): void {
-      const ratio = probe.getBoundingClientRect().width / 4000 || 0.6;
-      const cw = window.innerWidth / COLS;
-      const fsz = cw / ratio;
-      // Whole-pixel rows: fractional row heights leave dark seams between rows of the same colour.
-      const lh = Math.max(8, Math.floor(window.innerHeight / ROWS));
-      root.style.setProperty('--cw', cw + 'px');
-      const fs = Math.min(fsz, lh / 1.05);
-      root.style.setProperty('--fs', fs + 'px');
-      // Pin every glyph to exactly one cell, whatever font the browser picked.
-      root.style.setProperty('--ls', cw - fs * ratio + 'px');
+      // The font is an 8x16 bitmap: only whole-number scales stay pixel-crisp, so letterbox instead of stretching.
+      const k = Math.max(1, Math.floor(Math.min(window.innerWidth / (COLS * 8), window.innerHeight / (ROWS * 16))));
+      const lh = 16 * k;
+      root.style.setProperty('--cw', 8 * k + 'px');
+      root.style.setProperty('--fs', lh + 'px');
       root.style.setProperty('--lh', lh + 'px');
+      screen.style.left = Math.floor((window.innerWidth - 8 * k * COLS) / 2) + 'px';
       screen.style.top = Math.floor((window.innerHeight - lh * ROWS) / 2) + 'px';
     }
 

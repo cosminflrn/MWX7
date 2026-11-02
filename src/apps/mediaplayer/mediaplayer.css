@@ -44,7 +44,8 @@
 /* Range sliders: glossy blue fill on a dark groove */
 .mp input[type='range'] { -webkit-appearance: none; appearance: none; background: none; height: 16px; margin: 0; cursor: pointer; }
 .mp-seek { flex: 1; min-width: 0; }
-.mp-vol { width: 100px; --p: 80%; }
+.mp-vol { width: 100px; --p: 50%; }
+.mp-volpct { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .mp input[type='range']::-webkit-slider-runnable-track { height: 5px; border-radius: 3px; border: 1px solid #000; background: linear-gradient(180deg, #05080d, #1b2a42); }
 .mp input[type='range']::-moz-range-track { height: 5px; border-radius: 3px; border: 1px solid #000; background: linear-gradient(180deg, #05080d, #1b2a42); }
 .mp input[type='range']::-webkit-slider-thumb {

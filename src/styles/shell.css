@@ -71,8 +71,9 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: inset 0 -1px 0 rgba(0, 25, 80, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 8px rgba(0, 20, 50, 0.18);
-  color: #000;
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.6);
+  /* White text with a dark halo (Win7 taskbar) stays readable at any tint */
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0, 15, 45, 0.75), 0 0 8px rgba(0, 15, 45, 0.45);
 }
 
 .mb-left,
@@ -117,11 +118,12 @@
   min-width: 210px;
   padding: 5px;
   border-radius: 7px;
-  background: rgba(248, 250, 253, 0.82);
-  backdrop-filter: blur(30px) saturate(190%);
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  border: 0.5px solid rgba(0, 0, 0, 0.25);
-  box-shadow: 0 10px 34px rgba(0, 10, 30, 0.3), 0 0 0 0.5px rgba(255, 255, 255, 0.6) inset;
+  /* Aero glass, like window frames (tint follows Window Color), kept light enough for black text */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.58)), var(--glass-tint);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 0;
+  box-shadow: var(--glass-ring), 0 10px 34px rgba(0, 10, 30, 0.3);
   animation: pop-in 0.1s ease-out;
 }
 
@@ -270,7 +272,8 @@
 /* ===== Start menu (XP layout, Win7 materials) ===== */
 .start-menu {
   position: fixed;
-  z-index: 150000;
+  /* Under the dock (99000) so icon labels and Aero Peek previews show above it */
+  z-index: 98950;
   width: 480px;
   max-width: calc(100vw - 16px);
   display: flex;
@@ -556,7 +559,7 @@
   padding: 26px 34px;
   background: #000;
   color: #b9b9b9;
-  font: 16px/1.35 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
+  font: 16px/1.35 'Web437 IBM VGA 8x16', 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
 }
 
 .bios-text { margin: 0; font: inherit; white-space: pre-wrap; }
@@ -973,7 +976,7 @@
 /* ===== Aero Peek ===== */
 .peek-pop {
   position: fixed;
-  z-index: 98000;
+  z-index: 99500;
   display: flex;
   gap: 8px;
   padding: 8px;
@@ -1032,9 +1035,10 @@
 .peek-tile.minimized .peek-shot { opacity: 0.75; }
 
 /* Only real windows fade — the thumbnails in the Peek popup are copies with the same class. */
-body.peeking #windows > .win:not(.peek-target) { opacity: 0.05 !important; transition: opacity 0.25s; }
+body.peeking #windows > .win:not(.peek-target) { opacity: 0.05 !important; transition: opacity 0.32s cubic-bezier(.4,0,.2,1); }
 body.peeking #windows > .win.peek-target { z-index: 98500 !important; }
-.win { transition: opacity 0.25s; }
+body.peeking .start-menu { opacity: 0; transition: opacity 0.3s, bottom 0.26s; }
+.win { transition: opacity 0.32s cubic-bezier(.4,0,.2,1); }
 
 /* The thumbnails replace the dock label while Peek is open. */
 body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
@@ -1073,7 +1077,8 @@ body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
 
 body.overview .win { cursor: pointer; }
 /* A full-screen window has no frame of its own; give it one while it is a tile. */
-body.overview .win.maximized { border-radius: 8px; box-shadow: var(--glass-ring), var(--shadow-win); }
+body.overview .win { box-shadow: var(--glass-ring), var(--shadow-win); }
+body.overview .win.maximized { border-radius: 8px; }
 body.overview .win.maximized .win-body { border-radius: 8px; }
 body.overview .win * { pointer-events: none; }
 body.overview .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
@@ -1104,32 +1109,5 @@ body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 #menubar.fs .mb-wc .wc:nth-child(3) { transition-delay: 0.06s; }
 .mb-icon svg { width: 15px; height: 15px; }
 
-/* ===== Full-width dock under a full-screen window ===== */
-#dock { transition: bottom 0.34s cubic-bezier(.2,.8,.2,1); }
-#dock.full { bottom: 0; }
-/* Windows 11-sized taskbar while a window fills the screen */
-#dock.full { --dock-icon: 34px; }
-#dock.full .dock-shelf {
-  width: 100vw;
-  height: 48px;
-  gap: 8px;
-  padding-bottom: 7px;
-  border-radius: 0;
-}
-#dock.full .dock-dot { bottom: -5px; }
 
-/* ===== Show desktop (Win7): a slim glass strip at the far right of the top bar ===== */
-.mb-showdesk {
-  align-self: stretch;
-  width: 14px;
-  margin: 0 -10px 0 8px;
-  padding: 0;
-  border: 0;
-  border-left: 1px solid rgba(0, 25, 80, 0.35);
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.45);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06));
-  cursor: default;
-  transition: background 0.15s;
-}
-.mb-showdesk:hover { background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.25)); }
-.mb-showdesk:active { background: rgba(255, 255, 255, 0.7); }
+

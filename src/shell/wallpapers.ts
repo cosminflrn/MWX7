@@ -206,6 +206,8 @@ interface Renderer {
   resize(cssW: number, cssH: number): void;
   draw(t: number): void;
   readonly canvas: HTMLCanvasElement;
+  /** Optional low-res layer stacked on top and softened by the compositor (CSS blur): smooth glow for free. */
+  readonly overlay?: HTMLCanvasElement;
   /** Minimum milliseconds between frames. */
   frameMs: number;
 }
@@ -222,7 +224,7 @@ function canvas2d(w = 1, h = 1): [HTMLCanvasElement, CanvasRenderingContext2D] {
  * Each line is a sum of slow travelling sines; lines in a sheet share the carrier and differ in a
  * "twist" term, so the sheet pinches and folds and additive blending brightens the folds on its own.
  */
-function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
+function auroraRenderer(scale = 0.6, maxW = 1280, live = false): Renderer {
   const [canvas, ctx] = canvas2d();
   const [bg, bgx] = canvas2d();
   const glow = document.createElement('canvas');
@@ -293,8 +295,10 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
     c.fillRect(0, 0, r * 2, r * 2);
   };
 
+  if (live) glow.className = 'wp-glow';
   return {
     canvas,
+    overlay: live ? glow : undefined,
     frameMs: 1000 / 60,
     resize(cssW, cssH) {
       const k = Math.min(scale, maxW / Math.max(1, cssW));
@@ -303,8 +307,9 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
       canvas.width = bg.width = W;
       canvas.height = bg.height = H;
       // The glow is rendered tiny and upscaled: bilinear filtering does the blur for free (canvas `filter` costs ~4 ms).
-      glow.width = Math.max(2, Math.round(W / 10));
-      glow.height = Math.max(2, Math.round(H / 10));
+      glow.width = Math.max(2, Math.round(W / (live ? 6 : 10)));
+      glow.height = Math.max(2, Math.round(H / (live ? 6 : 10)));
+      if (live) glow.style.filter = `blur(${Math.max(6, Math.round(cssH / 70))}px)`;
       mid.width = Math.max(2, Math.round(W / 2.5));
       mid.height = Math.max(2, Math.round(H / 2.5));
       paintBackground();
@@ -339,14 +344,20 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
           gx.stroke();
         }
       }
-      mx.imageSmoothingEnabled = true;
-      mx.imageSmoothingQuality = 'high';
-      mx.clearRect(0, 0, mid.width, mid.height);
-      mx.drawImage(glow, 0, 0, mid.width, mid.height);
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(mid, 0, 0, W, H);
+      // Live: the glow canvas itself is the blurred overlay (GPU-filtered, no upscaling blocks).
+      // Stills (thumbnails, logon) composite it here instead.
+      if (!live) {
+        mx.imageSmoothingEnabled = true;
+        mx.imageSmoothingQuality = 'high';
+        mx.clearRect(0, 0, mid.width, mid.height);
+        mx.filter = 'blur(2px)';
+        mx.drawImage(glow, 0, 0, mid.width, mid.height);
+        mx.filter = 'none';
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(mid, 0, 0, W, H);
+      }
 
       // Hairline sheets.
       ctx.lineWidth = Math.max(0.7, H / 900);
@@ -455,7 +466,9 @@ function canvasLayer(id: string, make: () => Renderer): Layer {
   el.style.background = FALLBACK[id];
   const r = make();
   r.canvas.className = 'wp-canvas-el';
-  el.append(r.canvas, grainLayer());
+  el.append(r.canvas);
+  if (r.overlay) el.append(r.overlay);
+  el.append(grainLayer());
   if (id === 'dusk') {
     for (const n of ['wp-glass a', 'wp-glass b', 'wp-glass c']) {
       const pane = document.createElement('div');
@@ -525,7 +538,7 @@ function canvasLayer(id: string, make: () => Renderer): Layer {
 }
 
 const RENDERERS: Record<string, () => Renderer> = {
-  aurora: () => auroraRenderer(Math.min(window.devicePixelRatio || 1, 2), 3840),
+  aurora: () => auroraRenderer(Math.min(window.devicePixelRatio || 1, 2), 3840, true),
   dusk: () => duskRenderer(),
 };
 

@@ -3,7 +3,7 @@ import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
-import { activeWindow, closeWindow, focusWindow, maximizedWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
+import { activeWindow, closeWindow, focusWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
 import { fs } from '../core/fs';
 import { notify } from '../core/os';
 import { play } from '../core/sound';
@@ -18,11 +18,8 @@ import { menuIcon, openMenu } from '../ui/menu';
  * jump list) and the Start orb as its first item.
  */
 const RANGE = 140;
-// Icon size + magnification follow the dock's mode (full-width taskbar is smaller and zooms less).
-const metrics = (dock: HTMLElement) => {
-  const full = dock.classList.contains('full');
-  return { base: full ? 34 : 48, max: full ? 1.4 : 1.6 };
-};
+const BASE = 48;
+const MAX_SCALE = 1.6;
 
 export function mountDock(dock: HTMLElement): void {
   const shelf = h('div', { class: 'dock-shelf' });
@@ -209,7 +206,6 @@ export function mountDock(dock: HTMLElement): void {
   };
   const tick = () => {
     raf = 0;
-    const { base: BASE, max: MAX_SCALE } = metrics(dock);
     if (!rest || rest.length !== items().length) measureRest();
     if (pointerX !== null) easedX = easedX === null ? pointerX : easedX + (pointerX - easedX) * 0.22;
     let moving = false;
@@ -254,25 +250,6 @@ export function mountDock(dock: HTMLElement): void {
     dock.classList.remove('hover');
     kick();
   });
-
-  /* Full-width dock while a window fills the screen (no gaps under it). */
-  const updateFull = () => {
-    const full = !!maximizedWindow();
-    if (full === dock.classList.contains('full')) return;
-    const before = shelf.getBoundingClientRect();
-    dock.classList.toggle('full', full);
-    rest = null;
-    const after = shelf.getBoundingClientRect();
-    shelf.animate(
-      [
-        { width: `${before.width}px`, height: `${before.height}px`, transform: `translateY(${before.bottom - after.bottom}px)`, borderRadius: full ? '17px' : '0px' },
-        { width: `${after.width}px`, height: `${after.height}px`, transform: 'none', borderRadius: full ? '0px' : '17px' },
-      ],
-      { duration: 340, easing: 'cubic-bezier(.2,.8,.2,1)' },
-    );
-  };
-  for (const ev of ['window:state', 'window:minimize', 'window:restore', 'window:close', 'window:open'] as const)
-    bus.on(ev, () => window.setTimeout(updateFull, 0));
 
   setMinimizeTarget((appId) => itemFor.get(appId)?.getBoundingClientRect() ?? null);
 

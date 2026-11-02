@@ -6,9 +6,9 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.7.0';
+const VERSION = '0.7.1';
 
-type SectionId = 'personalization' | 'accounts' | 'sound' | 'system';
+type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'sound' | 'system';
 
 interface Section {
   id: SectionId;
@@ -17,8 +17,9 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: 'personalization', title: 'Personalization', icon: icons.pictures },
+  { id: 'wallpapers', title: 'Wallpapers', icon: icons.pictures },
   { id: 'accounts', title: 'User account', icon: icons.avatar },
+  { id: 'wincolor', title: 'Window Color', icon: icons.settings },
   { id: 'sound', title: 'Sound', icon: icons.music },
   { id: 'system', title: 'System', icon: icons.computer },
 ];
@@ -46,7 +47,7 @@ export const settingsApp: AppManifest = {
     const section = (id: SectionId, ...kids: (HTMLElement | string)[]) => h('section', { class: 'set-section', id: `set-${id}`, 'data-sec': id }, ...kids);
 
     // ---- Personalization -------------------------------------------------
-    const personalization = () => {
+    const wallpapersSection = () => {
       const grid = h('div', { class: 'set-walls', role: 'listbox' });
       const draw = () => {
         const current = os.settings.get().wallpaper;
@@ -72,12 +73,10 @@ export const settingsApp: AppManifest = {
       };
       draw();
       return section(
-        'personalization',
-        heading('Change the visuals and sounds on your computer'),
+        'wallpapers',
+        heading('Choose your desktop background'),
         lead('Click a picture to use it as your desktop background.'),
-        sub('Desktop Background'),
         grid,
-        windowColor(),
       );
     };
 
@@ -131,10 +130,9 @@ export const settingsApp: AppManifest = {
         toggle.classList.toggle('open', !mixer.hidden);
         toggle.lastChild!.textContent = mixer.hidden ? 'Show color mixer' : 'Hide color mixer';
       });
-      return h(
-        'div',
-        { class: 'set-wincolor' },
-        sub('Window Color'),
+      return section(
+        'wincolor',
+        heading('Change the color of your windows'),
         lead('Change the color of your window borders, Start menu and taskbar.'),
         swatches,
         h('div', { class: 'set-intensity' }, h('span', {}, 'Color intensity:'), slider, val),
@@ -211,33 +209,35 @@ export const settingsApp: AppManifest = {
       );
     };
 
-    const builders: Record<SectionId, () => HTMLElement> = { personalization, accounts, sound, system };
+    const builders: Record<SectionId, () => HTMLElement> = { wallpapers: wallpapersSection, accounts, wincolor: windowColor, sound, system };
     const sections = SECTIONS.map((x) => builders[x.id]());
     content.append(...sections);
 
     const links = new Map<SectionId, HTMLElement>();
     const mark = (id: SectionId) => links.forEach((el, k) => el.classList.toggle('cur', k === id));
 
-    // While a click-initiated smooth scroll runs, ignore observer/scroll updates so the highlight doesn't flicker.
-    let locked = false;
-    let lockTimer = 0;
-    const unlock = () => {
-      locked = false;
-      window.clearTimeout(lockTimer);
-      content.removeEventListener('scrollend', unlock);
-      syncBottom();
+    // The current section is the last one whose top has reached the top of the viewport (computed from scroll position).
+    const compute = (): SectionId => {
+      const max = content.scrollHeight - content.clientHeight;
+      if (content.scrollTop >= max - 2 && max > 0) return SECTIONS[SECTIONS.length - 1].id;
+      const y = content.scrollTop + 8;
+      let cur = SECTIONS[0].id;
+      sections.forEach((el, i) => {
+        if (el.offsetTop - content.offsetTop <= y) cur = SECTIONS[i].id;
+      });
+      return cur;
     };
-    const syncBottom = () => {
-      if (content.scrollTop + content.clientHeight >= content.scrollHeight - 2 && content.scrollTop > 0) mark(SECTIONS[SECTIONS.length - 1].id);
-    };
+    // After a click the highlight stays on the clicked item until the user scrolls by hand (short last sections can't reach the top).
+    let pinned: SectionId | null = null;
+    let pinTimer = 0;
     const jump = (id: SectionId) => {
       const target = sections[SECTIONS.findIndex((x) => x.id === id)];
       mark(id);
-      locked = true;
-      window.clearTimeout(lockTimer);
-      content.addEventListener('scrollend', unlock, { once: true });
-      lockTimer = window.setTimeout(unlock, 900);
-      content.scrollTo({ top: target.offsetTop - content.offsetTop, behavior: 'smooth' });
+      pinned = id;
+      window.clearTimeout(pinTimer);
+      pinTimer = window.setTimeout(() => (pinned = null), 700);
+      const top = id === SECTIONS[0].id ? 0 : target.offsetTop - content.offsetTop;
+      content.scrollTo({ top, behavior: 'smooth' });
     };
 
     for (const sec of SECTIONS) {
@@ -253,19 +253,20 @@ export const settingsApp: AppManifest = {
 
     win.setTitle('Settings');
     win.body.append(side, content);
-    mark('personalization');
+    mark('wallpapers');
 
-    // Highlight whichever section occupies the top band of the scroll area.
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (locked) return;
-        for (const e of entries) if (e.isIntersecting) mark((e.target as HTMLElement).dataset.sec as SectionId);
-      },
-      { root: content, rootMargin: '0px 0px -70% 0px', threshold: 0 },
-    );
-    sections.forEach((el) => io.observe(el));
+    let raf = 0;
     const onScroll = () => {
-      if (!locked) syncBottom();
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (pinned) {
+          window.clearTimeout(pinTimer);
+          pinTimer = window.setTimeout(() => (pinned = null), 150); // released shortly after the smooth scroll settles
+          return;
+        }
+        mark(compute());
+      });
     };
     content.addEventListener('scroll', onScroll, { passive: true });
 
@@ -273,8 +274,8 @@ export const settingsApp: AppManifest = {
     if (wanted && SECTIONS.some((x) => x.id === wanted)) requestAnimationFrame(() => jump(wanted));
 
     return () => {
-      io.disconnect();
-      window.clearTimeout(lockTimer);
+      cancelAnimationFrame(raf);
+      window.clearTimeout(pinTimer);
     };
   },
 };

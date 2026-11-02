@@ -384,9 +384,9 @@ export class Renderer {
       c.shadowOffsetX = 3;
       c.shadowOffsetY = 5;
       c.beginPath();
-      c.moveTo(X(88), 496);
-      c.lineTo(X(142), 596);
-      c.lineTo(X(88), 576);
+      c.moveTo(X(88), 490);
+      c.lineTo(X(142), 578);
+      c.lineTo(X(88), 562);
       c.closePath();
       c.fillStyle = '#0d1020';
       c.fill();
@@ -564,13 +564,13 @@ export class Renderer {
     for (const m of [0, 1]) {
       const X = (x: number) => (m ? MIRROR - x : x);
       const f = g.flash[`s${m}`] ?? 0;
-      const gr = c.createLinearGradient(X(88), 496, X(142), 596);
+      const gr = c.createLinearGradient(X(88), 490, X(142), 578);
       gr.addColorStop(0, '#2a2f66');
       gr.addColorStop(1, '#0b0d22');
       c.beginPath();
-      c.moveTo(X(88), 496);
-      c.lineTo(X(142), 596);
-      c.lineTo(X(88), 576);
+      c.moveTo(X(88), 490);
+      c.lineTo(X(142), 578);
+      c.lineTo(X(88), 562);
       c.closePath();
       c.fillStyle = gr;
       c.fill();
@@ -578,9 +578,9 @@ export class Renderer {
       c.lineWidth = 1;
       c.stroke();
       // kicker rubber with a neon strip
-      line(c, X(88), 496, X(142), 596, 5.5, '#141a30');
-      line(c, X(88.5), 497, X(141.5), 595, 2.2, rgba(NEON.cyan, 0.45 + 0.55 * f));
-      line(c, X(88.5), 497, X(141.5), 595, 0.8, `rgba(255,255,255,${0.35 + 0.65 * f})`);
+      line(c, X(88), 490, X(142), 578, 5.5, '#141a30');
+      line(c, X(88.5), 491, X(141.5), 577, 2.2, rgba(NEON.cyan, 0.45 + 0.55 * f));
+      line(c, X(88.5), 491, X(141.5), 577, 0.8, `rgba(255,255,255,${0.35 + 0.65 * f})`);
       halo(c, X((88 + 142) / 2), 546, 50, NEON.cyan, 0.18 + 0.7 * f);
     }
   }

@@ -57,8 +57,8 @@ Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gami
 |---|---|
 | `notepad` / `text` / `file` | apps/kwrite / minetypes/txt / minetypes/document |
 | `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
-| `settings`, `about`, `search` | apps/kcontrol, actions/info, actions/filefind |
-| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder, folder_music, folder_image; apps/my_documents |
+| `settings`, `about`, `search` | apps/kservices, actions/info, actions/filefind |
+| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder, folder_music, folder_image, folder_txt |
 | `computer`, `explorer`, `drive`, `desktop` | apps/mymac, apps/file-manager, devices/hdd_mount, filesystems/desktop |
 | `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
 | `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/logout, minetypes/image |
@@ -78,3 +78,12 @@ from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 wi
 | `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
 
 Unmodified copies of the Ogg Vorbis files published by the project.
+
+## VGA bitmap font (`../fonts/vga/`)
+
+"Web437 IBM VGA 8x16" (`WebPlus_IBM_VGA_8x16.woff`, a.k.a. Px437 IBM VGA 8x16) from The Ultimate Oldschool PC Font Pack v2.2 by VileR, (c) 2016-2020. Source: https://int10h.org/oldschool-pc-fonts/ (WOFF taken from the npm package `@monowind/themes` 0.3.5, unmodified).
+License: Creative Commons Attribution-ShareAlike 4.0 (`fonts/vga/LICENSE-CC-BY-SA-4.0.txt`). Used by MWX Commander and the BIOS screen.
+
+## UI click (`sounds/click.ogg`, `sounds/click.mp3`)
+
+`mouseclick1.wav` from "UI SFX Set" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). A real mouse button press/release recording; here converted to mono, high-passed at 80 Hz, loudness-normalised and trimmed to 77 ms, then encoded to Ogg Vorbis and MP3.
