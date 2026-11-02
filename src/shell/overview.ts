@@ -5,7 +5,7 @@ import { h } from '../ui/dom';
 
 /**
  * Overview: every open window glides into a non-overlapping grid so you
- * can pick one. Minimized windows line up in a smaller row at the bottom.
+ * can pick one, minimized ones included.
  * Opened from the overview button in the top bar.
  * Only transforms are animated (no layout), so it stays smooth.
  */
@@ -60,11 +60,8 @@ export function openOverview(): void {
   closeMenu();
 
   const wa = workArea();
-  const shown = wins.filter((w) => !w.minimized);
-  const hidden = wins.filter((w) => w.minimized);
-  const stripH = hidden.length ? Math.min(150, wa.h * 0.2) : 0;
-  const main = layout(shown, { x: 40, y: wa.y + 30, w: wa.w - 80, h: wa.h - 50 - stripH });
-  const strip = layout(hidden, { x: wa.w * 0.15, y: wa.y + wa.h - stripH, w: wa.w * 0.7, h: stripH });
+  // Minimized windows take part exactly like the others (no separate mini row by the dock).
+  const main = layout(wins, { x: 40, y: wa.y + 30, w: wa.w - 80, h: wa.h - 50 });
 
   const layer = document.getElementById('windows')!;
   const dim = h('div', { class: 'mc-dim' });
@@ -73,7 +70,7 @@ export function openOverview(): void {
   play('menuOpen');
 
   const placed: Placed[] = [];
-  for (const [w, t] of [...main, ...strip]) {
+  for (const [w, t] of main) {
     const wasHidden = w.el.style.display === 'none';
     if (wasHidden) {
       w.el.style.display = '';
@@ -87,7 +84,7 @@ export function openOverview(): void {
     dim.append(label);
     requestAnimationFrame(() => {
       w.el.style.transform = `translate(${t.x - w.rect.x}px, ${t.y - w.rect.y}px) scale(${t.s})`;
-      w.el.style.opacity = wasHidden ? '0.85' : '';
+      w.el.style.opacity = '';
     });
     placed.push({ w, wasHidden, label });
   }

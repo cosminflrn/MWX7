@@ -34,13 +34,9 @@
 .win.active {
   background:
     var(--glass-streaks),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.06) 34px, rgba(255, 255, 255, 0) 70px),
+    var(--glass-sheen),
     var(--glass-tint);
-  box-shadow:
-    0 0 0 1px rgba(0, 25, 80, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
-    inset 0 1px 0 1px rgba(255, 255, 255, 0.28),
-    var(--shadow-win);
+  box-shadow: var(--glass-ring), var(--shadow-win);
 }
 
 .win.anim {
@@ -128,6 +124,9 @@
   place-items: center;
   color: transparent;
 }
+
+/* Invisible padding so the gaps between the small lights still count as hits. */
+.wc::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; }
 
 .wc-close { background: radial-gradient(circle at 50% 25%, #ff8d86 0, var(--tl-close) 55%, #e0443a 100%); }
 .wc-min { background: radial-gradient(circle at 50% 25%, #8fe99a 0, var(--tl-max) 55%, #1aa52f 100%); }

@@ -15,7 +15,7 @@ const PANEL_W = 232;
 const FRAME_X = 18;
 const FRAME_Y = 40;
 const MENUBAR_H = 28;
-const DOCK_RESERVE = 82;
+const DOCK_RESERVE = 70;
 
 /**
  * Fixed-size window that hugs the content: table + score panel at 1:1, scaled down uniformly when the screen

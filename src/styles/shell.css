@@ -66,13 +66,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
-  /* Frutiger Aero gloss: bright upper half, a light seam, a cooler lower half */
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82) 0%, rgba(244, 249, 255, 0.7) 48%, rgba(222, 235, 250, 0.62) 52%, rgba(232, 242, 253, 0.7) 100%);
-  backdrop-filter: blur(30px) saturate(190%);
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  border-bottom: 1px solid rgba(90, 120, 160, 0.35);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.6), 0 1px 8px rgba(0, 20, 50, 0.12);
-  color: #0d1a2b;
+  /* The same Aero glass as window title bars (tint follows Settings → Window Color) */
+  background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.08)), var(--glass-tint);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 -1px 0 rgba(0, 25, 80, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 8px rgba(0, 20, 50, 0.18);
+  color: #000;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.6);
 }
 
 .mb-left,
@@ -96,8 +96,8 @@
   align-items: center;
 }
 
-.mb-item:hover { background: rgba(0, 0, 0, 0.07); }
-.mb-item.open { background: rgba(0, 0, 0, 0.12); }
+.mb-item:hover { background: rgba(255, 255, 255, 0.3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
+.mb-item.open { background: rgba(255, 255, 255, 0.42); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6); }
 
 .mb-orb svg, .mb-orb img { width: 17px; height: 17px; }
 .mb-app { font-weight: 600; }
@@ -161,7 +161,7 @@
   z-index: 99000;
   left: 0;
   right: 0;
-  bottom: 6px;
+  bottom: 0;
   display: flex;
   justify-content: center;
   pointer-events: none;
@@ -171,16 +171,16 @@
   display: flex;
   align-items: flex-end;
   gap: 5px;
+  justify-content: center;
   height: 64px;
-  padding: 0 9px 7px;
-  border-radius: 17px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.16) 48%, rgba(255, 255, 255, 0.04) 52%, rgba(255, 255, 255, 0.12) 100%),
-    linear-gradient(180deg, rgba(110, 160, 215, 0.3), rgba(25, 55, 100, 0.38));
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 10, 30, 0.35);
+  padding: 0 9px 8px;
+  /* Flush with the bottom edge: only the top corners are rounded */
+  border-radius: 14px 14px 0 0;
+  /* Same glass as window frames, no seam */
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: 0 0 0 1px rgba(0, 25, 80, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 1px 0 1px rgba(255, 255, 255, 0.28), 0 0 22px rgba(0, 10, 30, 0.35);
   pointer-events: auto;
 }
 
@@ -1072,6 +1072,9 @@ body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
 }
 
 body.overview .win { cursor: pointer; }
+/* A full-screen window has no frame of its own; give it one while it is a tile. */
+body.overview .win.maximized { border-radius: 8px; box-shadow: var(--glass-ring), var(--shadow-win); }
+body.overview .win.maximized .win-body { border-radius: 8px; }
 body.overview .win * { pointer-events: none; }
 body.overview .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
 body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
@@ -1104,13 +1107,29 @@ body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 /* ===== Full-width dock under a full-screen window ===== */
 #dock { transition: bottom 0.34s cubic-bezier(.2,.8,.2,1); }
 #dock.full { bottom: 0; }
+/* Windows 11-sized taskbar while a window fills the screen */
+#dock.full { --dock-icon: 34px; }
 #dock.full .dock-shelf {
   width: 100vw;
-  height: 62px;
-  justify-content: center;
-  padding-bottom: 6px;
+  height: 48px;
+  gap: 8px;
+  padding-bottom: 7px;
   border-radius: 0;
-  border-left: 0;
-  border-right: 0;
-  border-bottom: 0;
 }
+#dock.full .dock-dot { bottom: -5px; }
+
+/* ===== Show desktop (Win7): a slim glass strip at the far right of the top bar ===== */
+.mb-showdesk {
+  align-self: stretch;
+  width: 14px;
+  margin: 0 -10px 0 8px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid rgba(0, 25, 80, 0.35);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.45);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.06));
+  cursor: default;
+  transition: background 0.15s;
+}
+.mb-showdesk:hover { background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.25)); }
+.mb-showdesk:active { background: rgba(255, 255, 255, 0.7); }
