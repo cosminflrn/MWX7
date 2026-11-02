@@ -1,5 +1,5 @@
 import type { Game } from './game';
-import { BUMPER_R, BUMPERS, H, INSERTS, NEON, PLUNGER_X, SAUCER, W, type Flipper, type Insert, type Seg } from './table';
+import { ARCH, BUMPER_R, BUMPERS, CX, FLIP_PX, H, INSERTS, LANE_DIV, MIRROR, NEON, PLUNGER_X, SAUCER, W, WALL_R, type Flipper, type Insert, type Seg } from './table';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -136,11 +136,12 @@ export class Renderer {
     // Nebula clouds
     c.globalCompositeOperation = 'lighter';
     const neb: [number, number, number, string, number][] = [
-      [90, 120, 230, '#6a2cc8', 0.5],
-      [330, 250, 210, '#1f56d6', 0.42],
-      [150, 430, 190, '#b0267f', 0.3],
-      [320, 560, 200, '#12908e', 0.26],
-      [210, 40, 160, '#3c1c8f', 0.4],
+      [110, 120, 240, '#6a2cc8', 0.5],
+      [450, 250, 230, '#1f56d6', 0.42],
+      [190, 430, 200, '#b0267f', 0.3],
+      [440, 570, 220, '#12908e', 0.26],
+      [290, 40, 180, '#3c1c8f', 0.4],
+      [60, 600, 150, '#3c1c8f', 0.3],
     ];
     for (const [x, y, r, col, a] of neb) {
       const g = c.createRadialGradient(x, y, 0, x, y, r);
@@ -151,7 +152,7 @@ export class Renderer {
       c.fillRect(x - r, y - r, r * 2, r * 2);
     }
     // Dust grain: lots of tiny soft blobs give the clouds texture
-    for (let i = 0; i < 380; i++) {
+    for (let i = 0; i < 520; i++) {
       const x = R() * W;
       const y = R() * H;
       const r = 2 + R() * 9;
@@ -166,7 +167,7 @@ export class Renderer {
 
     // Stars
     this.stars = [];
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 360; i++) {
       const s = { x: R() * W, y: R() * H, r: 0.3 + R() * R() * 1.3, p: R() * 6.28, c: ['#ffffff', '#cfe6ff', '#ffe9c4', '#d9c9ff'][Math.floor(R() * 4)] };
       this.stars.push(s);
       c.globalAlpha = 0.35 + R() * 0.65;
@@ -186,19 +187,19 @@ export class Renderer {
     this.drawInlay(c);
 
     // Launch lane trough
-    const lane = c.createLinearGradient(380, 0, 410, 0);
+    const lane = c.createLinearGradient(LANE_DIV, 0, WALL_R, 0);
     lane.addColorStop(0, 'rgba(0,0,0,.55)');
     lane.addColorStop(0.5, 'rgba(8,12,34,.35)');
     lane.addColorStop(1, 'rgba(0,0,0,.6)');
     c.fillStyle = lane;
-    c.fillRect(379, 100, 31, 626);
+    c.fillRect(LANE_DIV - 1, 100, WALL_R - LANE_DIV + 1, 626);
     for (let y = 560; y > 220; y -= 46) {
       c.strokeStyle = rgba(NEON.cyan, 0.2);
       c.lineWidth = 1.5;
       c.beginPath();
-      c.moveTo(386, y + 8);
-      c.lineTo(394, y);
-      c.lineTo(402, y + 8);
+      c.moveTo(PLUNGER_X - 8, y + 8);
+      c.lineTo(PLUNGER_X, y);
+      c.lineTo(PLUNGER_X + 8, y + 8);
       c.stroke();
     }
 
@@ -221,8 +222,8 @@ export class Renderer {
   }
 
   private drawPlanet(c: Ctx): void {
-    const x = 200;
-    const y = 430;
+    const x = CX + 6;
+    const y = 440;
     const r = 58;
     c.save();
     c.globalAlpha = 0.55;
@@ -267,27 +268,27 @@ export class Renderer {
     c.save();
     c.lineCap = 'round';
     // concentric arch echoing the orbit rail
-    for (const [rad, a, col] of [[184, 0.42, NEON.cyan], [170, 0.2, NEON.violet]] as const) {
+    for (const [rad, a, col] of [[16, 0.42, NEON.cyan], [30, 0.2, NEON.violet]] as const) {
       c.strokeStyle = rgba(col, a);
       c.lineWidth = 2;
       c.beginPath();
-      c.arc(210, 210, rad, Math.PI * 1.02, Math.PI * 1.98);
+      c.ellipse(ARCH.cx, ARCH.cy, ARCH.rx - rad, ARCH.ry - rad, 0, Math.PI * 1.02, Math.PI * 1.98);
       c.stroke();
     }
     // lane guide lines to the flippers
     c.strokeStyle = rgba(NEON.cyan, 0.3);
     c.lineWidth = 1.6;
     for (const m of [0, 1]) {
-      const X = (x: number) => (m ? 388 - x : x);
+      const X = (x: number) => (m ? MIRROR - x : x);
       c.beginPath();
-      c.moveTo(X(46), 520);
-      c.lineTo(X(46), 590);
-      c.lineTo(X(112), 628);
+      c.moveTo(X(58), 520);
+      c.lineTo(X(58), 580);
+      c.lineTo(X(FLIP_PX - 6), 632);
       c.stroke();
       c.strokeStyle = rgba(NEON.amber, 0.28);
       c.beginPath();
-      c.moveTo(X(23), 530);
-      c.lineTo(X(23), 700);
+      c.moveTo(X(27), 530);
+      c.lineTo(X(27), 700);
       c.stroke();
       c.strokeStyle = rgba(NEON.cyan, 0.3);
     }
@@ -313,11 +314,11 @@ export class Renderer {
     c.font = '700 9px system-ui, sans-serif';
     c.textAlign = 'center';
     (c as Ctx & { letterSpacing: string }).letterSpacing = '3px';
-    c.fillText('NAV LANES', 194, 60);
-    c.fillText('REACTORS', 210, 172);
-    c.fillText('WORMHOLE', 312, 380);
-    c.fillText('ORBIT RANK', 194, 500);
-    c.fillText('SAVE', 194, 626);
+    c.fillText('NAV LANES', CX, 60);
+    c.fillText('REACTORS', CX, 148);
+    c.fillText('WORMHOLE', SAUCER.x, 376);
+    c.fillText('ORBIT RANK', CX, 508);
+    c.fillText('SAVE', CX, 628);
     (c as Ctx & { letterSpacing: string }).letterSpacing = '0px';
     c.restore();
   }
@@ -344,7 +345,7 @@ export class Renderer {
     // rails first (so rubber and inserts sit on top)
     for (const s of g) if (s.kind === 'arch' || s.kind === 'wall' || s.kind === 'guide' || s.kind === 'divider') this.metalRail(c, s);
     // lane floor cap
-    line(c, 380, 710, 408, 710, 3, '#273046');
+    line(c, LANE_DIV + 2, 710, WALL_R - 2, 710, 3, '#273046');
 
     // bumper bases
     for (const b of BUMPERS) {
@@ -376,16 +377,16 @@ export class Renderer {
 
     // Slingshot rubber bodies and shadows
     for (const m of [0, 1]) {
-      const X = (x: number) => (m ? 388 - x : x);
+      const X = (x: number) => (m ? MIRROR - x : x);
       c.save();
       c.shadowColor = 'rgba(0,0,0,.7)';
       c.shadowBlur = 6;
       c.shadowOffsetX = 3;
       c.shadowOffsetY = 5;
       c.beginPath();
-      c.moveTo(X(64), 492);
-      c.lineTo(X(112), 592);
-      c.lineTo(X(64), 572);
+      c.moveTo(X(88), 496);
+      c.lineTo(X(142), 596);
+      c.lineTo(X(88), 576);
       c.closePath();
       c.fillStyle = '#0d1020';
       c.fill();
@@ -561,15 +562,15 @@ export class Renderer {
 
   private drawSlings(c: Ctx, g: Game): void {
     for (const m of [0, 1]) {
-      const X = (x: number) => (m ? 388 - x : x);
+      const X = (x: number) => (m ? MIRROR - x : x);
       const f = g.flash[`s${m}`] ?? 0;
-      const gr = c.createLinearGradient(X(64), 492, X(112), 592);
+      const gr = c.createLinearGradient(X(88), 496, X(142), 596);
       gr.addColorStop(0, '#2a2f66');
       gr.addColorStop(1, '#0b0d22');
       c.beginPath();
-      c.moveTo(X(64), 492);
-      c.lineTo(X(112), 592);
-      c.lineTo(X(64), 572);
+      c.moveTo(X(88), 496);
+      c.lineTo(X(142), 596);
+      c.lineTo(X(88), 576);
       c.closePath();
       c.fillStyle = gr;
       c.fill();
@@ -577,10 +578,10 @@ export class Renderer {
       c.lineWidth = 1;
       c.stroke();
       // kicker rubber with a neon strip
-      line(c, X(64), 492, X(112), 592, 5.5, '#141a30');
-      line(c, X(64.5), 493, X(111.5), 591, 2.2, rgba(NEON.cyan, 0.45 + 0.55 * f));
-      line(c, X(64.5), 493, X(111.5), 591, 0.8, `rgba(255,255,255,${0.35 + 0.65 * f})`);
-      halo(c, X((64 + 112) / 2), 542, 50, NEON.cyan, 0.18 + 0.7 * f);
+      line(c, X(88), 496, X(142), 596, 5.5, '#141a30');
+      line(c, X(88.5), 497, X(141.5), 595, 2.2, rgba(NEON.cyan, 0.45 + 0.55 * f));
+      line(c, X(88.5), 497, X(141.5), 595, 0.8, `rgba(255,255,255,${0.35 + 0.65 * f})`);
+      halo(c, X((88 + 142) / 2), 546, 50, NEON.cyan, 0.18 + 0.7 * f);
     }
   }
 
@@ -802,12 +803,12 @@ export class Renderer {
     c.shadowColor = b.color;
     c.shadowBlur = 16;
     c.fillStyle = '#fff';
-    c.fillText(b.text, 194, y);
+    c.fillText(b.text, CX, y);
     c.shadowBlur = 0;
     c.font = '600 12px system-ui, "Segoe UI", sans-serif';
     c.fillStyle = b.color;
     (c as Ctx & { letterSpacing: string }).letterSpacing = '2px';
-    if (b.sub) c.fillText(b.sub.toUpperCase(), 194, y + 24);
+    if (b.sub) c.fillText(b.sub.toUpperCase(), CX, y + 24);
     c.restore();
   }
 }

@@ -1,8 +1,8 @@
 .pb {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  /* A quiet deep-space backdrop for the space beside the table (the table itself is portrait). */
+  align-items: flex-start;
+  justify-content: flex-start;
+  /* Deep-space backdrop; the window is sized to table + panel so none of it shows beside the table. */
   background:
     radial-gradient(1px 1px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 60%),
     radial-gradient(1px 1px at 27% 71%, rgba(207, 230, 255, 0.45), transparent 60%),
@@ -30,7 +30,7 @@
 
 .pb .pb-canvas {
   display: block;
-  touch-action: none;
+  pointer-events: none; /* keyboard only */
 }
 
 .pb .pb-overlay {
