@@ -19,12 +19,19 @@ export function mountStartMenu(): void {
 
   const orb = () => document.querySelector<HTMLElement>('.dock-orb');
 
+  /**
+   * Two resting heights: just above the dock, or — while the pointer is over
+   * the dock — just above fully magnified icons. It only moves when the
+   * pointer enters or leaves the dock, never while gliding along it.
+   */
+  const RAISE = 30;
   const place = () => {
     if (!el) return;
-    let top = window.innerHeight - 80;
-    document.querySelectorAll<HTMLElement>('#dock .dock-item').forEach((i) => (top = Math.min(top, i.getBoundingClientRect().top)));
+    const shelf = document.querySelector<HTMLElement>('#dock .dock-shelf');
+    const top = shelf ? shelf.getBoundingClientRect().top : window.innerHeight - 80;
+    const raised = document.getElementById('dock')?.classList.contains('hover') ? RAISE : 0;
     el.style.left = `${Math.round((window.innerWidth - el.offsetWidth) / 2)}px`;
-    el.style.bottom = `${Math.round(window.innerHeight - top + 12)}px`;
+    el.style.bottom = `${Math.round(window.innerHeight - top + 10 + raised)}px`;
   };
 
   const loop = () => {

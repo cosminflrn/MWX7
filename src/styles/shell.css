@@ -196,7 +196,7 @@
   transition: width 0.18s ease-out, height 0.18s ease-out;
 }
 
-.dock-shelf.magnify .dock-item { transition: width 0.06s linear, height 0.06s linear; }
+.dock-shelf.magnify .dock-item { transition: none; }
 
 .dock-icon,
 .dock-icon svg, .dock-icon img,
@@ -286,6 +286,7 @@
   border: 1px solid rgba(0, 0, 0, 0.6);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 24px rgba(0, 0, 0, 0.5);
   transform-origin: 50% 100%;
+  transition: bottom 0.26s cubic-bezier(.2,.8,.2,1);
 }
 
 .sm-header {
@@ -927,7 +928,17 @@
 }
 
 .desk-icon.dragging { z-index: 3; opacity: 0.85; }
-.desk-icon.snapping { transition: left 0.18s cubic-bezier(.2,.8,.2,1), top 0.18s cubic-bezier(.2,.8,.2,1); }
+.desk-icon.snapping { transition: left 0.11s cubic-bezier(.2,.8,.2,1), top 0.11s cubic-bezier(.2,.8,.2,1); }
+.desk-ghost {
+  position: absolute;
+  width: 94px;
+  height: 84px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(150, 200, 255, 0.18);
+  pointer-events: none;
+  transition: left 0.08s ease-out, top 0.08s ease-out;
+}
 .desk-icon-label { max-width: 88px; overflow-wrap: anywhere; }
 
 /* ===== Message box (Win7) ===== */
@@ -1020,8 +1031,9 @@
 .peek-clone { pointer-events: none; transition: none !important; box-shadow: none !important; }
 .peek-tile.minimized .peek-shot { opacity: 0.75; }
 
-body.peeking .win:not(.peek-target) { opacity: 0.05 !important; transition: opacity 0.25s; }
-body.peeking .win.peek-target { z-index: 98500 !important; }
+/* Only real windows fade — the thumbnails in the Peek popup are copies with the same class. */
+body.peeking #windows > .win:not(.peek-target) { opacity: 0.05 !important; transition: opacity 0.25s; }
+body.peeking #windows > .win.peek-target { z-index: 98500 !important; }
 .win { transition: opacity 0.25s; }
 
 /* The thumbnails replace the dock label while Peek is open. */
@@ -1064,3 +1076,41 @@ body.overview .win * { pointer-events: none; }
 body.overview .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
 body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 #desktop-icons { transition: opacity 0.3s; }
+
+/* ===== Top bar: full-screen morph ===== */
+.mb-logo-stack { position: relative; display: block; width: 17px; height: 17px; }
+.mb-logo-stack > span { position: absolute; inset: 0; transition: opacity 0.3s, transform 0.34s cubic-bezier(.2,.8,.2,1); }
+.mb-logo-stack svg, .mb-logo-stack img { width: 17px; height: 17px; }
+.mb-appicon { opacity: 0; transform: scale(0.5) rotate(-20deg); }
+#menubar.fs .mb-orb { opacity: 0; transform: scale(0.5) rotate(20deg); }
+#menubar.fs .mb-appicon { opacity: 1; transform: none; }
+
+.mb-wc {
+  width: 0;
+  height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  transition: width 0.34s cubic-bezier(.2,.8,.2,1), opacity 0.25s;
+}
+
+.mb-wc-inner { height: 100%; align-items: center; padding: 0 2px 0 10px; }
+.mb-wc .wc { transform: translateX(24px); transition: transform 0.4s cubic-bezier(.2,.8,.2,1); }
+#menubar.fs .mb-wc { width: 80px; opacity: 1; }
+#menubar.fs .mb-wc .wc { transform: none; }
+#menubar.fs .mb-wc .wc:nth-child(2) { transition-delay: 0.03s; }
+#menubar.fs .mb-wc .wc:nth-child(3) { transition-delay: 0.06s; }
+.mb-icon svg { width: 15px; height: 15px; }
+
+/* ===== Full-width dock under a full-screen window ===== */
+#dock { transition: bottom 0.34s cubic-bezier(.2,.8,.2,1); }
+#dock.full { bottom: 0; }
+#dock.full .dock-shelf {
+  width: 100vw;
+  height: 62px;
+  justify-content: center;
+  padding-bottom: 6px;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}

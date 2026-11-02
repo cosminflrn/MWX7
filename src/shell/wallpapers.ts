@@ -385,7 +385,7 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
  * every motion term is a whole harmonic of the cycle, so the loop is exact.
  */
 function duskRenderer(): Renderer {
-  const [canvas, ctx] = canvas2d(192, 108);
+  const [canvas, ctx] = canvas2d(640, 360);
   const PERIOD = 80;
   const mix = (a: number[], b: number[], k: number) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
   const rgb = (c: number[], a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -516,7 +516,7 @@ function canvasLayer(id: string, make: () => Renderer): Layer {
 }
 
 const RENDERERS: Record<string, () => Renderer> = {
-  aurora: () => auroraRenderer(),
+  aurora: () => auroraRenderer(Math.min(window.devicePixelRatio || 1, 2), 3840),
   dusk: () => duskRenderer(),
 };
 

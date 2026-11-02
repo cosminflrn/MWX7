@@ -34,4 +34,4 @@ npm run dev
 Read [`SPEC.md`](SPEC.md) and [`CLAUDE.md`](CLAUDE.md). Work is tracked as GitHub issues; see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Credits
-Created by Cosmin, built with Claude. Code, logo and arrangements are original; third-party media (Oxygen icons, Selawik font, Pexels footage and photos, FluidR3 samples) is credited in [public/media/CREDITS.md](public/media/CREDITS.md). MWX 7 is an independent project and is not affiliated with any operating system vendor.
+Created by Cosmin, built with Claude. Code, logo and arrangements are original; third-party media (Tango icons, Selawik font, Pexels footage and photos, FluidR3 samples) is credited in [public/media/CREDITS.md](public/media/CREDITS.md). MWX 7 is an independent project and is not affiliated with any operating system vendor.

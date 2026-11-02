@@ -3,7 +3,7 @@ import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
-import { activeWindow, closeWindow, focusWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
+import { activeWindow, closeWindow, focusWindow, maximizedWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
 import { fs } from '../core/fs';
 import { notify } from '../core/os';
 import { play } from '../core/sound';
@@ -182,21 +182,91 @@ export function mountDock(dock: HTMLElement): void {
     openMenu(items, { x: r.left, y: r.top - 8 }, { above: true, anchor: btn });
   };
 
-  // macOS magnification
+  /*
+   * macOS magnification, smoothed. Distances are measured against each icon's
+   * *resting* centre (measuring the already-grown icons made them wiggle), the
+   * pointer position is eased toward the real one every frame, and each icon's
+   * size eases toward its target — so uneven mouse movement still produces a
+   * fluid wave.
+   */
+  let rest: Array<{ el: HTMLElement; cx: number }> | null = null;
+  const scales = new WeakMap<HTMLElement, number>();
+  let pointerX: number | null = null;
+  let easedX: number | null = null;
+  let raf = 0;
+  const items = () => [...shelf.querySelectorAll<HTMLElement>('.dock-item:not(.leaving)')];
+  const measureRest = () => {
+    // Resting centre = current centre corrected for the icon's current growth on each side.
+    rest = items().map((el) => {
+      const r = el.getBoundingClientRect();
+      return { el, cx: r.left + r.width / 2 };
+    });
+  };
+  const tick = () => {
+    raf = 0;
+    if (!rest || rest.length !== items().length) measureRest();
+    if (pointerX !== null) easedX = easedX === null ? pointerX : easedX + (pointerX - easedX) * 0.22;
+    let moving = false;
+    for (const { el, cx } of rest!) {
+      const d = pointerX === null || easedX === null ? Infinity : Math.abs(easedX - cx);
+      const want = 1 + (MAX_SCALE - 1) * Math.max(0, Math.cos(Math.min(d / RANGE, 1) * (Math.PI / 2)));
+      const cur = scales.get(el) ?? 1;
+      const next = cur + (want - cur) * 0.28;
+      const settled = Math.abs(next - want) < 0.002;
+      const val = settled ? want : next;
+      scales.set(el, val);
+      if (val === 1) el.style.removeProperty('--size');
+      else el.style.setProperty('--size', `${(BASE * val).toFixed(2)}px`);
+      if (!settled) moving = true;
+    }
+    if (pointerX !== null && easedX !== null && Math.abs(pointerX - easedX) > 0.3) moving = true;
+    if (moving) raf = requestAnimationFrame(tick);
+    else if (pointerX === null) {
+      rest = null;
+      easedX = null;
+      shelf.classList.remove('magnify');
+    }
+  };
+  const kick = () => {
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+  shelf.addEventListener('pointerenter', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    if (!shelf.classList.contains('magnify')) measureRest();
+    shelf.classList.add('magnify');
+    dock.classList.add('hover');
+    pointerX = e.clientX;
+    kick();
+  });
   shelf.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
-    shelf.classList.add('magnify');
-    for (const item of shelf.querySelectorAll<HTMLElement>('.dock-item')) {
-      const r = item.getBoundingClientRect();
-      const d = Math.abs(e.clientX - (r.left + r.width / 2));
-      const s = 1 + (MAX_SCALE - 1) * Math.max(0, Math.cos(Math.min(d / RANGE, 1) * (Math.PI / 2)));
-      item.style.setProperty('--size', `${Math.round(BASE * s)}px`);
-    }
+    pointerX = e.clientX;
+    kick();
   });
   shelf.addEventListener('pointerleave', () => {
-    shelf.classList.remove('magnify');
-    shelf.querySelectorAll<HTMLElement>('.dock-item').forEach((i) => i.style.removeProperty('--size'));
+    pointerX = null;
+    dock.classList.remove('hover');
+    kick();
   });
+
+  /* Full-width dock while a window fills the screen (no gaps under it). */
+  const updateFull = () => {
+    const full = !!maximizedWindow();
+    if (full === dock.classList.contains('full')) return;
+    const before = shelf.getBoundingClientRect();
+    dock.classList.toggle('full', full);
+    rest = null;
+    const after = shelf.getBoundingClientRect();
+    shelf.animate(
+      [
+        { width: `${before.width}px`, height: `${before.height}px`, transform: `translateY(${before.bottom - after.bottom}px)`, borderRadius: full ? '17px' : '0px' },
+        { width: `${after.width}px`, height: `${after.height}px`, transform: 'none', borderRadius: full ? '0px' : '17px' },
+      ],
+      { duration: 340, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+  };
+  for (const ev of ['window:state', 'window:minimize', 'window:restore', 'window:close', 'window:open'] as const)
+    bus.on(ev, () => window.setTimeout(updateFull, 0));
 
   setMinimizeTarget((appId) => itemFor.get(appId)?.getBoundingClientRect() ?? null);
 

@@ -49,7 +49,7 @@ export const about: AppManifest = {
       h(
         'p',
         { class: 'about-small' },
-        'Icons: KDE Oxygen (LGPL) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
+        'Icons: Tango (public domain) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
       ),
     );
   },

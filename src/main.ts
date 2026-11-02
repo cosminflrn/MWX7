@@ -9,7 +9,7 @@ import { seedFS } from './core/fs';
 import { forgetPersistedData, settings } from './core/settings';
 import { play } from './core/sound';
 import { notify } from './core/os';
-import { initWM } from './core/wm';
+import { initWM, warmUpGenie } from './core/wm';
 import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountMenubar } from './shell/menubar';
@@ -77,6 +77,7 @@ async function start(): Promise<void> {
   );
 
   mountSelection($('desktop'), $('desktop-icons'));
+  warmUpGenie();
   await startup();
 
   notify(`Welcome, ${settings.get().userName}`, 'Click the orb to start, or the magnifier to search.', icons.orb);

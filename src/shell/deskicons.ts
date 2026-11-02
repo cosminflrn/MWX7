@@ -128,6 +128,7 @@ export function mountDeskIcons(layer: HTMLElement): void {
   };
 
   const itemFor = new Map<string, Item>();
+  const ghost = h('div', { class: 'desk-ghost' });
 
   /* ---------- dragging ---------- */
 
@@ -160,11 +161,16 @@ export function mountDeskIcons(layer: HTMLElement): void {
         o.g.style.left = `${o.x + dx}px`;
         o.g.style.top = `${o.y + dy}px`;
       }
+      // Show where the icon will land, so the snap is visible before letting go.
+      const c = nearestFree(parseFloat(el.style.left), parseFloat(el.style.top), occupied(new Set(group.map((g) => g.dataset.key!))));
+      if (!ghost.isConnected) layer.append(ghost);
+      place(ghost, c);
     };
     const up = () => {
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
       el.removeEventListener('pointercancel', up);
+      ghost.remove();
       if (!dragging) return;
       const keys = new Set(group.map((g) => g.dataset.key!));
       const taken = occupied(keys);
@@ -175,7 +181,7 @@ export function mountDeskIcons(layer: HTMLElement): void {
         o.g.classList.remove('dragging');
         o.g.classList.add('snapping');
         place(o.g, c);
-        window.setTimeout(() => o.g.classList.remove('snapping'), 200);
+        window.setTimeout(() => o.g.classList.remove('snapping'), 130);
       }
     };
     el.addEventListener('pointermove', move);

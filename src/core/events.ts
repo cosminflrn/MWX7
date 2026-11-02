@@ -7,6 +7,8 @@ export interface OSEvents {
   'window:focus': Win | null;
   'window:minimize': Win;
   'window:restore': Win;
+  /** Maximized / snapped / restored */
+  'window:state': Win;
   'window:title': Win;
   'window:menus': Win;
   'settings:change': Settings;

@@ -40,7 +40,7 @@ export const ICON_DEFS = `
   </defs>
 </svg>`;
 
-/** Raster icons (KDE Oxygen, LGPL — see public/media/icons/). */
+/** Raster icons (Tango, public domain — see public/media/icons/). */
 const png = (name: string) =>
   `<img class="icon-img" alt="" draggable="false" src="${import.meta.env.BASE_URL}media/icons/${name}.png">`;
 
@@ -87,11 +87,7 @@ export const icons = {
 
   folder: png('folder'),
 
-  file: svg(`
-    <path d="M15 7h22l13 13v36a2 2 0 0 1-2 2H15a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" fill="#000" opacity=".12" transform="translate(.8 1.2)"/>
-    <path d="M15 7h22l13 13v36a2 2 0 0 1-2 2H15a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" fill="url(#mx-paper)" stroke="#000" stroke-opacity=".22" stroke-width=".75"/>
-    <path d="M37 7v11a2 2 0 0 0 2 2h11" fill="#e3e8ef" stroke="#000" stroke-opacity=".22" stroke-width=".75" stroke-linejoin="round"/>
-    <g stroke="#a9b8ca" stroke-width=".9"><path d="M19 28h25M19 33h25M19 38h25M19 43h25M19 48h16"/></g>`),
+  file: png('text'),
 
   computer: png('computer'),
 
@@ -112,6 +108,10 @@ export const icons = {
   trash: png('trash-empty'),
   trashFull: png('trash-full'),
   binoculars: png('search'),
+  paint: png('paint'),
+  pinball: png('pinball'),
+  drive: png('drive'),
+  image: png('image'),
 } as const;
 
 export type IconName = keyof typeof icons;

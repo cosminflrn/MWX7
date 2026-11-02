@@ -4,10 +4,14 @@ import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
 import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
-import { closeMenu, isMenuOpen, openMenu } from '../ui/menu';
+import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
 import { openOverview } from './overview';
 import { logOff, shutDown } from './screens';
+
+/** Two overlapping windows: the Overview (all windows at once) glyph. */
+const OVERVIEW_GLYPH =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="12" height="9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="9.5" y="10" width="12" height="9" rx="1.6" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.8"/></svg>';
 
 /** macOS-style global menu bar with Win7 glass, showing the focused app's menus. */
 export function mountMenubar(bar: HTMLElement): void {
@@ -20,14 +24,14 @@ export function mountMenubar(bar: HTMLElement): void {
   const systemMenu: MenuDef = {
     label: '◆',
     items: [
-      { label: 'About MWX 7', action: () => launch('about') },
+      { label: 'About MWX 7', icon: menuIcon('info'), action: () => launch('about') },
       { separator: true },
-      { label: 'Settings…', action: () => launch('settings') },
-      { label: 'Search', action: () => bus.emit('search:open', {}) },
-      { label: 'Overview', action: () => openOverview() },
+      { label: 'Settings…', icon: menuIcon('settings'), action: () => launch('settings') },
+      { label: 'Search', icon: menuIcon('search'), action: () => bus.emit('search:open', {}) },
+      { label: 'Overview', icon: OVERVIEW_GLYPH, action: () => openOverview() },
       { separator: true },
-      { label: 'Log Off…', action: () => void logOff() },
-      { label: 'Shut Down…', action: () => void shutDown() },
+      { label: 'Log Off…', icon: menuIcon('logoff'), action: () => void logOff() },
+      { label: 'Shut Down…', icon: menuIcon('shutdown'), action: () => void shutDown() },
     ],
   };
 
@@ -58,30 +62,75 @@ export function mountMenubar(bar: HTMLElement): void {
     return btn;
   };
 
+  // The logo slot holds the MWX orb and, in full screen, the app's own icon; they crossfade.
+  const appIcon = h('span', { class: 'mb-appicon' });
+  const logo = h('span', { class: 'mb-logo-stack' }, h('span', { class: 'mb-orb', html: icons.orb }), appIcon);
+
   const render = () => {
     const w = activeWindow();
     left.replaceChildren();
-    left.append(menuButton(systemMenu, 'mb-logo', h('span', { class: 'mb-orb', html: icons.orb })));
+    left.append(menuButton(systemMenu, 'mb-logo', logo));
     const appName = w ? w.manifest.name : 'Desktop';
     const appMenu: MenuDef = {
       label: appName,
       items: w
         ? [
-            { label: `About ${appName}`, action: () => launch('about', { app: w.appId }) },
+            { label: `About ${appName}`, icon: menuIcon('info'), action: () => launch('about', { app: w.appId }) },
             { separator: true },
-            { label: 'Minimize', action: () => minimizeWindow(w.id) },
-            { label: w.state === 'max' ? 'Restore' : 'Maximize', action: () => toggleMaximize(w.id) },
-            { label: 'Center', action: () => centerWindow(w.id) },
+            { label: 'Minimize', icon: menuIcon('minimize'), action: () => minimizeWindow(w.id) },
+            {
+              label: w.state === 'max' ? 'Exit Full Screen' : 'Full Screen',
+              icon: menuIcon(w.state === 'max' ? 'restore' : 'maximize'),
+              disabled: w.manifest.window?.resizable === false,
+              action: () => toggleMaximize(w.id),
+            },
+            { label: 'Center', icon: menuIcon('restore'), disabled: w.state === 'max', action: () => centerWindow(w.id) },
             { separator: true },
-            { label: `Close ${appName}`, action: () => closeWindow(w.id) },
+            { label: `Close ${appName}`, icon: menuIcon('close'), action: () => closeWindow(w.id) },
           ]
         : [
-            { label: 'Personalize…', action: () => launch('settings') },
-            { label: 'About MWX 7', action: () => launch('about') },
+            { label: 'Personalize…', icon: menuIcon('wallpaper'), action: () => launch('settings') },
+            { label: 'About MWX 7', icon: menuIcon('info'), action: () => launch('about') },
           ],
     };
     left.append(menuButton(appMenu, 'mb-app'));
     for (const m of w?.menus ?? []) left.append(menuButton(m));
+    morph();
+  };
+
+  /**
+   * Full screen: the focused window's title bar merges into this bar. Its icon
+   * replaces the orb, and its traffic lights slide in at the right edge,
+   * pushing the clock aside.
+   */
+  const wcMin = h('button', { class: 'wc wc-min', title: 'Minimize', 'aria-label': 'Minimize' });
+  const wcMax = h('button', { class: 'wc wc-max', title: 'Exit full screen', 'aria-label': 'Exit full screen' });
+  const wcClose = h('button', { class: 'wc wc-close', title: 'Close', 'aria-label': 'Close' });
+  const controls = h('div', { class: 'mb-wc' }, h('div', { class: 'mb-wc-inner win-controls' }, wcMin, wcMax, wcClose));
+  const target = () => {
+    const w = activeWindow();
+    return w && w.state === 'max' && !w.minimized ? w : null;
+  };
+  wcMin.addEventListener('click', () => {
+    const w = target();
+    if (w) minimizeWindow(w.id);
+  });
+  wcMax.addEventListener('click', () => {
+    const w = target();
+    if (w) toggleMaximize(w.id);
+  });
+  wcClose.addEventListener('click', () => {
+    const w = target();
+    if (w) closeWindow(w.id);
+  });
+  let fsApp = '';
+  const morph = () => {
+    const w = target();
+    if (w && fsApp !== w.appId) {
+      appIcon.innerHTML = w.manifest.icon;
+      fsApp = w.appId;
+    }
+    bar.classList.toggle('fs', !!w);
   };
 
   // Right side: Search, Overview + clock
@@ -99,7 +148,14 @@ export function mountMenubar(bar: HTMLElement): void {
     'aria-expanded': 'false',
     onclick: () => toggleCalendar(clock),
   });
-  right.append(searchBtn, clock);
+  const overviewBtn = h('button', {
+    class: 'mb-item mb-icon',
+    title: 'Overview',
+    'aria-label': 'Overview',
+    html: OVERVIEW_GLYPH,
+    onclick: () => openOverview(),
+  });
+  right.append(searchBtn, overviewBtn, clock, controls);
 
   const tick = () => {
     const d = new Date();
@@ -113,6 +169,11 @@ export function mountMenubar(bar: HTMLElement): void {
 
   render();
   bus.on('window:focus', render);
+  bus.on('window:state', (w) => {
+    if (w === activeWindow()) render();
+  });
+  bus.on('window:minimize', morph);
+  bus.on('window:close', () => window.setTimeout(morph, 0));
   bus.on('window:menus', (w) => {
     if (w === activeWindow()) render();
   });

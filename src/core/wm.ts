@@ -31,6 +31,8 @@ export interface Win {
 
 export const MENUBAR_H = 28;
 export const DOCK_RESERVE = 82;
+/** Height of the dock when it stretches into a full-width bar under a maximized window. */
+export const DOCK_FULL_H = 62;
 const SNAP_EDGE = 6;
 
 let layer: HTMLElement;
@@ -39,7 +41,6 @@ const wins = new Map<string, Win>();
 let zTop = 10;
 let activeId: string | null = null;
 let seq = 0;
-let cascade = 0;
 let minimizeTarget: (appId: string) => DOMRect | null = () => null;
 
 export function initWM(container: HTMLElement): void {
@@ -83,7 +84,9 @@ function stateRect(state: WinState): Rect | null {
   const wa = workArea();
   switch (state) {
     case 'max':
-      return wa;
+      // Edge to edge between the top bar and the full-width dock: the title bar
+      // merges into the top bar, so there is no gap anywhere.
+      return { x: 0, y: MENUBAR_H, w: window.innerWidth, h: Math.max(200, window.innerHeight - MENUBAR_H - DOCK_FULL_H) };
     case 'left':
       return { x: 0, y: wa.y, w: Math.round(wa.w / 2), h: wa.h };
     case 'right':
@@ -96,7 +99,8 @@ function stateRect(state: WinState): Rect | null {
 function withAnimation(w: Win, fn: () => void): void {
   w.el.classList.add('anim');
   fn();
-  window.setTimeout(() => w.el.classList.remove('anim'), 230);
+  window.clearTimeout(Number(w.el.dataset.animTimer));
+  w.el.dataset.animTimer = String(window.setTimeout(() => w.el.classList.remove('anim'), 380));
 }
 
 function applyState(w: Win, animate = true): void {
@@ -109,6 +113,7 @@ function applyState(w: Win, animate = true): void {
     }
     w.el.classList.toggle('maximized', w.state === 'max');
     w.el.classList.toggle('snapped', w.state === 'left' || w.state === 'right');
+    bus.emit('window:state', w);
   };
   if (animate) withAnimation(w, run);
   else run();
@@ -141,7 +146,7 @@ export function snapWindow(id: string, state: WinState): void {
 
 /* ---------- lifecycle ---------- */
 
-/** Default geometry: generous and centered; extra windows cascade gently from the center. */
+/** Default geometry: generous and always centered (windows never cascade). */
 function initialRect(cfg: NonNullable<AppManifest['window']>): Rect {
   const wa = workArea();
   const resizable = cfg.resizable !== false;
@@ -149,10 +154,8 @@ function initialRect(cfg: NonNullable<AppManifest['window']>): Rect {
   const baseH = cfg.height ?? 520;
   const width = Math.round(Math.min(resizable ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
   const height = Math.round(Math.min(resizable ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
-  const visible = allWindows().filter((w) => !w.minimized).length;
-  const off = visible ? ((cascade++ % 6) + 1) * 24 : ((cascade = 0), 0);
-  const x = Math.round((wa.w - width) / 2) + off;
-  const y = Math.round(wa.y + (wa.h - height) / 2) + off;
+  const x = Math.round((wa.w - width) / 2);
+  const y = Math.round(wa.y + (wa.h - height) / 2);
   return {
     x: Math.min(Math.max(8, x), wa.w - width - 8),
     y: Math.min(Math.max(wa.y + 6, y), wa.y + wa.h - height),
@@ -177,6 +180,12 @@ export function centerWindow(id: string): void {
   withAnimation(w, () =>
     setRect(w, { x: Math.round((wa.w - width) / 2), y: Math.round(wa.y + (wa.h - height) / 2), w: width, h: height }),
   );
+  bus.emit('window:state', w);
+}
+
+/** The window currently filling the screen (if any is visible). */
+export function maximizedWindow(): Win | null {
+  return allWindows().find((w) => w.state === 'max' && !w.minimized) ?? null;
 }
 
 export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => void | (() => void)): Win {
@@ -195,7 +204,7 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
       <div class="win-title"><span class="win-icon">${manifest.icon}</span><span class="win-title-text"></span></div>
       <div class="win-controls">
         <button class="wc wc-min" title="Minimize" aria-label="Minimize"></button>
-        <button class="wc wc-max" title="Maximize" aria-label="Maximize"></button>
+        <button class="wc wc-max" title="Full screen" aria-label="Full screen"></button>
         <button class="wc wc-close" title="Close" aria-label="Close"></button>
       </div>
     </div>
@@ -289,6 +298,7 @@ export function focusWindow(id: string): void {
     activeId = id;
     for (const v of wins.values()) v.el.classList.toggle('active', v.id === id);
     bus.emit('window:focus', w);
+    refreshSnapshot(w);
   }
 }
 
@@ -314,9 +324,12 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
  * Rasterizes the window once (DOM → canvas). The glass is replaced by a solid
  * frame colour because backdrop blur can't be captured.
  */
-async function snapshot(w: Win): Promise<HTMLCanvasElement | null> {
-  const { toCanvas } = await import('html-to-image');
-  const active = w.el.classList.contains('active');
+let toCanvasFn: typeof import('html-to-image').toCanvas | null = null;
+const loadRasterizer = async () => (toCanvasFn ??= (await import('html-to-image')).toCanvas);
+
+async function snapshot(w: Win, budget = 450): Promise<HTMLCanvasElement | null> {
+  const toCanvas = await loadRasterizer();
+  const active = true;
   const job = toCanvas(w.el, {
     pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
     skipFonts: true,
@@ -334,8 +347,32 @@ async function snapshot(w: Win): Promise<HTMLCanvasElement | null> {
       background: active ? 'linear-gradient(#c2d8ef, #9ebddf)' : 'linear-gradient(#dbe4ee, #c4d0dd)',
     },
   }).catch(() => null);
-  const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), 450));
+  const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), budget));
   return Promise.race([job, timeout]);
+}
+
+/**
+ * The first rasterization is slow (module load, image embedding), which made
+ * the first genie of a session stutter. Warm everything up in idle time and
+ * keep a recent snapshot of each window so minimizing always starts instantly.
+ */
+const idle = (fn: () => void) => {
+  const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o: object) => number }).requestIdleCallback;
+  if (ric) ric.call(window, fn, { timeout: 1500 });
+  else window.setTimeout(fn, 300);
+};
+
+function refreshSnapshot(w: Win): void {
+  idle(() => {
+    if (!wins.has(w.id) || w.minimized || w.el.style.display === 'none') return;
+    void snapshot(w, 1500).then((c) => {
+      if (c && !w.minimized) snaps.set(w, c);
+    });
+  });
+}
+
+export function warmUpGenie(): void {
+  idle(() => void loadRasterizer());
 }
 
 /**
@@ -347,6 +384,9 @@ async function snapshot(w: Win): Promise<HTMLCanvasElement | null> {
 function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean): Promise<void> {
   const cv = document.createElement('canvas');
   cv.className = 'genie-layer';
+  // The window ends up *behind* the dock icon: start slightly in front of the
+  // icon centre and finish inside its lower half, fading as it slides under.
+  t = new DOMRect(t.left + t.width * 0.18, t.top + t.height * 0.35, t.width * 0.64, t.height * 0.55);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(window.innerWidth * dpr);
   cv.height = Math.round(window.innerHeight * dpr);
@@ -366,7 +406,7 @@ function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean
       const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
       const P = reverse ? 1 - e : e;
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      ctx.globalAlpha = 1 - 0.35 * Math.pow(P, 3);
+      ctx.globalAlpha = 1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55));
       let y0 = Y(0, P);
       for (let i = 0; i < rows; i++) {
         const v1 = (i + 1) / rows;
@@ -408,17 +448,19 @@ export function minimizeWindow(id: string): void {
   const w = wins.get(id);
   if (!w || w.minimized) return;
   w.minimized = true;
-  w.el.classList.remove('active');
   bus.emit('window:minimize', w);
-  if (activeId === id) {
-    activeId = null;
-    focusTopmost();
-  }
   const target = minimizeTarget(w.appId);
   void (async () => {
-    const snap = target && !reducedMotion() ? await snapshot(w) : null;
+    // The window keeps its focus (and active look) until the genie takes over.
+    const fresh = target && !reducedMotion() ? await snapshot(w, 140) : null;
+    const snap = fresh ?? snaps.get(w) ?? null;
     if (!w.minimized) return;
     play('minimize');
+    w.el.classList.remove('active');
+    if (activeId === id) {
+      activeId = null;
+      focusTopmost();
+    }
     if (snap && target) {
       snaps.set(w, snap);
       w.el.style.display = 'none';
