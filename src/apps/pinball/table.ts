@@ -169,9 +169,9 @@ export function createWorld(): World {
     segs.push(seg(X(44), 520, X(44), 728, 'guide', 3));
     segs.push(seg(X(44), 566, X(FLIP_PX), 640, 'guide', 3, 0.3));
     // slingshot: kicker face + body
-    segs.push(seg(X(88), 496, X(142), 596, 'sling', 3, 0.5, m));
-    segs.push(seg(X(88), 496, X(88), 576, 'slingBody', 2.5, 0.3));
-    segs.push(seg(X(88), 576, X(142), 596, 'slingBody', 2.5, 0.3));
+    segs.push(seg(X(88), 490, X(142), 578, 'sling', 3, 0.5, m));
+    segs.push(seg(X(88), 490, X(88), 562, 'slingBody', 2.5, 0.3));
+    segs.push(seg(X(88), 562, X(142), 578, 'slingBody', 2.5, 0.3));
   }
 
   const targets = TARGET_Y.map((y, i) => seg(19, y - 12, 19, y + 12, 'target', 3.5, 0.3, i));
