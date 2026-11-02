@@ -4,7 +4,7 @@ import { play, unlockAudio } from '../core/sound';
 import { allWindows, closeWindow } from '../core/wm';
 import { h } from '../ui/dom';
 import { AVATARS, avatarHtml, avatarPicker } from './avatars';
-import { openCommander } from './commander';
+import { ensureVgaFont, openCommander } from './commander';
 import { createWallpaperLayer } from './wallpapers';
 
 /**
@@ -94,6 +94,7 @@ async function powerOn(): Promise<void> {
 /* ---------- 2. BIOS POST ---------- */
 
 async function bios(): Promise<void> {
+  ensureVgaFont();
   const text = h('pre', { class: 'bios-text' });
   const screen = h(
     'div',

@@ -559,7 +559,7 @@
   padding: 26px 34px;
   background: #000;
   color: #b9b9b9;
-  font: 16px/1.35 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
+  font: 16px/1.35 'Web437 IBM VGA 8x16', 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
 }
 
 .bios-text { margin: 0; font: inherit; white-space: pre-wrap; }

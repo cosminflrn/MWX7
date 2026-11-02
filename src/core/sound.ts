@@ -101,6 +101,38 @@ bus.on('settings:change', (s) => {
   if (master) master.gain.value = s.volume;
 });
 
+/* ---------- the real mouse click (CC0 recording, see public/media/CREDITS.md) ---------- */
+
+let clickBuf: AudioBuffer | null = null;
+let clickLoading = false;
+
+/** Decoded once; until it arrives (or if decoding fails) the synthesized tick below is the fallback. */
+function loadClick(ctx: AudioContext): void {
+  if (clickLoading) return;
+  clickLoading = true;
+  const url = `${import.meta.env.BASE_URL}media/sounds/click`;
+  const ext = new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? 'ogg' : 'mp3';
+  fetch(`${url}.${ext}`)
+    .then((r) => r.arrayBuffer())
+    .then((b) => ctx.decodeAudioData(b))
+    .then((buf) => {
+      clickBuf = buf;
+    })
+    .catch((err) => console.warn('[sound] click sample unavailable, using synthesized tick', err));
+}
+
+function realClick(ctx: AudioContext, t: number, rate: number): boolean {
+  if (!clickBuf) return false;
+  const src = ctx.createBufferSource();
+  src.buffer = clickBuf;
+  src.playbackRate.value = rate;
+  const amp = ctx.createGain();
+  amp.gain.value = 0.55;
+  src.connect(amp).connect(master!);
+  src.start(t);
+  return true;
+}
+
 /* ---------- building blocks ---------- */
 
 /** Plays a sample at `t`, with an optional fade-out so long samples end gracefully. */
@@ -216,6 +248,7 @@ export function play(name: SoundName): void {
     return;
   }
   const t = ctx.currentTime + 0.005;
+  if (name === 'click' || name === 'rclick') loadClick(ctx);
   switch (name) {
     case 'post': {
       // PC-speaker POST beep: a raw square wave, no reverb.
@@ -236,10 +269,11 @@ export function play(name: SoundName): void {
       break;
     }
     case 'click':
-      tock(ctx, t, 1200, 0.035);
+      if (!realClick(ctx, t, 1)) tock(ctx, t, 1200, 0.035);
       break;
     case 'rclick':
-      tock(ctx, t, 950, 0.035);
+      // Same switch, a touch lower: the right button feels slightly heavier.
+      if (!realClick(ctx, t, 0.92)) tock(ctx, t, 950, 0.035);
       break;
     case 'menuOpen':
       swoosh(ctx, t, 600, 2600, 0.2, 0.03);
