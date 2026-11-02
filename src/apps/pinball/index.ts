@@ -188,10 +188,10 @@ export const pinball: AppManifest = {
         {
           label: 'Game',
           items: [
-            { label: 'New Game', shortcut: 'F2', action: newGame },
+            { label: 'New Game', action: newGame },
             { separator: true },
             { label: 'Music', checked: music.enabled, action: toggleMusic },
-            { label: 'Mute Sound', shortcut: 'M', checked: sfx.muted, action: toggleMute },
+            { label: 'Mute Sound', checked: sfx.muted, action: toggleMute },
           ],
         },
       ];

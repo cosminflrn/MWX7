@@ -10,7 +10,7 @@ import { play } from '../core/sound';
 import { confirmDialog } from '../ui/dialog';
 import { h } from '../ui/dom';
 import { attachPeek } from './peek';
-import { openMenu } from '../ui/menu';
+import { menuIcon, openMenu } from '../ui/menu';
 
 /**
  * The MWX 7 dock: a macOS dock (magnification, bounce) with Win7 superbar
@@ -52,9 +52,9 @@ export function mountDock(dock: HTMLElement): void {
           const r = trash.getBoundingClientRect();
           openMenu(
             [
-              { label: 'Open', action: openTrash },
+              { label: 'Open', icon: menuIcon('open'), action: openTrash },
               { separator: true },
-              { label: 'Empty Trash…', disabled: empty, action: () => void emptyTrash() },
+              { label: 'Empty Trash…', icon: menuIcon('delete'), disabled: empty, action: () => void emptyTrash() },
             ],
             { x: r.left, y: r.top - 8 },
             { above: true, anchor: trash },
@@ -174,10 +174,12 @@ export function mountDock(dock: HTMLElement): void {
   const jumpList = (appId: string, btn: HTMLElement) => {
     const app = getApp(appId)!;
     const wins = windowsOf(appId);
-    const items: MenuItem[] = wins.map((w) => ({ label: w.title, checked: activeWindow()?.id === w.id, action: () => focusWindow(w.id) }));
+    const items: MenuItem[] = wins.map((w) => ({ label: w.title, icon: app.icon, checked: activeWindow()?.id === w.id, action: () => focusWindow(w.id) }));
     if (items.length) items.push({ separator: true });
-    if (!app.singleInstance || !wins.length) items.push({ label: wins.length ? 'New Window' : `Open ${app.name}`, action: () => launch(appId) });
-    if (wins.length) items.push({ label: wins.length > 1 ? 'Close All Windows' : 'Quit', action: () => wins.forEach((w) => closeWindow(w.id)) });
+    if (!app.singleInstance || !wins.length)
+      items.push({ label: wins.length ? 'New Window' : `Open ${app.name}`, icon: menuIcon(wins.length ? 'new-file' : 'open'), action: () => launch(appId) });
+    if (wins.length)
+      items.push({ label: wins.length > 1 ? 'Close All Windows' : 'Quit', icon: menuIcon('close'), action: () => wins.forEach((w) => closeWindow(w.id)) });
     const r = btn.getBoundingClientRect();
     openMenu(items, { x: r.left, y: r.top - 8 }, { above: true, anchor: btn });
   };

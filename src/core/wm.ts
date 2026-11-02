@@ -240,6 +240,14 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   el.querySelector('.wc-min')!.addEventListener('click', () => minimizeWindow(id));
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
+  // Keep the genie's cached snapshot fresh after the user changes something.
+  let snapTimer = 0;
+  const later = () => {
+    window.clearTimeout(snapTimer);
+    snapTimer = window.setTimeout(() => refreshSnapshot(w), 700);
+  };
+  el.addEventListener('input', later, true);
+  el.addEventListener('pointerup', later, true);
   titlebar.addEventListener('dblclick', (e) => {
     if (!(e.target as HTMLElement).closest('.win-controls')) centerWindow(id);
   });
@@ -342,6 +350,8 @@ async function snapshot(w: Win, budget = 450): Promise<HTMLCanvasElement | null>
       insetBlockStart: '0',
       margin: '0',
       transform: 'none',
+      // A snapshot taken during the open animation would otherwise come out half transparent.
+      opacity: '1',
       backdropFilter: 'none',
       boxShadow: 'none',
       background: active ? 'linear-gradient(#c2d8ef, #9ebddf)' : 'linear-gradient(#dbe4ee, #c4d0dd)',
@@ -390,7 +400,13 @@ function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.round(window.innerWidth * dpr);
   cv.height = Math.round(window.innerHeight * dpr);
-  const ctx = cv.getContext('2d')!;
+  const out = cv.getContext('2d')!;
+  // Rows are drawn opaque into a scratch canvas (overlapping rows with alpha
+  // would show stripes); the fade is applied once, when compositing.
+  const scratch = document.createElement('canvas');
+  scratch.width = cv.width;
+  scratch.height = cv.height;
+  const ctx = scratch.getContext('2d')!;
   ctx.scale(dpr, dpr);
   ctx.imageSmoothingQuality = 'high';
   document.body.append(cv);
@@ -406,7 +422,7 @@ function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean
       const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
       const P = reverse ? 1 - e : e;
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      ctx.globalAlpha = 1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55));
+      const alpha = 1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55));
       let y0 = Y(0, P);
       for (let i = 0; i < rows; i++) {
         const v1 = (i + 1) / rows;
@@ -417,6 +433,9 @@ function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean
         if (y1 - y0 > 0.02) ctx.drawImage(snap, 0, i * srcRow, snap.width, srcRow, left, y0, right - left, y1 - y0 + 0.6);
         y0 = y1;
       }
+      out.clearRect(0, 0, cv.width, cv.height);
+      out.globalAlpha = alpha;
+      out.drawImage(scratch, 0, 0);
       if (p < 1) requestAnimationFrame(frame);
       else {
         cv.remove();

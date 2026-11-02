@@ -48,5 +48,8 @@ Explorer (#8), Aero Peek (#7), grid desktop icons with drag & /Desktop files (#1
 ## ✅ v0.5 “Paint”
 Paint with the Windows 7 Ribbon (#9), Mission Control (#11).
 
+## ✅ v0.6 “Luna”
+Warm Tango icons, XP-blue clearer glass, smooth genie behind the dock, full-screen morph (title bar → top bar, full-width dock), smooth dock magnification, Overview button, menu icons, sharper wallpapers, My Computer, one-page Settings, Space Pinball v3, mouse-only (no shortcuts, no touch; Terminal removed).
+
 ## Next
-Touch & small screens (#14), a Media Player for the Music folder, an Internet-style browser app, more Control Panel pages.
+A browser app that follows the full-screen rules, a Media Player for the Music folder.

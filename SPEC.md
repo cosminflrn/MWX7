@@ -4,6 +4,7 @@
 >
 > **Product bar:** MWX 7 must feel premium and finished — realistic materials, never cartoonish or mockup-like. Close to the originals in fidelity, never a 1:1 copy.
 > **Naming:** the product is “MWX 7” (with a space). User-facing text never spells out what the letters stand for.
+> **Input:** desktop and mouse only — no touch support, no keyboard shortcuts (they clash with the host OS in a browser).
 > **Long-term:** a web version first, an installable Linux distro later — keep the shell portable.
 
 ## 1. Design direction (fixed hybrid)

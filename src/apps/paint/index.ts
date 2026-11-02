@@ -26,7 +26,7 @@ import {
 } from './draw';
 import { PICS, SAVE_RE, loadImage } from './files';
 import { glyph } from './glyphs';
-import { paintIcon } from './icon';
+import { icons } from '../../assets/icons';
 import { closePopup, col, group, openPopup, popMenu, rbtn, row, splitBig, type PopItem } from './ribbon';
 import './paint.css';
 
@@ -110,7 +110,7 @@ type Drag =
 export const paint: AppManifest = {
   id: 'paint',
   name: 'Paint',
-  icon: paintIcon,
+  icon: icons.paint,
   description: 'Draw, paint and edit pictures',
   keywords: ['draw', 'image', 'picture', 'bitmap', 'brush', 'png', 'canvas', 'edit'],
   pinned: false,
@@ -486,14 +486,14 @@ export const paint: AppManifest = {
         /* permission denied or unsupported: fall back to the in-app clipboard */
       }
       if (clip) pasteCanvas(clip);
-      else os.notify('Paint', 'There is no picture on the clipboard.', paintIcon);
+      else os.notify('Paint', 'There is no picture on the clipboard.', icons.paint);
     }
 
     function pasteFromFile(): void {
       closePopup();
       void pickPicture(win.body, fs, 'Paste from', 'Paste', async (f) => {
         const img = await loadImage(f.content);
-        if (!img) return os.notify('Paint', `${f.name} could not be opened.`, paintIcon);
+        if (!img) return os.notify('Paint', `${f.name} could not be opened.`, icons.paint);
         const c = makeCanvas(img.naturalWidth || 400, img.naturalHeight || 300);
         c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
         pasteCanvas(c);
@@ -1163,15 +1163,15 @@ export const paint: AppManifest = {
       { label: 'Flip horizontal', action: () => applyTransform('flipH') },
     ])) });
 
-    const cutBtn = rbtn({ icon: 'cut', label: 'Cut', title: 'Cut (Ctrl+X)', onclick: () => copySel(true) });
-    const copyBtn = rbtn({ icon: 'copy', label: 'Copy', title: 'Copy (Ctrl+C)', onclick: () => copySel(false) });
+    const cutBtn = rbtn({ icon: 'cut', label: 'Cut', title: 'Cut', onclick: () => copySel(true) });
+    const copyBtn = rbtn({ icon: 'copy', label: 'Copy', title: 'Copy', onclick: () => copySel(false) });
     const cropBtn = rbtn({ icon: 'crop', label: 'Crop', title: 'Crop to selection', onclick: cropToSelection });
     const resizeBtn = rbtn({ icon: 'resize', label: 'Resize', title: 'Resize and skew', onclick: resizeDialog });
 
     const pasteSplit = splitBig({
       icon: 'paste',
       label: 'Paste',
-      title: 'Paste (Ctrl+V)',
+      title: 'Paste',
       onMain: () => void pasteFromClipboard(),
       onMenu: (a) =>
         openPopup(
@@ -1276,9 +1276,9 @@ export const paint: AppManifest = {
       return b;
     };
     const fileBtn = h('button', { class: 'pt-filebtn', type: 'button', onclick: (e: MouseEvent) => openPopup(win.body, e.currentTarget as HTMLElement, fileMenu()) }, h('span', {}, 'Paint'), h('i', { class: 'pt-caret' }));
-    const qSave = rbtn({ icon: 'save', title: 'Save (Ctrl+S)', cls: 'pt-q', onclick: () => void save() });
-    const qUndo = rbtn({ icon: 'undo', title: 'Undo (Ctrl+Z)', cls: 'pt-q', onclick: undo });
-    const qRedo = rbtn({ icon: 'redo', title: 'Redo (Ctrl+Y)', cls: 'pt-q', onclick: redo });
+    const qSave = rbtn({ icon: 'save', title: 'Save', cls: 'pt-q', onclick: () => void save() });
+    const qUndo = rbtn({ icon: 'undo', title: 'Undo', cls: 'pt-q', onclick: undo });
+    const qRedo = rbtn({ icon: 'redo', title: 'Redo', cls: 'pt-q', onclick: redo });
     const tabs = h('div', { class: 'pt-tabs', role: 'tablist' }, fileBtn, h('span', { class: 'pt-qa' }, qSave, qUndo, qRedo), mkTab('home', 'Home'), mkTab('view', 'View'), mkTab('text', 'Text', 'pt-tab-ctx'));
     const ribbon = h('div', { class: 'pt-ribbon' }, homePanel, viewPanel, textPanel);
 
@@ -1335,7 +1335,7 @@ export const paint: AppManifest = {
       const content = await fs.read(p);
       const img = content === null ? null : await loadImage(content);
       if (!img) {
-        os.notify('Paint', `${basename(p)} could not be opened as a picture.`, paintIcon);
+        os.notify('Paint', `${basename(p)} could not be opened as a picture.`, icons.paint);
         return;
       }
       commitText();

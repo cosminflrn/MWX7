@@ -14,6 +14,7 @@ Read `SPEC.md` first. It is the source of truth for design and architecture.
 - `npm run build` — typecheck + production build (CI runs this)
 
 ## Hard rules
+0. **Desktop + mouse only.** No touch handling, and no keyboard shortcuts (they clash with the host OS when MWX 7 runs in a browser). Typing in text fields, game controls and the BIOS/Commander keys are the only keyboard input.
 1. **Original assets only.** Never copy Apple/Microsoft icons, wallpapers, logos, sounds or fonts. Draw SVG yourself.
 2. **App isolation.** Apps live in `src/apps/<id>/` and use only `ctx.win`, `ctx.fs`, `ctx.os`, `src/ui/*`, `src/assets/*`. No importing other apps or `core/wm` / `core/os`.
 3. **Scoped CSS.** Add a class to `win.body` and prefix every app selector with it.

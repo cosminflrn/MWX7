@@ -4,7 +4,7 @@
 
 **The dream desktop.**
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.5 “Paint”
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.6 “Luna”
 
 ![MWX 7 desktop](docs/screenshot.jpg)
 
@@ -15,12 +15,13 @@ MWX 7 is a complete desktop operating system that runs in your browser: glass wi
 ## Highlights
 - **A real startup.** Press the power button, watch the BIOS test your memory (with the beep), then the boot logo and the logon screen.
 - **Glass everywhere.** Translucent windows, smooth animations, windows that pour into the dock when you minimize them.
-- **Snap and center.** Drag a window to the left or right edge to snap it, to the top to maximize it, double-click the title bar to center it.
-- **Start menu + Spotlight.** Click the orb or press `Ctrl+Space` to find any app or document.
-- **Its own sound.** Original startup chime and system sounds, synthesized live.
+- **Snap, center, full screen.** Drag a window to an edge to snap it, double-click the title bar to center it, or go full screen: the title bar melts into the top bar and the dock stretches edge to edge.
+- **Start menu, Search and Overview.** Click the orb, the magnifier or the overview button in the top bar.
+- **Its own sound.** Original startup chime and system sounds on real sampled instruments.
 - **Living wallpapers.** Real moving footage and animated scenes, with soft ambient sound on the desktop.
-- **Windows 7 at heart.** Explorer, Paint, Control Panel, Calculator and Notepad, Aero Peek, Mission Control (F3), an Alt+` switcher, a clock calendar and a Trash in the dock.
-- **Apps:** Explorer, Paint, Notepad, Calculator, Terminal, Space Pinball, Control Panel — more on the way.
+- **Windows XP and 7 at heart.** My Computer, Paint, Calculator, Notepad, Aero Peek, a clock calendar and a Trash in the dock — with warm Tango icons.
+- **Apps:** My Computer, Paint, Notepad, Calculator, Space Pinball, Settings — more on the way.
+- **Mouse-first.** Made for a desktop and a mouse: no touch, and no keyboard shortcuts to fight with your real OS.
 
 ![MWX 7 logon](docs/logon.jpg)
 

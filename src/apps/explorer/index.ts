@@ -2,7 +2,7 @@ import { icons } from '../../assets/icons';
 import { basename, dirname, normalize } from '../../core/fs';
 import type { AppManifest, MenuItem } from '../../core/types';
 import { h } from '../../ui/dom';
-import { openMenu } from '../../ui/menu';
+import { openMenu, menuIcon } from '../../ui/menu';
 import { showSheet } from '../../ui/sheet';
 import { driveIcon } from './art';
 import { seedSamples } from './seed';
@@ -829,16 +829,16 @@ export const explorer: AppManifest = {
     const organizeMenu = (): MenuItem[] => {
       const has = selected().length > 0;
       return [
-        { label: 'Cut', disabled: !has, action: () => setClipboard(true) },
-        { label: 'Copy', disabled: !has, action: () => setClipboard(false) },
-        { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
+        { label: 'Cut', icon: menuIcon('cut'), disabled: !has, action: () => setClipboard(true) },
+        { label: 'Copy', icon: menuIcon('copy'), disabled: !has, action: () => setClipboard(false) },
+        { label: 'Paste', icon: menuIcon('paste'), disabled: !clipboard || !isReal(), action: () => paste() },
         { separator: true },
-        { label: 'Select all', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
+        { label: 'Select all', icon: menuIcon('copy'), action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
         { separator: true },
-        { label: 'Rename', disabled: sel.size !== 1, action: () => startRename() },
-        { label: inTrash(loc) ? 'Delete permanently' : 'Delete', disabled: !has, action: deleteSelection },
+        { label: 'Rename', icon: menuIcon('rename'), disabled: sel.size !== 1, action: () => startRename() },
+        { icon: menuIcon('delete'), label: inTrash(loc) ? 'Delete permanently' : 'Delete', disabled: !has, action: deleteSelection },
         { separator: true },
-        { label: 'Properties', disabled: !isReal() && !has, action: () => void showProperties() },
+        { label: 'Properties', icon: menuIcon('properties'), disabled: !isReal() && !has, action: () => void showProperties() },
       ];
     };
 
@@ -848,22 +848,22 @@ export const explorer: AppManifest = {
         {
           label: 'File',
           items: [
-            { label: 'New folder', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
-            { label: 'Open', disabled: !has, action: () => void openSelection() },
-            { label: 'Rename', disabled: sel.size !== 1, action: () => startRename() },
-            { label: 'Properties', action: () => void showProperties() },
+            { label: 'New folder', icon: menuIcon('new-folder'), disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
+            { label: 'Open', icon: menuIcon('open'), disabled: !has, action: () => void openSelection() },
+            { label: 'Rename', icon: menuIcon('rename'), disabled: sel.size !== 1, action: () => startRename() },
+            { label: 'Properties', icon: menuIcon('properties'), action: () => void showProperties() },
             { separator: true },
-            { label: 'Close', action: () => win.close() },
+            { label: 'Close', icon: menuIcon('close'), action: () => win.close() },
           ],
         },
         {
           label: 'Edit',
           items: [
-            { label: 'Cut', disabled: !has, action: () => setClipboard(true) },
-            { label: 'Copy', disabled: !has, action: () => setClipboard(false) },
-            { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
+            { label: 'Cut', icon: menuIcon('cut'), disabled: !has, action: () => setClipboard(true) },
+            { label: 'Copy', icon: menuIcon('copy'), disabled: !has, action: () => setClipboard(false) },
+            { label: 'Paste', icon: menuIcon('paste'), disabled: !clipboard || !isReal(), action: () => paste() },
             { separator: true },
-            { label: 'Select all', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
+            { label: 'Select all', icon: menuIcon('copy'), action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
           ],
         },
         {
@@ -872,7 +872,7 @@ export const explorer: AppManifest = {
             { label: 'Large icons', checked: view === 'icons', action: () => setView('icons') },
             { label: 'Details', checked: view === 'details', action: () => setView('details') },
             { separator: true },
-            { label: 'Refresh', action: () => void refresh(true) },
+            { label: 'Refresh', icon: menuIcon('refresh'), action: () => void refresh(true) },
           ],
         },
       ]);
@@ -883,30 +883,30 @@ export const explorer: AppManifest = {
       const prot = selected().some((i) => i.drive || isProtected(i.path));
       const trashed = inTrash(it.path);
       return [
-        { label: 'Open', action: () => void openSelection() },
-        ...(trashed ? [{ label: 'Restore', action: () => void restore() }] : []),
+        { label: 'Open', icon: menuIcon('open'), action: () => void openSelection() },
+        ...(trashed ? [{ label: 'Restore', icon: menuIcon('restore'), action: () => void restore() }] : []),
         { separator: true },
-        { label: 'Cut', disabled: prot, action: () => setClipboard(true) },
-        { label: 'Copy', disabled: selected().some((i) => i.drive), action: () => setClipboard(false) },
-        ...(it.dir && !many ? [{ label: 'Paste', disabled: !clipboard, action: () => paste(it.path) }] : []),
+        { label: 'Cut', icon: menuIcon('cut'), disabled: prot, action: () => setClipboard(true) },
+        { label: 'Copy', icon: menuIcon('copy'), disabled: selected().some((i) => i.drive), action: () => setClipboard(false) },
+        ...(it.dir && !many ? [{ label: 'Paste', icon: menuIcon('paste'), disabled: !clipboard, action: () => paste(it.path) }] : []),
         { separator: true },
-        { label: trashed ? 'Delete permanently' : 'Delete', disabled: prot, action: deleteSelection },
-        { label: 'Rename', disabled: many || prot, action: () => startRename() },
+        { icon: menuIcon('delete'), label: trashed ? 'Delete permanently' : 'Delete', disabled: prot, action: deleteSelection },
+        { label: 'Rename', icon: menuIcon('rename'), disabled: many || prot, action: () => startRename() },
         { separator: true },
-        { label: 'Properties', disabled: many, action: () => void showProperties(it) },
+        { label: 'Properties', icon: menuIcon('properties'), disabled: many, action: () => void showProperties(it) },
       ];
     };
 
     const spaceMenu = (): MenuItem[] => [
       { label: 'Large icons', checked: view === 'icons', disabled: !isReal(), action: () => setView('icons') },
       { label: 'Details', checked: view === 'details', disabled: !isReal(), action: () => setView('details') },
-      { label: 'Refresh', action: () => void refresh(true) },
+      { label: 'Refresh', icon: menuIcon('refresh'), action: () => void refresh(true) },
       { separator: true },
-      { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
+      { label: 'Paste', icon: menuIcon('paste'), disabled: !clipboard || !isReal(), action: () => paste() },
       { separator: true },
-      { label: 'New folder', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
+      { label: 'New folder', icon: menuIcon('new-folder'), disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
       { separator: true },
-      { label: 'Properties', action: () => void showProperties() },
+      { label: 'Properties', icon: menuIcon('properties'), action: () => void showProperties() },
     ];
 
     /* ---------- pointer interaction ---------- */

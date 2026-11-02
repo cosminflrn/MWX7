@@ -13,7 +13,7 @@ interface Result {
   run: () => void;
 }
 
-/** macOS Search (Ctrl+Space) searching apps and documents. */
+/** Search overlay (from the magnifier in the top bar) over apps and documents. */
 export function mountSearch(): void {
   let overlay: HTMLElement | null = null;
 

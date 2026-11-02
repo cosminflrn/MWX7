@@ -1,7 +1,8 @@
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { settings } from '../core/settings';
-import { openMenu } from '../ui/menu';
+import { menuIcon, openMenu } from '../ui/menu';
+import { openOverview } from './overview';
 import { mountAmbience } from './ambience';
 import { mountDeskIcons } from './deskicons';
 import { fs } from '../core/fs';
@@ -48,13 +49,14 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
     const idx = wallpapers.findIndex((w) => w.id === current);
     openMenu(
       [
-        { label: 'Next Wallpaper', action: () => settings.set({ wallpaper: wallpapers[(idx + 1) % wallpapers.length].id }) },
-        { label: 'Personalize…', action: () => launch('settings') },
+        { label: 'Next Wallpaper', icon: menuIcon('wallpaper'), action: () => settings.set({ wallpaper: wallpapers[(idx + 1) % wallpapers.length].id }) },
+        { label: 'Personalize…', icon: menuIcon('settings'), action: () => launch('settings') },
         { separator: true },
-        { label: 'New Folder', action: () => void createOnDesktop('New folder', true) },
-        { label: 'New Text Document', action: () => void createOnDesktop('New Text Document.txt', false) },
+        { label: 'New Folder', icon: menuIcon('new-folder'), action: () => void createOnDesktop('New folder', true) },
+        { label: 'New Text Document', icon: menuIcon('new-file'), action: () => void createOnDesktop('New Text Document.txt', false) },
         { separator: true },
-        { label: 'About MWX 7', action: () => launch('about') },
+        { label: 'Overview', icon: menuIcon('maximize'), action: () => openOverview() },
+        { label: 'About MWX 7', icon: menuIcon('info'), action: () => launch('about') },
       ],
       { x: e.clientX, y: e.clientY },
     );
