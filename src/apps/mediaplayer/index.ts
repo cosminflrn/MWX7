@@ -82,7 +82,8 @@ export const mediaplayer: AppManifest = {
     const list = h('div', { class: 'mp-list', role: 'listbox' });
     const seek = h('input', { class: 'mp-seek', type: 'range', min: 0, max: 1000, value: 0, 'aria-label': 'Seek' });
     const time = h('span', { class: 'mp-time' }, '0:00 / 0:00');
-    const vol = h('input', { class: 'mp-vol', type: 'range', min: 0, max: 100, value: 80, 'aria-label': 'Volume' });
+    const vol = h('input', { class: 'mp-vol', type: 'range', min: 0, max: 100, value: 50, 'aria-label': 'Volume' });
+    const volPct = h('span', { class: 'mp-volpct' }, '50%');
     const btn = (cls: string, label: string, onclick: () => void, html = '') => h('button', { class: cls, 'aria-label': label, title: label, onclick, html });
     const shuffleBtn = btn('mp-b mp-toggle', 'Shuffle', () => {
       shuffle = shuffleBtn.classList.toggle('on');
@@ -106,7 +107,7 @@ export const mediaplayer: AppManifest = {
     win.body.append(
       h('div', { class: 'mp-main' }, stage, h('aside', { class: 'mp-side' }, h('div', { class: 'mp-side-h' }, 'Playlist'), list)),
       h('div', { class: 'mp-bar' }, h('div', { class: 'mp-seekrow' }, seek, time),
-        h('div', { class: 'mp-ctrls' }, h('div', { class: 'mp-grp' }, shuffleBtn, repeatBtn), h('div', { class: 'mp-transport' }, prev, play, next), h('div', { class: 'mp-grp mp-volgrp' }, h('span', { class: 'mp-vi', html: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' }), vol))),
+        h('div', { class: 'mp-ctrls' }, h('div', { class: 'mp-grp' }, shuffleBtn, repeatBtn), h('div', { class: 'mp-transport' }, prev, play, next), h('div', { class: 'mp-grp mp-volgrp' }, h('span', { class: 'mp-vi', html: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor"/><path d="M16 9a4 4 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' }), vol, volPct))),
     );
 
     const renderList = () => {
@@ -200,6 +201,7 @@ export const mediaplayer: AppManifest = {
     const setVol = () => {
       audio.volume = +vol.value / 100;
       vol.style.setProperty('--p', `${vol.value}%`);
+      volPct.textContent = `${vol.value}%`;
     };
     vol.addEventListener('input', setVol);
     setVol();
