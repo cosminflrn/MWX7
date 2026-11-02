@@ -175,31 +175,32 @@ function swoosh(ctx: AudioContext, t: number, from: number, to: number, dur: num
 }
 
 /**
- * A soft, satisfying click: a tiny felt-damped "tock" — a very short band of
- * noise for the contact plus a quickly decaying low body tone.
+ * A crisp little mouse "tick": a ~6 ms filtered-noise transient for the contact plus a tiny ~1.2 kHz body
+ * that rings for ~12 ms. Total ~15 ms, kept very quiet so it never competes with the other cues.
  */
 function tock(ctx: AudioContext, t: number, body: number, vol: number): void {
-  const src = noise(ctx, 0.02);
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'bandpass';
-  hp.frequency.value = 3200;
-  hp.Q.value = 1.4;
+  const src = noise(ctx, 0.01);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 3000;
+  bp.Q.value = 0.9;
   const a = ctx.createGain();
   a.gain.setValueAtTime(vol, t);
-  a.gain.exponentialRampToValueAtTime(0.0001, t + 0.018);
-  src.connect(hp).connect(a).connect(master!);
+  a.gain.exponentialRampToValueAtTime(0.0001, t + 0.006);
+  src.connect(bp).connect(a).connect(master!);
   src.start(t);
 
   const osc = ctx.createOscillator();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(body, t);
-  osc.frequency.exponentialRampToValueAtTime(body * 0.6, t + 0.04);
+  osc.frequency.exponentialRampToValueAtTime(body * 0.8, t + 0.015);
   const b = ctx.createGain();
-  b.gain.setValueAtTime(vol * 0.9, t);
-  b.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  b.gain.setValueAtTime(0.0001, t);
+  b.gain.linearRampToValueAtTime(vol * 0.7, t + 0.001);
+  b.gain.exponentialRampToValueAtTime(0.0001, t + 0.015);
   osc.connect(b).connect(master!);
   osc.start(t);
-  osc.stop(t + 0.06);
+  osc.stop(t + 0.02);
 }
 
 /* ---------- the sounds ---------- */
@@ -235,10 +236,10 @@ export function play(name: SoundName): void {
       break;
     }
     case 'click':
-      tock(ctx, t, 520, 0.05);
+      tock(ctx, t, 1200, 0.035);
       break;
     case 'rclick':
-      tock(ctx, t, 400, 0.05);
+      tock(ctx, t, 950, 0.035);
       break;
     case 'menuOpen':
       swoosh(ctx, t, 600, 2600, 0.2, 0.03);
