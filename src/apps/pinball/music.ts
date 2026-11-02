@@ -125,8 +125,15 @@ export class Music {
     if (!ctx || !out || !this.bufs) return;
     const bus = ctx.createGain();
     bus.gain.setValueAtTime(0.0001, ctx.currentTime);
-    bus.gain.linearRampToValueAtTime(0.42, ctx.currentTime + 4); // music sits well under the effects
-    bus.connect(out);
+    bus.gain.linearRampToValueAtTime(1.0, ctx.currentTime + 0.8); // short fade-in so it is audible right away
+    // Limiter keeps the louder music from clipping the master bus.
+    const lim = ctx.createDynamicsCompressor();
+    lim.threshold.value = -6;
+    lim.knee.value = 0;
+    lim.ratio.value = 20;
+    lim.attack.value = 0.003;
+    lim.release.value = 0.2;
+    bus.connect(lim).connect(out);
 
     // Light hall reverb from a generated impulse: two decorrelated, progressively darker noise tails.
     const conv = ctx.createConvolver();

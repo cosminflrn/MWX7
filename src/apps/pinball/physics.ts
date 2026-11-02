@@ -27,6 +27,12 @@ const MAX_V = 1700;
 const FLIP_UP_W = 26;
 const FLIP_DOWN_W = 12;
 
+// Kicker chain damping: a ball ping-ponging between the two slingshots gets progressively weaker kicks plus a downward
+// nudge, so it always bleeds energy and drops to the flippers instead of looping forever.
+let clock = 0;
+let lastKick = -1e9;
+let chain = 0;
+
 let nx = 0;
 let ny = 0;
 
@@ -99,10 +105,20 @@ function collide(w: World, b: Ball, ev: PhysEvents): void {
       if (s.kind === 'sling') {
         if (hit > 90) {
           // Kicker: ensure a hard outward snap.
+          chain = clock - lastKick < 0.9 ? chain + 1 : 0;
+          lastKick = clock;
+          const want = 560 * Math.max(0, 1 - 0.45 * chain);
           const out = b.vx * nx + b.vy * ny;
-          if (out < 560) {
-            b.vx += (560 - out) * nx;
-            b.vy += (560 - out) * ny;
+          if (out < want) {
+            b.vx += (want - out) * nx;
+            b.vy += (want - out) * ny;
+          }
+          // Downward bias (never aim straight across at the other kicker) and extra damping on repeated kicks.
+          b.vy += 140;
+          if (chain >= 1) {
+            const k = Math.max(0.55, 1 - 0.15 * chain);
+            b.vx *= k;
+            b.vy *= k;
           }
           ev.sling(s.idx);
         }
@@ -137,6 +153,7 @@ function collide(w: World, b: Ball, ev: PhysEvents): void {
 
 /** Advance the world by one fixed step (dt = 1/240 s). */
 export function stepWorld(w: World, b: Ball, dt: number, ev: PhysEvents): void {
+  clock += dt;
   for (const f of w.flippers) stepFlipper(f, dt);
   if (!b.active || b.held) return;
 

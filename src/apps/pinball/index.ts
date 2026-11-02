@@ -162,6 +162,7 @@ export const pinball: AppManifest = {
       music.start();
     };
     win.body.addEventListener('pointerdown', wake, true);
+    win.body.addEventListener('keydown', wake, true);
 
     // Losing focus never pauses the game, but a key released elsewhere must not stay "held".
     const onBlur = () => releaseAll();
