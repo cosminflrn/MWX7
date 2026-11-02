@@ -81,3 +81,11 @@ Selawik, (c) 2015 Microsoft Corporation, Reserved Font Name "Selawik". Source: h
 License: SIL Open Font License 1.1 (`fonts/selawik/OFL.txt`).
 The repository ships only sources, so the four weights (Light 200, Regular 400, Semibold 600, Bold 700) were built
 from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 with fontTools. The sources were not modified; only the build format changed. OFL terms apply: the font may not be sold by itself.
+
+## Music (`music/`)
+
+| File | Title | Performer | Source | License |
+|---|---|---|---|---|
+| `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
+
+Unmodified copies of the Ogg Vorbis files published by the project.
