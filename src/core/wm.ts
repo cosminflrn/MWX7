@@ -260,6 +260,7 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   else addResizeHandles(w, cfg.minWidth ?? 280, cfg.minHeight ?? 180);
 
   el.querySelector('.wc-close')!.addEventListener('click', () => closeWindow(id));
+  el.querySelector('.wc-min')!.addEventListener('pointerdown', (e) => (e as PointerEvent).button === 0 && prepareMinimize(id));
   el.querySelector('.wc-min')!.addEventListener('click', () => minimizeWindow(id));
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
@@ -438,7 +439,7 @@ async function snapshot(w: Win, budget = 1500, exact = true): Promise<HTMLCanvas
   const r = w.el.getBoundingClientRect();
   const thaw = exact ? freezeScroll(w.el) : () => {};
   const job = toCanvas(w.el, {
-    pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
+    pixelRatio: 1,
     skipFonts: true,
     width: Math.round(r.width) + SNAP_PAD * 2,
     height: Math.round(r.height) + SNAP_PAD * 2,
@@ -566,6 +567,17 @@ function fade(w: Win, reverse: boolean): Promise<void> {
 const snaps = new WeakMap<Win, HTMLCanvasElement>();
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/**
+ * Pressing the minimize button starts the capture right away (a click takes ~100 ms between
+ * press and release), so the genie can begin sooner after the click.
+ */
+const pending = new Map<string, { at: number; job: Promise<HTMLCanvasElement | null> }>();
+export function prepareMinimize(id: string): void {
+  const w = wins.get(id);
+  if (!w || w.minimized || reducedMotion()) return;
+  pending.set(id, { at: performance.now(), job: snapshot(w) });
+}
+
 const padded = (r: Rect): Rect => ({ x: r.x - SNAP_PAD, y: r.y - SNAP_PAD, w: r.w + SNAP_PAD * 2, h: r.h + SNAP_PAD * 2 });
 
 export function minimizeWindow(id: string): void {
@@ -576,7 +588,10 @@ export function minimizeWindow(id: string): void {
   void (async () => {
     // Capture the window exactly as it is right now and only then start: it stays on screen,
     // focused, until the genie takes over, and focus moves on only after it has gone.
-    const snap = target && !reducedMotion() ? await snapshot(w) : null;
+    const pre = pending.get(id);
+    pending.delete(id);
+    const job = pre && performance.now() - pre.at < 1200 ? pre.job : snapshot(w);
+    const snap = target && !reducedMotion() ? await job : null;
     if (!w.minimized) return;
     bus.emit('window:minimize', w);
     play('minimize');
