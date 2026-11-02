@@ -54,6 +54,6 @@
   --shadow-win-inactive: 0 0 14px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 10, 30, 0.2);
   --shadow-pop: 0 14px 40px rgba(0, 10, 30, 0.38);
 
-  --menubar-h: 28px;
+  --menubar-h: 30px;
   --dock-icon: 48px;
 }

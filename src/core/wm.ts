@@ -29,7 +29,7 @@ export interface Win {
   beforeClose: Array<() => boolean>;
 }
 
-export const MENUBAR_H = 28;
+export const MENUBAR_H = 30;
 export const DOCK_RESERVE = 70;
 /** Height of the dock when it stretches into a full-width bar under a maximized window. */
 /** A full-screen window ends exactly at the dock's top edge. */
@@ -136,8 +136,6 @@ function applyState(w: Win, animate = true): void {
     }
     w.el.classList.toggle('maximized', w.state === 'max');
     w.el.classList.toggle('snapped', w.state === 'left' || w.state === 'right');
-    dirty.add(w);
-    refreshSnapshot(w);
     bus.emit('window:state', w);
   };
   if (animate) withAnimation(w, run);
@@ -265,20 +263,6 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   el.querySelector('.wc-min')!.addEventListener('click', () => minimizeWindow(id));
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
-  // Keep the genie's cached snapshot fresh after the user changes something.
-  let snapTimer = 0;
-  const later = () => {
-    window.clearTimeout(snapTimer);
-    snapTimer = window.setTimeout(() => refreshSnapshot(w), 700);
-  };
-  const touched = (e: Event) => {
-    // Pressing a traffic light changes nothing inside the window — don't force a fresh rasterization for it.
-    if ((e.target as HTMLElement).closest?.('.win-controls')) return;
-    dirty.add(w);
-    later();
-  };
-  el.addEventListener('input', touched, true);
-  el.addEventListener('pointerup', touched, true);
   titlebar.addEventListener('dblclick', (e) => {
     if (!(e.target as HTMLElement).closest('.win-controls')) centerWindow(id);
   });
@@ -412,19 +396,52 @@ let toCanvasFn: typeof import('html-to-image').toCanvas | null = null;
 const loadRasterizer = async () => (toCanvasFn ??= (await import('html-to-image')).toCanvas);
 
 /** Backdrop blur can't be captured, so the snapshot gets an opaque version of the current glass colour. */
-function solidGlass(): string {
+function solidGlass(active = true): string {
   const cs = getComputedStyle(document.documentElement);
   const [r, g, b] = cs.getPropertyValue('--glass-rgb').split(',').map((v) => Number(v) || 0);
   const a = Math.min(0.9, Number(cs.getPropertyValue('--glass-a')) || 0.46);
   // Translucent like the real frame (the canvas keeps alpha), just without the blur.
-  return `linear-gradient(rgba(255,255,255,.34), rgba(255,255,255,.1) 34px, rgba(255,255,255,.04)), rgba(${r},${g},${b},${Math.min(0.92, a + 0.22).toFixed(2)})`;
+  const k = active ? 1 : 0.55;
+  return `linear-gradient(rgba(255,255,255,.4), rgba(255,255,255,.14) 34px, rgba(255,255,255,.08)), rgba(${r},${g},${b},${Math.min(0.92, (a + 0.18) * k).toFixed(2)})`;
 }
 
-async function snapshot(w: Win, budget = 450): Promise<HTMLCanvasElement | null> {
+/** Room around the window in the snapshot, so its drop shadow travels with it. */
+const SNAP_PAD = 36;
+
+/**
+ * Clones don't keep scroll positions, so a scrolled pane would be captured at its top. While
+ * rasterizing, each scrolled element is reset to 0 and its children are shifted by the same
+ * amount — pixel-identical on screen — then everything is put back.
+ */
+function freezeScroll(root: HTMLElement): () => void {
+  const undo: Array<() => void> = [];
+  root.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    const { scrollTop: t, scrollLeft: l } = el;
+    if (!t && !l) return;
+    const kids = [...el.children] as HTMLElement[];
+    const prev = kids.map((k) => k.style.transform);
+    el.scrollTop = 0;
+    el.scrollLeft = 0;
+    kids.forEach((k, i) => (k.style.transform = `translate(${-l}px, ${-t}px) ${prev[i]}`.trim()));
+    undo.push(() => {
+      kids.forEach((k, i) => (k.style.transform = prev[i]));
+      el.scrollTop = t;
+      el.scrollLeft = l;
+    });
+  });
+  return () => undo.reverse().forEach((f) => f());
+}
+
+/** The window exactly as it looks now — focus, scroll position, frame and shadow — as a canvas. */
+async function snapshot(w: Win, budget = 1500, exact = true): Promise<HTMLCanvasElement | null> {
   const toCanvas = await loadRasterizer();
+  const r = w.el.getBoundingClientRect();
+  const thaw = exact ? freezeScroll(w.el) : () => {};
   const job = toCanvas(w.el, {
     pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
     skipFonts: true,
+    width: Math.round(r.width) + SNAP_PAD * 2,
+    height: Math.round(r.height) + SNAP_PAD * 2,
     filter: (n) => !(n instanceof HTMLElement && n.classList.contains('rz')),
     style: {
       // html-to-image also inlines the logical inset properties, which would win over left/top.
@@ -432,19 +449,16 @@ async function snapshot(w: Win, budget = 450): Promise<HTMLCanvasElement | null>
       top: '0',
       insetInlineStart: '0',
       insetBlockStart: '0',
-      margin: '0',
+      margin: `${SNAP_PAD}px`,
       transform: 'none',
-      // A snapshot taken during the open animation would otherwise come out half transparent.
       opacity: '1',
+      // Backdrop blur can't be captured; the glass keeps its tint and stays see-through.
       backdropFilter: 'none',
-      // Outer rings would fall outside the captured box, so the frame is redrawn inside it.
-      boxShadow: w.el.classList.contains('maximized')
-        ? 'none'
-        : 'inset 0 0 0 1px rgba(0,25,80,.65), inset 0 0 0 2px rgba(255,255,255,.55), inset 0 2px 0 2px rgba(255,255,255,.25)',
-      background: solidGlass(),
+      background: solidGlass(w.el.classList.contains('active')),
     },
   }).catch(() => null);
-  const timeout = new Promise<null>((r) => window.setTimeout(() => r(null), budget));
+  void job.then(thaw);
+  const timeout = new Promise<null>((res) => window.setTimeout(() => res(null), budget));
   return Promise.race([job, timeout]);
 }
 
@@ -459,21 +473,14 @@ const idle = (fn: () => void) => {
   else window.setTimeout(fn, 300);
 };
 
-// Windows changed since their last snapshot, and windows with a rasterization in flight.
-const dirty = new WeakSet<Win>();
-const busy = new WeakSet<Win>();
-
+// One throwaway rasterization per window in idle time loads html-to-image's caches (embedded
+// icons, styles), so the real capture at minimize time is quick. The result is never shown.
+const primed = new WeakSet<Win>();
 function refreshSnapshot(w: Win): void {
+  if (primed.has(w)) return;
+  primed.add(w);
   idle(() => {
-    if (busy.has(w) || !wins.has(w.id) || w.minimized || w.el.style.display === 'none') return;
-    // Mid-animation frames would be captured half-moved; try again later.
-    if (w.el.classList.contains('anim')) return void window.setTimeout(() => refreshSnapshot(w), 450);
-    busy.add(w);
-    dirty.delete(w);
-    void snapshot(w, 2500).then((c) => {
-      busy.delete(w);
-      if (c && !w.minimized) snaps.set(w, c);
-    });
+    if (wins.has(w.id) && !w.minimized) void snapshot(w, 4000, false);
   });
 }
 
@@ -559,26 +566,24 @@ function fade(w: Win, reverse: boolean): Promise<void> {
 const snaps = new WeakMap<Win, HTMLCanvasElement>();
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const padded = (r: Rect): Rect => ({ x: r.x - SNAP_PAD, y: r.y - SNAP_PAD, w: r.w + SNAP_PAD * 2, h: r.h + SNAP_PAD * 2 });
+
 export function minimizeWindow(id: string): void {
   const w = wins.get(id);
   if (!w || w.minimized) return;
   w.minimized = true;
-  bus.emit('window:minimize', w);
   const target = minimizeTarget(w.appId);
   void (async () => {
-    // The window keeps its focus (and active look) until the genie takes over. A clean cached snapshot
-    // starts the genie instantly; rasterizing on the spot is the fallback (and its work used to jank the animation).
-    const cached = snaps.get(w) ?? null;
-    const fresh = target && !reducedMotion() && (!cached || dirty.has(w)) ? await snapshot(w, 140) : null;
-    if (fresh) dirty.delete(w);
-    const snap = fresh ?? cached;
+    // Capture the window exactly as it is right now and only then start: it stays on screen,
+    // focused, until the genie takes over, and focus moves on only after it has gone.
+    const snap = target && !reducedMotion() ? await snapshot(w) : null;
     if (!w.minimized) return;
+    bus.emit('window:minimize', w);
     play('minimize');
-    // Focus only moves on once the window has poured into the dock, so it keeps its active look throughout.
     if (snap && target) {
       snaps.set(w, snap);
       w.el.style.display = 'none';
-      await runGenie(snap, w.rect, target, false);
+      await runGenie(snap, padded(w.rect), target, false);
     } else await fade(w, false);
     if (w.minimized) {
       w.el.style.display = 'none';
@@ -602,7 +607,7 @@ function restore(w: Win): void {
     return;
   }
   w.el.style.display = 'none';
-  void runGenie(snap, w.rect, target, true).then(() => {
+  void runGenie(snap, padded(w.rect), target, true).then(() => {
     if (!w.minimized) w.el.style.display = '';
   });
 }

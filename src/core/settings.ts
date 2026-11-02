@@ -13,7 +13,7 @@ const defaults: Settings = {
   sounds: true,
   volume: 0.8,
   glassColor: '#1e64dc',
-  glassIntensity: 55,
+  glassIntensity: 0,
 };
 
 let current: Settings = { ...defaults };
