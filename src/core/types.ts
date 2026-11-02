@@ -13,6 +13,8 @@ export interface Rect {
 
 export interface MenuItem {
   label?: string;
+  /** Small icon: an image URL (see menuIcon()) or inline SVG/IMG markup */
+  icon?: string;
   shortcut?: string;
   action?: () => void;
   disabled?: boolean;
@@ -41,7 +43,7 @@ export interface AppManifest {
   /** Inline SVG markup (see src/assets/icons.ts) */
   icon: string;
   description?: string;
-  /** Extra words Spotlight should match */
+  /** Extra words Search should match */
   keywords?: string[];
   /** Shown in the dock even when not running */
   pinned?: boolean;
@@ -49,7 +51,7 @@ export interface AppManifest {
   desktop?: boolean;
   /** Re-launching focuses the existing window instead of opening a new one */
   singleInstance?: boolean;
-  /** Hidden from Start menu / Spotlight (e.g. helper apps) */
+  /** Hidden from Start menu / Search (e.g. helper apps) */
   hidden?: boolean;
   window?: WindowOptions;
   /** Build the UI into ctx.win.body. Return an optional cleanup function. */

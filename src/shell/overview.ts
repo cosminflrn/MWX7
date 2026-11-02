@@ -4,9 +4,9 @@ import { closeMenu } from '../ui/menu';
 import { h } from '../ui/dom';
 
 /**
- * Mission Control: every open window glides into a non-overlapping grid so you
+ * Overview: every open window glides into a non-overlapping grid so you
  * can pick one. Minimized windows line up in a smaller row at the bottom.
- * Triggers: F3, Ctrl+↑ (outside text fields) and the top-left hot corner.
+ * Opened from the overview button in the top bar.
  * Only transforms are animated (no layout), so it stays smooth.
  */
 
@@ -49,12 +49,12 @@ function layout(items: Win[], area: { x: number; y: number; w: number; h: number
   return out;
 }
 
-export function isMissionControlOpen(): boolean {
+export function isOverviewOpen(): boolean {
   return !!active;
 }
 
-export function openMissionControl(): void {
-  if (active) return closeMissionControl();
+export function openOverview(): void {
+  if (active) return closeOverview();
   const wins = allWindows();
   if (!wins.length) return;
   closeMenu();
@@ -69,7 +69,7 @@ export function openMissionControl(): void {
   const layer = document.getElementById('windows')!;
   const dim = h('div', { class: 'mc-dim' });
   layer.prepend(dim);
-  document.body.classList.add('mission');
+  document.body.classList.add('overview');
   play('menuOpen');
 
   const placed: Placed[] = [];
@@ -93,9 +93,9 @@ export function openMissionControl(): void {
   }
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' || e.key === 'F3') {
+    if (e.key === 'Escape') {
       e.preventDefault();
-      closeMissionControl();
+      closeOverview();
     }
   };
   // Capture phase: a click anywhere picks a window (or dismisses) and never reaches the app inside.
@@ -104,20 +104,20 @@ export function openMissionControl(): void {
     e.preventDefault();
     e.stopPropagation();
     const pick = el ? placed.find((p) => p.w.el === el)?.w : undefined;
-    closeMissionControl(pick);
+    closeOverview(pick);
   };
   window.addEventListener('keydown', onKey, true);
   document.addEventListener('click', onClick, true);
   active = { dim, placed, onKey, onClick };
 }
 
-export function closeMissionControl(pick?: Win): void {
+export function closeOverview(pick?: Win): void {
   const a = active;
   if (!a) return;
   active = null;
   window.removeEventListener('keydown', a.onKey, true);
   document.removeEventListener('click', a.onClick, true);
-  document.body.classList.remove('mission');
+  document.body.classList.remove('overview');
   play('menuClose');
   for (const p of a.placed) {
     p.w.el.style.transform = '';
@@ -134,30 +134,4 @@ export function closeMissionControl(pick?: Win): void {
     }
     if (pick) focusWindow(pick.id);
   }, 390);
-}
-
-/** Keyboard + hot-corner triggers. */
-export function mountMissionControl(): void {
-  window.addEventListener('keydown', (e) => {
-    if (active) return;
-    const t = e.target as HTMLElement;
-    const typing = t.closest?.('input, textarea, [contenteditable]');
-    if (e.key === 'F3' || (e.ctrlKey && !e.altKey && e.key === 'ArrowUp' && !typing)) {
-      e.preventDefault();
-      openMissionControl();
-    }
-  });
-  let cornerTimer = 0;
-  window.addEventListener('pointermove', (e) => {
-    const inCorner = e.clientX <= 1 && e.clientY <= 1;
-    if (inCorner && !cornerTimer && !document.querySelector('.screen')) {
-      cornerTimer = window.setTimeout(() => {
-        cornerTimer = 0;
-        openMissionControl();
-      }, 280);
-    } else if (!inCorner && cornerTimer) {
-      clearTimeout(cornerTimer);
-      cornerTimer = 0;
-    }
-  });
 }

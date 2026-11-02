@@ -6,7 +6,7 @@ import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
-import { openMissionControl } from './mission';
+import { openOverview } from './overview';
 import { logOff, shutDown } from './screens';
 
 /** macOS-style global menu bar with Win7 glass, showing the focused app's menus. */
@@ -23,8 +23,8 @@ export function mountMenubar(bar: HTMLElement): void {
       { label: 'About MWX 7', action: () => launch('about') },
       { separator: true },
       { label: 'Settings…', action: () => launch('settings') },
-      { label: 'Spotlight Search', shortcut: 'Ctrl+Space', action: () => bus.emit('spotlight:open', {}) },
-      { label: 'Mission Control', shortcut: 'F3', action: () => openMissionControl() },
+      { label: 'Search', action: () => bus.emit('search:open', {}) },
+      { label: 'Overview', action: () => openOverview() },
       { separator: true },
       { label: 'Log Off…', action: () => void logOff() },
       { label: 'Shut Down…', action: () => void shutDown() },
@@ -84,12 +84,12 @@ export function mountMenubar(bar: HTMLElement): void {
     for (const m of w?.menus ?? []) left.append(menuButton(m));
   };
 
-  // Right side: Spotlight + clock
+  // Right side: Search, Overview + clock
   const searchBtn = h('button', {
     class: 'mb-item mb-icon',
-    title: 'Spotlight (Ctrl+Space)',
+    title: 'Search',
     html: icons.search,
-    onclick: () => bus.emit('spotlight:open', {}),
+    onclick: () => bus.emit('search:open', {}),
   });
   // A button, not a label: it opens the calendar flyout and shows the pressed state while that is open.
   const clock: HTMLButtonElement = h('button', {

@@ -6,6 +6,7 @@ import { getApp, listApps } from '../core/registry';
 import { MENUBAR_H } from '../core/wm';
 import { confirmDialog } from '../ui/dialog';
 import { h } from '../ui/dom';
+import { menuIcon, openMenu } from '../ui/menu';
 
 /**
  * Desktop icons: apps flagged `desktop` plus everything in /Desktop.
@@ -104,9 +105,23 @@ export function mountDeskIcons(layer: HTMLElement): void {
       h('span', { class: 'desk-icon-label' }, item.label),
     );
     el.addEventListener('dblclick', () => item.open());
-    el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') item.open();
-      if (e.key === 'Delete') void remove(selected().map((n) => itemFor.get(n.dataset.key!)!).filter(Boolean));
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!el.classList.contains('selected')) {
+        layer.querySelectorAll('.desk-icon.selected').forEach((n) => n.classList.remove('selected'));
+        el.classList.add('selected');
+      }
+      const chosen = selected().map((n) => itemFor.get(n.dataset.key!)!).filter(Boolean);
+      const files = chosen.filter((i) => i.path);
+      openMenu(
+        [
+          { label: 'Open', icon: menuIcon('open'), action: () => chosen.forEach((i) => i.open()) },
+          { separator: true },
+          { label: 'Move to Trash', icon: menuIcon('trash'), disabled: !files.length, action: () => void remove(files) },
+        ],
+        { x: e.clientX, y: e.clientY },
+      );
     });
     el.addEventListener('pointerdown', (e) => startDrag(e, el));
     return el;

@@ -6,12 +6,11 @@ import { notepad } from './notepad';
 import { paint } from './paint';
 import { pinball } from './pinball';
 import { settingsApp } from './settings';
-import { terminal } from './terminal';
 
 /**
  * App registry. To add an app: create src/apps/<id>/index.ts exporting an
  * AppManifest, then add ONE line here. Order = Start menu / dock order.
  */
 export function registerAll(): void {
-  [explorer, notepad, paint, calculator, terminal, pinball, settingsApp, about].forEach(registerApp);
+  [explorer, notepad, paint, calculator, pinball, settingsApp, about].forEach(registerApp);
 }

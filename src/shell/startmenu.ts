@@ -71,7 +71,7 @@ export function mountStartMenu(): void {
     search.addEventListener('input', () => {
       const query = search.value;
       close();
-      bus.emit('spotlight:open', { query });
+      bus.emit('search:open', { query });
     });
 
     el = h(
@@ -99,7 +99,7 @@ export function mountStartMenu(): void {
           placeRow('Computer', icons.computer, () => browse('/')),
           placeRow('Settings', icons.settings, () => launch('settings')),
           h('div', { class: 'sm-sep' }),
-          placeRow('Search', icons.search, () => bus.emit('spotlight:open', {})),
+          placeRow('Search', icons.search, () => bus.emit('search:open', {})),
           placeRow('About MWX 7', icons.about, () => launch('about')),
         ),
       ),

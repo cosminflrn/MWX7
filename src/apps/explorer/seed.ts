@@ -19,7 +19,7 @@ const NOTES: Record<string, string> = {
     'Now',
     '  - Explorer with a proper navigation pane and details view',
     '  - Window snapping polish',
-    '  - Spotlight: search inside documents',
+    '  - Search: find apps and words inside documents',
     '',
     'Next',
     '  - Media viewer with a filmstrip',

@@ -14,12 +14,10 @@ import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountMenubar } from './shell/menubar';
 import { mountNotifications } from './shell/notifications';
-import { mountMissionControl } from './shell/mission';
 import { mountSelection } from './shell/selection';
 import { startup } from './shell/screens';
-import { mountSpotlight } from './shell/spotlight';
+import { mountSearch } from './shell/search';
 import { mountStartMenu } from './shell/startmenu';
-import { mountSwitcher } from './shell/switcher';
 
 /** Selawik (OFL): Microsoft's open-source, metric-compatible companion to Segoe UI. */
 function loadFonts(): void {
@@ -59,8 +57,7 @@ async function start(): Promise<void> {
   mountMenubar($('menubar'));
   mountDock($('dock'));
   mountStartMenu();
-  mountSpotlight();
-  mountSwitcher();
+  mountSearch();
   mountNotifications($('notifications'));
 
   // Keep the browser's own context menu off the shell (apps' text fields keep theirs).
@@ -80,10 +77,9 @@ async function start(): Promise<void> {
   );
 
   mountSelection($('desktop'), $('desktop-icons'));
-  mountMissionControl();
   await startup();
 
-  notify(`Welcome, ${settings.get().userName}`, 'Press Ctrl+Space to search, or click the orb to start.', icons.orb);
+  notify(`Welcome, ${settings.get().userName}`, 'Click the orb to start, or the magnifier to search.', icons.orb);
 }
 
 void start();

@@ -112,7 +112,6 @@ export const icons = {
   trash: png('trash-empty'),
   trashFull: png('trash-full'),
   binoculars: png('search'),
-  terminal: png('terminal'),
 } as const;
 
 export type IconName = keyof typeof icons;

@@ -132,10 +132,10 @@
 .menu-item {
   width: 100%;
   display: grid;
-  grid-template-columns: 16px 1fr auto;
+  grid-template-columns: 18px 1fr;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px 3px 6px;
+  gap: 8px;
+  padding: 3px 14px 3px 6px;
   border: 0;
   border-radius: 4px;
   background: none;
@@ -150,8 +150,9 @@
 }
 
 .menu-item:disabled { color: rgba(0, 0, 0, 0.3); }
-.menu-check { font-size: 11px; text-align: center; }
-.menu-shortcut { margin-left: 24px; font-size: 12px; opacity: 0.55; }
+.menu-check { display: flex; align-items: center; justify-content: center; height: 18px; font-size: 11px; }
+.menu-icon { display: block; width: 16px; height: 16px; object-fit: contain; }
+.menu-icon svg, .menu-icon img { width: 16px; height: 16px; }
 .menu-sep { height: 1px; margin: 4px 8px; background: rgba(0, 0, 0, 0.1); }
 
 /* ===== Dock (macOS) with superbar behaviour (Win7) ===== */
@@ -1026,7 +1027,7 @@ body.peeking .win.peek-target { z-index: 98500 !important; }
 /* The thumbnails replace the dock label while Peek is open. */
 body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
 
-/* ===== Mission Control ===== */
+/* ===== Overview ===== */
 .mc-dim {
   position: absolute;
   inset: 0;
@@ -1058,8 +1059,8 @@ body:has(.peek-pop) .dock-item::before { opacity: 0 !important; }
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
-body.mission .win { cursor: pointer; }
-body.mission .win * { pointer-events: none; }
-body.mission .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
-body.mission #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
+body.overview .win { cursor: pointer; }
+body.overview .win * { pointer-events: none; }
+body.overview .win:hover { box-shadow: 0 0 0 4px rgba(120, 190, 255, 0.95), 0 0 40px rgba(120, 190, 255, 0.55) !important; }
+body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 #desktop-icons { transition: opacity 0.3s; }

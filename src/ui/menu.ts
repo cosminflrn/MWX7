@@ -3,6 +3,11 @@ import { h } from './dom';
 
 /** Floating glass menu used by the menu bar, context menus and dock. */
 
+/** URL of a small menu icon from public/media/icons/16/ (32px artwork shown at 16px). */
+export function menuIcon(name: string): string {
+  return `${import.meta.env.BASE_URL}media/icons/16/${name}.png`;
+}
+
 let current: { el: HTMLElement; close: () => void } | null = null;
 
 export interface OpenMenuOptions {
@@ -42,9 +47,18 @@ export function openMenu(items: MenuItem[], pos: { x: number; y: number }, opts:
             item.action?.();
           },
         },
-        h('span', { class: 'menu-check' }, item.checked ? '✓' : ''),
+        h(
+          'span',
+          { class: 'menu-check' },
+          item.checked
+            ? '✓'
+            : item.icon
+              ? item.icon.startsWith('<')
+                ? h('span', { class: 'menu-icon', html: item.icon })
+                : h('img', { class: 'menu-icon', src: item.icon, alt: '', draggable: false })
+              : '',
+        ),
         h('span', { class: 'menu-label' }, item.label ?? ''),
-        h('span', { class: 'menu-shortcut' }, item.shortcut ?? ''),
       ),
     );
   }

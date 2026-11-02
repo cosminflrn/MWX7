@@ -212,7 +212,7 @@ export const fs: VFS = {
   },
   async all() {
     await boot();
-    // Files only: Spotlight indexes `.content`, and folders have none.
+    // Files only: Search indexes `.content`, and folders have none.
     return [...nodes].filter(([, n]) => n.type === 'file').map(([p, n]) => entry(p, n));
   },
   async read(path) {
@@ -298,9 +298,10 @@ export async function seedFS(): Promise<void> {
       'and the glass of Windows 7 — all in one browser tab.',
       '',
       'Tips',
-      '  • Ctrl+Space opens Spotlight search.',
+      '  • The magnifier in the top bar searches apps and documents.',
+      '  • The overview button next to it shows all your windows at once.',
       '  • Drag a window to the left/right edge to snap it, or to the top to maximize.',
-      '  • Double-click a title bar to maximize.',
+      '  • Double-click a title bar to center the window.',
       '  • Right-click the desktop or a dock icon for more options.',
       '',
       'Everything you save lives in this browser only.',

@@ -13,8 +13,8 @@ interface Result {
   run: () => void;
 }
 
-/** macOS Spotlight (Ctrl+Space) searching apps and documents. */
-export function mountSpotlight(): void {
+/** macOS Search (Ctrl+Space) searching apps and documents. */
+export function mountSearch(): void {
   let overlay: HTMLElement | null = null;
 
   const close = () => {
@@ -47,7 +47,7 @@ export function mountSpotlight(): void {
       r: { kind: 'Documents', title: f.name, subtitle: f.path, icon: icons.file, run: () => launch('notepad', { path: f.path }) } as Result,
     }));
     const hits = [...apps, ...files.sort((a, b) => b.s - a.s).slice(0, 6)].filter((x) => x.s > 0);
-    // The best hit's group comes first (like Spotlight's "Top Hit"), groups stay together.
+    // The best hit's group comes first (like Search's "Top Hit"), groups stay together.
     const best = hits.reduce((m, x) => (x.s > m.s ? x : m), hits[0]);
     const order = best?.r.kind === 'Documents' ? ['Documents', 'Applications'] : ['Applications', 'Documents'];
     return order.flatMap((k) => hits.filter((x) => x.r.kind === k).sort((a, b) => b.s - a.s).map((x) => x.r));
@@ -58,7 +58,7 @@ export function mountSpotlight(): void {
       overlay.querySelector('input')?.focus();
       return;
     }
-    const input = h('input', { class: 'sp-input', type: 'text', placeholder: 'Spotlight Search', spellcheck: false, autocomplete: 'off' });
+    const input = h('input', { class: 'sp-input', type: 'text', placeholder: 'Search', spellcheck: false, autocomplete: 'off' });
     const list = h('div', { class: 'sp-results' });
     const box = h('div', { class: 'sp-box' }, h('div', { class: 'sp-bar' }, h('span', { class: 'sp-glass', html: icons.search }), input), list);
     overlay = h('div', { class: 'sp-overlay', onpointerdown: (e: PointerEvent) => e.target === overlay && close() }, box);
@@ -137,12 +137,5 @@ export function mountSpotlight(): void {
     });
   };
 
-  bus.on('spotlight:open', ({ query }) => open(query ?? ''));
-  document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
-      e.preventDefault();
-      if (overlay) close();
-      else open();
-    }
-  });
+  bus.on('search:open', ({ query }) => (overlay && !query ? close() : open(query ?? '')));
 }
