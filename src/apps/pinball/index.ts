@@ -14,7 +14,7 @@ const PANEL_W = 232;
 /** Chrome around the window body: title bar (30) on top, 8px glass frame on the other three sides, plus a 1px border all round. */
 const FRAME_X = 18;
 const FRAME_Y = 40;
-const MENUBAR_H = 28;
+const MENUBAR_H = 30;
 const DOCK_RESERVE = 70;
 
 /**

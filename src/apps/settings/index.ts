@@ -6,7 +6,7 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.7.1';
+const VERSION = '0.7.2';
 
 type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'sound' | 'system';
 
@@ -260,6 +260,8 @@ export const settingsApp: AppManifest = {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        // A hidden window (minimized) has no layout; measuring it would pick the wrong category.
+        if (!content.clientHeight) return;
         if (pinned) {
           window.clearTimeout(pinTimer);
           pinTimer = window.setTimeout(() => (pinned = null), 150); // released shortly after the smooth scroll settles

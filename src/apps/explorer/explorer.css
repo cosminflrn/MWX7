@@ -512,6 +512,15 @@
 .xp-ex .ex-props dt { color: #6a7a8f; }
 .xp-ex .ex-props dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
 
+/* Computer page in Details view: same look, different columns; groups stack as sections. */
+.xp-ex .ex-scroll.computer.details .ex-group-items { display: block; padding: 2px 0; }
+.xp-ex .ex-chead { position: static; }
+.xp-ex .ex-chead,
+.xp-ex .ex-crow { grid-template-columns: minmax(180px, 1fr) 150px 110px 110px; }
+.xp-ex .ex-c-total,
+.xp-ex .ex-c-free { text-align: right; }
+.xp-ex .ex-col.ex-c-total,
+.xp-ex .ex-col.ex-c-free { justify-content: flex-end; }
 /* drag ghost (kept inside the window so the rules stay scoped) */
 .xp-ex .ex-ghost { position: absolute; left: -200px; top: -200px; width: 48px; height: 48px; opacity: 0.85; }
 .xp-ex .ex-ghost .ex-ico { width: 48px; height: 48px; }
@@ -522,6 +531,8 @@
   .xp-ex .ex-head,
   .xp-ex .ex-row { grid-template-columns: minmax(140px, 1fr) 140px 86px; }
   .xp-ex .ex-c-kind { display: none; }
+  .xp-ex .ex-chead,
+  .xp-ex .ex-crow { grid-template-columns: minmax(140px, 1fr) 140px 90px 90px; }
   .xp-ex .ex-search { width: 160px; }
 }
 @container (max-width: 600px) {
@@ -530,4 +541,6 @@
   .xp-ex .ex-head,
   .xp-ex .ex-row { grid-template-columns: minmax(120px, 1fr) 80px; }
   .xp-ex .ex-c-date { display: none; }
+  .xp-ex .ex-chead,
+  .xp-ex .ex-crow { grid-template-columns: minmax(120px, 1fr) 100px 80px 80px; }
 }

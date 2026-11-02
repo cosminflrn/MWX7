@@ -2,7 +2,7 @@ import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
-import { activeWindow, centerWindow, closeWindow, minimizeWindow, showDesktop, toggleMaximize } from '../core/wm';
+import { activeWindow, centerWindow, closeWindow, minimizeWindow, prepareMinimize, showDesktop, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
@@ -113,6 +113,10 @@ export function mountMenubar(bar: HTMLElement): void {
     const w = activeWindow();
     return w && w.state === 'max' && !w.minimized ? w : null;
   };
+  wcMin.addEventListener('pointerdown', (e) => {
+    const w = target();
+    if (w && e.button === 0) prepareMinimize(w.id);
+  });
   wcMin.addEventListener('click', () => {
     const w = target();
     if (w) minimizeWindow(w.id);

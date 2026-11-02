@@ -59,7 +59,7 @@ Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gami
 | `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
 | `settings`, `about`, `search` | apps/kservices, actions/info, actions/filefind |
 | `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder, folder_music, folder_image, folder_txt |
-| `computer`, `explorer`, `drive`, `desktop` | apps/mymac, apps/file-manager, devices/hdd_mount, filesystems/desktop |
+| `computer`, `explorer`, `drive`, `desktop` | apps/mymac, apps/display, devices/hdd_mount, filesystems/desktop |
 | `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
 | `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/logout, minetypes/image |
 | `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, logout, background), filesystems/(folder_green, folder_grey_open, trashcan_empty) |

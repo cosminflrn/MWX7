@@ -73,7 +73,8 @@
   box-shadow: inset 0 -1px 0 rgba(0, 25, 80, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 8px rgba(0, 20, 50, 0.18);
   /* White text with a dark halo (Win7 taskbar) stays readable at any tint */
   color: #fff;
-  text-shadow: 0 0 3px rgba(0, 15, 45, 0.75), 0 0 8px rgba(0, 15, 45, 0.45);
+  /* Win7-style drop shadow keeps white text legible on clear glass */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65), 0 0 8px rgba(0, 12, 35, 0.55);
 }
 
 .mb-left,
@@ -85,7 +86,8 @@
 }
 
 .mb-item {
-  height: 22px;
+  height: 24px;
+  line-height: 1;
   padding: 0 9px;
   border: 0;
   border-radius: 4px;
@@ -118,11 +120,12 @@
   min-width: 210px;
   padding: 5px;
   border-radius: 7px;
-  /* Aero glass, like window frames (tint follows Window Color), kept light enough for black text */
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.58)), var(--glass-tint);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  /* The same Aero glass as window frames (streaks, sheen, Window Color tint), lightly frosted for the text */
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.32));
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
   border: 0;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.6);
   box-shadow: var(--glass-ring), 0 10px 34px rgba(0, 10, 30, 0.3);
   animation: pop-in 0.1s ease-out;
 }
@@ -283,11 +286,13 @@
   background:
     var(--glass-streaks),
     linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.05) 60px, rgba(255, 255, 255, 0) 120px),
-    linear-gradient(180deg, rgba(60, 110, 170, 0.62), rgba(30, 65, 115, 0.66));
+    var(--glass-tint),
+    /* a neutral smoke under the tint keeps the white labels readable even with clear glass */
+    linear-gradient(180deg, rgba(20, 35, 60, 0.42), rgba(10, 22, 42, 0.5));
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 24px rgba(0, 0, 0, 0.5);
+  border: 0;
+  box-shadow: var(--glass-ring), 0 0 24px rgba(0, 0, 0, 0.5);
   transform-origin: 50% 100%;
   transition: bottom 0.26s cubic-bezier(.2,.8,.2,1);
 }
@@ -328,7 +333,7 @@
 .sm-right {
   flex: 1;
   padding: 8px 6px;
-  background: linear-gradient(180deg, rgba(30, 60, 105, 0.78), rgba(20, 45, 85, 0.82));
+  background: var(--glass-tint), linear-gradient(180deg, rgba(14, 28, 52, 0.55), rgba(8, 18, 36, 0.62));
   border-left: 1px solid rgba(0, 0, 0, 0.45);
 }
 
@@ -487,10 +492,11 @@
 #notifications {
   position: fixed;
   z-index: 250000;
-  top: calc(var(--menubar-h) + 10px);
+  /* Bottom-right, beside the centered dock (Win7 tray balloons) — never over window controls */
+  bottom: 14px;
   right: 12px;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 8px;
   pointer-events: none;
 }
