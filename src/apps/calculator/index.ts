@@ -250,32 +250,13 @@ export const calculator: AppManifest = {
       {
         label: 'Edit',
         items: [
-          { label: 'Copy', shortcut: 'Ctrl+C', action: copy },
-          { label: 'Paste', shortcut: 'Ctrl+V', action: () => void paste() },
+          { label: 'Copy', action: copy },
+          { label: 'Paste', action: () => void paste() },
         ],
       },
       { label: 'Help', items: [{ label: 'About Calculator', action: () => os.launch('about', { app: 'calculator' }) }] },
     ]);
 
-    const keyMap: Record<string, string> = { '/': '÷', '*': '×', '-': '−', '+': '+', Enter: '=', '=': '=', Escape: 'C', Delete: 'CE', Backspace: '⌫', ',': '.', '%': '%', '@': '√', r: '1/x', F9: '±' };
-    win.body.tabIndex = 0;
-    win.body.addEventListener('keydown', (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        const c = e.key.toLowerCase();
-        const mk: Record<string, string> = { l: 'MC', r: 'MR', m: 'MS', p: 'M+', q: 'M-' };
-        if (c === 'c') copy();
-        else if (c === 'v') void paste();
-        else if (mk[c]) press(mk[c]);
-        else return;
-        e.preventDefault();
-        return;
-      }
-      const k = /^[0-9.]$/.test(e.key) ? e.key : keyMap[e.key];
-      if (k) {
-        e.preventDefault();
-        press(k);
-      }
-    });
     render();
     setTimeout(() => win.body.focus(), 50);
   },

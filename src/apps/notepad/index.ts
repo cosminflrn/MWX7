@@ -144,7 +144,7 @@ export const notepad: AppManifest = {
         setDirty(true);
         updateStatus();
       } catch {
-        os.notify('Notepad', 'Clipboard access was not allowed. Use Ctrl+V instead.', icons.notepad);
+        os.notify('Notepad', 'Clipboard access was not allowed. Use Edit > Paste after allowing it, or type the text.', icons.notepad);
       }
     };
 
@@ -157,10 +157,10 @@ export const notepad: AppManifest = {
         {
           label: 'File',
           items: [
-            { label: 'New', shortcut: 'Ctrl+N', action: newDoc },
-            { label: 'Open…', shortcut: 'Ctrl+O', action: () => void openDialog() },
+            { label: 'New', action: newDoc },
+            { label: 'Open…', action: () => void openDialog() },
             { separator: true },
-            { label: 'Save', shortcut: 'Ctrl+S', action: () => void save() },
+            { label: 'Save', action: () => void save() },
             { label: 'Save As…', action: saveAs },
             { separator: true },
             { label: 'Close', action: () => win.close() },
@@ -169,17 +169,16 @@ export const notepad: AppManifest = {
         {
           label: 'Edit',
           items: [
-            { label: 'Undo', shortcut: 'Ctrl+Z', action: () => exec('undo') },
+            { label: 'Undo', action: () => exec('undo') },
             { separator: true },
-            { label: 'Cut', shortcut: 'Ctrl+X', action: () => exec('cut') },
-            { label: 'Copy', shortcut: 'Ctrl+C', action: () => exec('copy') },
-            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void paste() },
-            { label: 'Delete', shortcut: 'Del', action: () => exec('delete') },
+            { label: 'Cut', action: () => exec('cut') },
+            { label: 'Copy', action: () => exec('copy') },
+            { label: 'Paste', action: () => void paste() },
+            { label: 'Delete', action: () => exec('delete') },
             { separator: true },
-            { label: 'Select All', shortcut: 'Ctrl+A', action: () => text.select() },
+            { label: 'Select All', action: () => text.select() },
             {
               label: 'Time/Date',
-              shortcut: 'F5',
               action: () => text.setRangeText(new Date().toLocaleString(), text.selectionStart, text.selectionEnd, 'end'),
             },
           ],
@@ -220,21 +219,6 @@ export const notepad: AppManifest = {
     });
     text.addEventListener('keyup', updateStatus);
     text.addEventListener('click', updateStatus);
-    win.body.addEventListener('keydown', (e) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        void save();
-      } else if (mod && e.key.toLowerCase() === 'o') {
-        e.preventDefault();
-        void openDialog();
-      } else if (e.key === 'F5') {
-        e.preventDefault();
-        text.setRangeText(new Date().toLocaleString(), text.selectionStart, text.selectionEnd, 'end');
-        setDirty(true);
-      }
-    });
-
     win.onBeforeClose(() => !dirty || confirm('You have unsaved changes. Close anyway?'));
 
     buildMenus();

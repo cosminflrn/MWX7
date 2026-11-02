@@ -161,6 +161,12 @@
   box-shadow: inset 0 1px 2px rgba(40, 70, 110, 0.12);
 }
 .xp-ex .ex-search-ico { flex: none; margin: 0 2px 0 6px; color: #6f86a3; display: grid; }
+.xp-ex .ex-search-input,
+.xp-ex .ex-search-input:focus,
+.xp-ex .ex-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 .xp-ex .ex-search-input {
   flex: 1;
   min-width: 0;

@@ -65,7 +65,7 @@ const NAV_FAVORITES = [
 
 export const explorer: AppManifest = {
   id: 'explorer',
-  name: 'Explorer',
+  name: 'My Computer',
   icon: icons.explorer,
   description: 'Browse files and folders',
   keywords: ['files', 'folders', 'file manager', 'documents', 'finder', 'computer', 'explorer'],
@@ -102,13 +102,13 @@ export const explorer: AppManifest = {
     const mkNavBtn = (cls: string, label: string, html: string, onclick: () => void) =>
       h('button', { class: `ex-nav-btn ${cls}`, 'aria-label': label, title: label, html, onclick });
 
-    const backBtn = mkNavBtn('back', 'Back (Alt+Left)', G.back, () => goBack());
-    const fwdBtn = mkNavBtn('fwd', 'Forward (Alt+Right)', G.forward, () => goForward());
-    const upBtn = h('button', { class: 'ex-up', 'aria-label': 'Up (Alt+Up)', title: 'Up to parent folder (Alt+Up)', html: G.up, onclick: () => goUp() });
+    const backBtn = mkNavBtn('back', 'Back', G.back, () => goBack());
+    const fwdBtn = mkNavBtn('fwd', 'Forward', G.forward, () => goForward());
+    const upBtn = h('button', { class: 'ex-up', 'aria-label': 'Up', title: 'Up to parent folder', html: G.up, onclick: () => goUp() });
     const addrIcon = h('span', { class: 'ex-addr-icon' });
     const crumbs = h('div', { class: 'ex-crumbs' });
     const addrInput = h('input', { class: 'ex-addr-input', spellcheck: false, 'aria-label': 'Address' });
-    const refreshBtn = h('button', { class: 'ex-refresh', 'aria-label': 'Refresh (F5)', title: 'Refresh (F5)', html: G.refresh, onclick: () => void refresh(true) });
+    const refreshBtn = h('button', { class: 'ex-refresh', 'aria-label': 'Refresh', title: 'Refresh', html: G.refresh, onclick: () => void refresh(true) });
     const addr = h('div', { class: 'ex-addr' }, addrIcon, crumbs, addrInput, refreshBtn);
     const searchInput = h('input', { class: 'ex-search-input', type: 'text', spellcheck: false, 'aria-label': 'Search' });
     const searchClear = h('button', { class: 'ex-search-clear', 'aria-label': 'Clear search', html: G.clear, hidden: true });
@@ -122,9 +122,9 @@ export const explorer: AppManifest = {
     root.append(addrRow, cmdBar, h('div', { class: 'ex-main' }, nav, scroller), details);
 
     /* ---------- helpers ---------- */
-    const notify = (text: string) => os.notify('Explorer', text, icons.explorer);
+    const notify = (text: string) => os.notify('My Computer', text, icons.explorer);
     const isReal = () => loc !== COMPUTER;
-    const locName = (l: string) => (l === COMPUTER ? 'Computer' : l === '/' ? DRIVE_NAME : basename(l));
+    const locName = (l: string) => (l === COMPUTER ? 'My Computer' : l === '/' ? DRIVE_NAME : basename(l));
     const selected = (): Item[] => shown.filter((i) => sel.has(i.path));
     const inTrash = (p: string) => p === TRASH || p.startsWith(`${TRASH}/`);
 
@@ -270,7 +270,7 @@ export const explorer: AppManifest = {
     };
 
     const crumbList = (l: string): { name: string; loc: string }[] => {
-      const out = [{ name: 'Computer', loc: COMPUTER }];
+      const out = [{ name: 'My Computer', loc: COMPUTER }];
       if (l === COMPUTER) return out;
       if (l === '/') return [...out, { name: DRIVE_NAME, loc: '/' }];
       let acc = '';
@@ -321,7 +321,7 @@ export const explorer: AppManifest = {
       nav.append(
         h('div', { class: 'ex-nav-head' }, h('span', { html: G.star }), 'Favorites'),
         ...NAV_FAVORITES.map((f) => entry(f.name, f.path, f.path === '/Desktop' ? icons.folder : folderIcon(f.path))),
-        entry('Computer', COMPUTER, icons.computer, 'group'),
+        entry('My Computer', COMPUTER, icons.computer, 'group'),
         entry(DRIVE_NAME, '/', driveIcon, 'nested'),
         entry('Trash', TRASH, trashCount ? icons.trashFull : icons.trash, 'group'),
       );
@@ -594,12 +594,6 @@ export const explorer: AppManifest = {
           h('button', { class: 'ex-pv-nav next', 'aria-label': 'Next image', html: G.forward, onclick: () => show(idx + 1) }),
         );
       }
-      overlay.addEventListener('keydown', (e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape' || e.key === ' ') close();
-        else if (e.key === 'ArrowLeft') show(idx - 1);
-        else if (e.key === 'ArrowRight') show(idx + 1);
-      });
       root.append(overlay);
       show(idx);
       overlay.focus();
@@ -835,14 +829,14 @@ export const explorer: AppManifest = {
     const organizeMenu = (): MenuItem[] => {
       const has = selected().length > 0;
       return [
-        { label: 'Cut', shortcut: 'Ctrl+X', disabled: !has, action: () => setClipboard(true) },
-        { label: 'Copy', shortcut: 'Ctrl+C', disabled: !has, action: () => setClipboard(false) },
-        { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard || !isReal(), action: () => paste() },
+        { label: 'Cut', disabled: !has, action: () => setClipboard(true) },
+        { label: 'Copy', disabled: !has, action: () => setClipboard(false) },
+        { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
         { separator: true },
-        { label: 'Select all', shortcut: 'Ctrl+A', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
+        { label: 'Select all', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
         { separator: true },
-        { label: 'Rename', shortcut: 'F2', disabled: sel.size !== 1, action: () => startRename() },
-        { label: inTrash(loc) ? 'Delete permanently' : 'Delete', shortcut: 'Del', disabled: !has, action: deleteSelection },
+        { label: 'Rename', disabled: sel.size !== 1, action: () => startRename() },
+        { label: inTrash(loc) ? 'Delete permanently' : 'Delete', disabled: !has, action: deleteSelection },
         { separator: true },
         { label: 'Properties', disabled: !isReal() && !has, action: () => void showProperties() },
       ];
@@ -854,9 +848,9 @@ export const explorer: AppManifest = {
         {
           label: 'File',
           items: [
-            { label: 'New folder', shortcut: 'Ctrl+Shift+N', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
+            { label: 'New folder', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
             { label: 'Open', disabled: !has, action: () => void openSelection() },
-            { label: 'Rename', shortcut: 'F2', disabled: sel.size !== 1, action: () => startRename() },
+            { label: 'Rename', disabled: sel.size !== 1, action: () => startRename() },
             { label: 'Properties', action: () => void showProperties() },
             { separator: true },
             { label: 'Close', action: () => win.close() },
@@ -865,11 +859,11 @@ export const explorer: AppManifest = {
         {
           label: 'Edit',
           items: [
-            { label: 'Cut', shortcut: 'Ctrl+X', disabled: !has, action: () => setClipboard(true) },
-            { label: 'Copy', shortcut: 'Ctrl+C', disabled: !has, action: () => setClipboard(false) },
-            { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard || !isReal(), action: () => paste() },
+            { label: 'Cut', disabled: !has, action: () => setClipboard(true) },
+            { label: 'Copy', disabled: !has, action: () => setClipboard(false) },
+            { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
             { separator: true },
-            { label: 'Select all', shortcut: 'Ctrl+A', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
+            { label: 'Select all', action: () => setSel(shown.map((i) => i.path), shown[0]?.path ?? null) },
           ],
         },
         {
@@ -878,7 +872,7 @@ export const explorer: AppManifest = {
             { label: 'Large icons', checked: view === 'icons', action: () => setView('icons') },
             { label: 'Details', checked: view === 'details', action: () => setView('details') },
             { separator: true },
-            { label: 'Refresh', shortcut: 'F5', action: () => void refresh(true) },
+            { label: 'Refresh', action: () => void refresh(true) },
           ],
         },
       ]);
@@ -892,12 +886,12 @@ export const explorer: AppManifest = {
         { label: 'Open', action: () => void openSelection() },
         ...(trashed ? [{ label: 'Restore', action: () => void restore() }] : []),
         { separator: true },
-        { label: 'Cut', shortcut: 'Ctrl+X', disabled: prot, action: () => setClipboard(true) },
-        { label: 'Copy', shortcut: 'Ctrl+C', disabled: selected().some((i) => i.drive), action: () => setClipboard(false) },
-        ...(it.dir && !many ? [{ label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard, action: () => paste(it.path) }] : []),
+        { label: 'Cut', disabled: prot, action: () => setClipboard(true) },
+        { label: 'Copy', disabled: selected().some((i) => i.drive), action: () => setClipboard(false) },
+        ...(it.dir && !many ? [{ label: 'Paste', disabled: !clipboard, action: () => paste(it.path) }] : []),
         { separator: true },
-        { label: trashed ? 'Delete permanently' : 'Delete', shortcut: 'Del', disabled: prot, action: deleteSelection },
-        { label: 'Rename', shortcut: 'F2', disabled: many || prot, action: () => startRename() },
+        { label: trashed ? 'Delete permanently' : 'Delete', disabled: prot, action: deleteSelection },
+        { label: 'Rename', disabled: many || prot, action: () => startRename() },
         { separator: true },
         { label: 'Properties', disabled: many, action: () => void showProperties(it) },
       ];
@@ -906,11 +900,11 @@ export const explorer: AppManifest = {
     const spaceMenu = (): MenuItem[] => [
       { label: 'Large icons', checked: view === 'icons', disabled: !isReal(), action: () => setView('icons') },
       { label: 'Details', checked: view === 'details', disabled: !isReal(), action: () => setView('details') },
-      { label: 'Refresh', shortcut: 'F5', action: () => void refresh(true) },
+      { label: 'Refresh', action: () => void refresh(true) },
       { separator: true },
-      { label: 'Paste', shortcut: 'Ctrl+V', disabled: !clipboard || !isReal(), action: () => paste() },
+      { label: 'Paste', disabled: !clipboard || !isReal(), action: () => paste() },
       { separator: true },
-      { label: 'New folder', shortcut: 'Ctrl+Shift+N', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
+      { label: 'New folder', disabled: !isReal() || inTrash(loc), action: () => void newFolder() },
       { separator: true },
       { label: 'Properties', action: () => void showProperties() },
     ];
@@ -1072,98 +1066,18 @@ export const explorer: AppManifest = {
       void moveInto(dragPaths, d);
     });
 
-    /* ---------- keyboard ---------- */
-    const moveFocus = (key: string, extend: boolean) => {
-      if (!shown.length) return;
-      const cur = focused && els.has(focused) ? focused : [...sel][0] ?? null;
-      let next: string;
-      if (!cur) next = shown[0].path;
-      else if (key === 'Home') next = shown[0].path;
-      else if (key === 'End') next = shown[shown.length - 1].path;
-      else {
-        const i = shown.findIndex((x) => x.path === cur);
-        const step = key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1;
-        if (view === 'details' && loc !== COMPUTER) {
-          if (key === 'ArrowLeft' || key === 'ArrowRight') return;
-          next = shown[Math.max(0, Math.min(shown.length - 1, i + step))].path;
-        } else if (key === 'ArrowLeft' || key === 'ArrowRight') {
-          next = shown[Math.max(0, Math.min(shown.length - 1, i + step))].path;
-        } else {
-          const from = els.get(cur)!.getBoundingClientRect();
-          const cx = from.left + from.width / 2;
-          let best = Infinity;
-          next = cur;
-          for (const [p, el] of els) {
-            const r = el.getBoundingClientRect();
-            const dy = (r.top - from.top) * step;
-            if (dy < 4) continue;
-            const score = dy * 1000 + Math.abs(r.left + r.width / 2 - cx);
-            if (score < best) {
-              best = score;
-              next = p;
-            }
-          }
-        }
-      }
-      focused = next;
-      if (extend) selectRange(next);
-      else setSel([next], next);
-      els.get(next)?.scrollIntoView({ block: 'nearest' });
-    };
-
-    root.addEventListener('keydown', (e) => {
-      const t = e.target as HTMLElement;
-      const mod = e.ctrlKey || e.metaKey;
-      const key = e.key;
-      if (t === searchInput) {
-        if (key === 'Escape') {
-          searchInput.value = '';
-          onSearch();
-          scroller.focus();
-        }
-        return;
-      }
-      if (t === addrInput || t.closest('.sheet-backdrop, .ex-preview')) return;
-      // Enter / Space on a toolbar or sidebar button belongs to that button.
-      if ((key === 'Enter' || key === ' ') && t.closest('.ex-nav, .ex-cmd, .ex-addr-row')) return;
-      if (mod && key.toLowerCase() === 'f') {
-        e.preventDefault();
-        searchInput.focus();
-      } else if (mod && key.toLowerCase() === 'l') {
-        e.preventDefault();
-        editAddress();
-      } else if (e.altKey && key === 'ArrowLeft') goBack();
-      else if (e.altKey && key === 'ArrowRight') goForward();
-      else if ((e.altKey && key === 'ArrowUp') || key === 'Backspace') goUp();
-      else if (mod && key.toLowerCase() === 'a') {
-        e.preventDefault();
-        setSel(shown.map((i) => i.path), shown[0]?.path ?? null);
-      } else if (mod && key.toLowerCase() === 'c') setClipboard(false);
-      else if (mod && key.toLowerCase() === 'x') setClipboard(true);
-      else if (mod && key.toLowerCase() === 'v') paste();
-      else if (mod && e.shiftKey && key.toLowerCase() === 'n') {
-        e.preventDefault();
-        void newFolder();
-      } else if (key === 'F2') startRename();
-      else if (key === 'F5') {
-        e.preventDefault();
-        void refresh(true);
-      } else if (key === 'Delete') deleteSelection();
-      else if (key === 'Enter') void openSelection();
-      else if (key === ' ' && selected().length === 1 && isImage(selected()[0].name)) {
-        e.preventDefault();
-        openItem(selected()[0]);
-      } else if (key === 'Escape') setSel([]);
-      else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key) && !e.altKey) {
-        e.preventDefault();
-        moveFocus(key, e.shiftKey);
-      }
+    /* ---------- search field (text editing only; no app shortcuts) ---------- */
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      searchInput.value = '';
+      onSearch();
+      scroller.focus();
     });
 
     /* ---------- address + search ---------- */
     function editAddress() {
       addr.classList.add('editing');
-      addrInput.value = loc === COMPUTER ? 'Computer' : loc;
+      addrInput.value = loc === COMPUTER ? 'My Computer' : loc;
       addrInput.focus();
       addrInput.select();
     }
@@ -1184,7 +1098,7 @@ export const explorer: AppManifest = {
         const path = normalize(raw.replace(/\\/g, '/'));
         if (/^computer$/i.test(raw)) navigate(COMPUTER);
         else if ((await fs.stat(path))?.type === 'dir') navigate(path);
-        else notify(`Explorer can't find "${raw}". Check the spelling and try again.`);
+        else notify(`My Computer can't find "${raw}". Check the spelling and try again.`);
         endEditAddress();
         scroller.focus();
       }
@@ -1213,7 +1127,7 @@ export const explorer: AppManifest = {
     /* ---------- go ---------- */
     void (async () => {
       await seedSamples(fs);
-      const raw = typeof args.path === 'string' ? normalize(args.path) : '/Documents';
+      const raw = typeof args.path === 'string' ? normalize(args.path) : '/';
       const start = raw === '/' ? COMPUTER : (await fs.stat(raw))?.type === 'dir' ? raw : '/Documents';
       navigate(start);
       setTimeout(() => scroller.focus(), 50);

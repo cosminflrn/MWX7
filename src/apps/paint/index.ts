@@ -33,8 +33,11 @@ import './paint.css';
 type ToolId = 'pencil' | 'brush' | 'eraser' | 'fill' | 'picker' | 'text' | 'shape' | 'select' | 'magnifier';
 type TabId = 'home' | 'view' | 'text';
 
+// Fallback only; a fresh canvas is sized to the visible workspace (see workspaceSize).
 const DEFAULT_W = 800;
 const DEFAULT_H = 560;
+// .pt-sheet-wrap padding (7 + 16) plus a little slack so the fresh canvas never triggers scrollbars.
+const WORK_MARGIN = 26;
 const MAX_DIM = 5000;
 const HISTORY_STEPS = 30;
 const HISTORY_BYTES = 240 * 1024 * 1024;
@@ -198,6 +201,14 @@ export const paint: AppManifest = {
       main.width = over.width = w;
       main.height = over.height = hgt;
       applyZoom();
+    }
+
+    /** The visible workspace, so a blank canvas fills the view like Win7 Paint does. */
+    function workspaceSize(): { w: number; h: number } {
+      const w = work.clientWidth - WORK_MARGIN;
+      const hh = work.clientHeight - WORK_MARGIN;
+      if (w < 64 || hh < 64) return { w: DEFAULT_W, h: DEFAULT_H };
+      return { w: Math.min(MAX_DIM, Math.floor(w)), h: Math.min(MAX_DIM, Math.floor(hh)) };
     }
 
     function resetHistory(): void {
@@ -1136,8 +1147,8 @@ export const paint: AppManifest = {
           a,
           popMenu([
             { label: 'Rectangular selection', icon: 'select', checked: tool === 'select', action: () => setTool('select') },
-            { label: 'Select all', shortcut: 'Ctrl+A', action: selectAll },
-            { label: 'Delete', shortcut: 'Del', disabled: !sel, action: deleteSel },
+            { label: 'Select all', action: selectAll },
+            { label: 'Delete', disabled: !sel, action: deleteSel },
           ]),
         ),
     });
@@ -1167,7 +1178,7 @@ export const paint: AppManifest = {
           win.body,
           a,
           popMenu([
-            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void pasteFromClipboard() },
+            { label: 'Paste', action: () => void pasteFromClipboard() },
             { label: 'Paste from…', action: pasteFromFile },
           ]),
         ),
@@ -1312,7 +1323,8 @@ export const paint: AppManifest = {
       commitText();
       sel = null;
       octx.clearRect(0, 0, over.width, over.height);
-      sizeCanvas(DEFAULT_W, DEFAULT_H);
+      const ws = workspaceSize();
+      sizeCanvas(ws.w, ws.h);
       fillWhite();
       path = null;
       resetHistory();
@@ -1435,11 +1447,11 @@ export const paint: AppManifest = {
     /* ============================== menus ============================== */
     const fileMenu = (): HTMLElement =>
       popMenu([
-        { label: 'New', shortcut: 'Ctrl+N', action: () => guard(newImage) },
-        { label: 'Open…', shortcut: 'Ctrl+O', action: openDialog },
+        { label: 'New', action: () => guard(newImage) },
+        { label: 'Open…', action: openDialog },
         'sep',
-        { label: 'Save', shortcut: 'Ctrl+S', action: () => void save() },
-        { label: 'Save as…', shortcut: 'Ctrl+Shift+S', action: () => saveAs() },
+        { label: 'Save', action: () => void save() },
+        { label: 'Save as…', action: () => saveAs() },
         'sep',
         { label: 'Exit', action: () => win.close() },
       ]);
@@ -1448,16 +1460,16 @@ export const paint: AppManifest = {
       const hasSel = !!sel;
       const zoomItem = (z: number): PopItem => ({ label: `${z * 100}%`, checked: zoom === z, action: () => setZoom(z) });
       const toMenu = (items: (PopItem | 'sep')[]) =>
-        items.map((i) => (i === 'sep' ? { separator: true } : { label: i.label, shortcut: i.shortcut, checked: i.checked, disabled: i.disabled, action: i.action }));
+        items.map((i) => (i === 'sep' ? { separator: true } : { label: i.label, checked: i.checked, disabled: i.disabled, action: i.action }));
       const menus: MenuDef[] = [
         {
           label: 'File',
           items: [
-            { label: 'New', shortcut: 'Ctrl+N', action: () => guard(newImage) },
-            { label: 'Open…', shortcut: 'Ctrl+O', action: openDialog },
+            { label: 'New', action: () => guard(newImage) },
+            { label: 'Open…', action: openDialog },
             { separator: true },
-            { label: 'Save', shortcut: 'Ctrl+S', action: () => void save() },
-            { label: 'Save as…', shortcut: 'Ctrl+Shift+S', action: () => saveAs() },
+            { label: 'Save', action: () => void save() },
+            { label: 'Save as…', action: () => saveAs() },
             { separator: true },
             { label: 'Close', action: () => win.close() },
           ],
@@ -1465,16 +1477,16 @@ export const paint: AppManifest = {
         {
           label: 'Edit',
           items: [
-            { label: 'Undo', shortcut: 'Ctrl+Z', disabled: hi <= 0 && !sel?.src, action: undo },
-            { label: 'Redo', shortcut: 'Ctrl+Y', disabled: hi >= hist.length - 1, action: redo },
+            { label: 'Undo', disabled: hi <= 0 && !sel?.src, action: undo },
+            { label: 'Redo', disabled: hi >= hist.length - 1, action: redo },
             { separator: true },
-            { label: 'Cut', shortcut: 'Ctrl+X', disabled: !hasSel, action: () => copySel(true) },
-            { label: 'Copy', shortcut: 'Ctrl+C', disabled: !hasSel, action: () => copySel(false) },
-            { label: 'Paste', shortcut: 'Ctrl+V', action: () => void pasteFromClipboard() },
+            { label: 'Cut', disabled: !hasSel, action: () => copySel(true) },
+            { label: 'Copy', disabled: !hasSel, action: () => copySel(false) },
+            { label: 'Paste', action: () => void pasteFromClipboard() },
             { label: 'Paste from…', action: pasteFromFile },
-            { label: 'Delete', shortcut: 'Del', disabled: !hasSel, action: deleteSel },
+            { label: 'Delete', disabled: !hasSel, action: deleteSel },
             { separator: true },
-            { label: 'Select all', shortcut: 'Ctrl+A', action: selectAll },
+            { label: 'Select all', action: selectAll },
           ],
         },
         {
@@ -1512,68 +1524,8 @@ export const paint: AppManifest = {
       win.setMenus(menus);
     }
 
-    /* ============================== keyboard / clipboard events ============================== */
+    // No app-level keyboard shortcuts: they collide with the host OS in a browser. Everything is reachable by mouse.
     win.body.tabIndex = -1;
-    win.body.addEventListener('keydown', (e) => {
-      const t = e.target as HTMLElement;
-      const typing = t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.tagName === 'SELECT';
-      const mod = e.ctrlKey || e.metaKey;
-      const k = e.key.toLowerCase();
-      if (mod && k === 's') {
-        e.preventDefault();
-        if (e.shiftKey) saveAs();
-        else void save();
-      } else if (mod && k === 'o') {
-        e.preventDefault();
-        openDialog();
-      } else if (mod && k === 'n') {
-        e.preventDefault();
-        guard(newImage);
-      } else if (typing) {
-        return; // let text boxes and fields keep their own undo, selection and clipboard
-      } else if (mod && k === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      } else if (mod && k === 'y') {
-        e.preventDefault();
-        redo();
-      } else if (mod && k === 'a') {
-        e.preventDefault();
-        selectAll();
-      } else if (mod && (k === 'c' || k === 'x') && sel) {
-        e.preventDefault();
-        copySel(k === 'x');
-      } else if (mod && k === 'v') {
-        // let the browser fire a real paste event, which can read images without a permission prompt
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (sel) {
-          e.preventDefault();
-          deleteSel();
-        }
-      } else if (e.key === 'Escape') {
-        if (sel) commitSel();
-      } else if (sel && e.key.startsWith('Arrow')) {
-        e.preventDefault();
-        const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
-        const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
-        lift(false);
-        sel.x += dx;
-        sel.y += dy;
-        renderFloat();
-        updateSelBox();
-        setDirty(true);
-      }
-    });
-
-    win.body.addEventListener('paste', (e) => {
-      const t = e.target as HTMLElement;
-      if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') return;
-      const file = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith('image/'))?.getAsFile();
-      e.preventDefault();
-      if (file) void bitmapToCanvas(file).then((c) => (c ? pasteCanvas(c) : undefined));
-      else if (clip) pasteCanvas(clip);
-    });
 
     /* ============================== wiring ============================== */
     zoomRange.addEventListener('input', () => setZoom(ZOOMS[Number(zoomRange.value)]!));
@@ -1596,6 +1548,21 @@ export const paint: AppManifest = {
     setDirty(false);
 
     if (typeof args.path === 'string') void openFile(args.path);
+    else {
+      // The window has no layout until it is attached, so size the blank canvas on the first frame that has one.
+      let tries = 0;
+      const fit = () => {
+        if (work.clientWidth > 0 || ++tries > 30) {
+          if (!dirty && hist.length <= 1) {
+            const ws = workspaceSize();
+            sizeCanvas(ws.w, ws.h);
+            fillWhite();
+            resetHistory();
+          }
+        } else requestAnimationFrame(fit);
+      };
+      requestAnimationFrame(fit);
+    }
     setTimeout(() => win.body.focus({ preventScroll: true }), 50);
 
     return () => {
