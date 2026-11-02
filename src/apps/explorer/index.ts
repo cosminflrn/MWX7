@@ -351,7 +351,6 @@ export const explorer: AppManifest = {
           'aria-pressed': String(view === v),
           title: label,
           html: glyph,
-          disabled: loc === COMPUTER,
           onclick: () => setView(v),
         });
 
@@ -377,7 +376,18 @@ export const explorer: AppManifest = {
       };
       const cut = clipboard?.cut && clipboard.paths.includes(it.path);
       const cls = `${sel.has(it.path) ? ' selected' : ''}${cut ? ' cut' : ''}${focused === it.path ? ' focus' : ''}`;
-      if (view === 'details' && loc !== COMPUTER) {
+      if (view === 'details' && loc === COMPUTER) {
+        const free = it.drive ? formatSize(Math.max(0, DRIVE_CAPACITY - driveUsed)) : '';
+        return h(
+          'div',
+          { ...common, class: `ex-row ex-crow${cls}` },
+          h('div', { class: 'ex-cell ex-c-name' }, iconEl(it, true), label),
+          h('div', { class: 'ex-cell ex-c-ctype' }, it.kind),
+          h('div', { class: 'ex-cell ex-c-total' }, it.drive ? formatSize(DRIVE_CAPACITY) : ''),
+          h('div', { class: 'ex-cell ex-c-free' }, free),
+        );
+      }
+      if (view === 'details') {
         return h(
           'div',
           { ...common, class: `ex-row${cls}` },
@@ -409,7 +419,7 @@ export const explorer: AppManifest = {
     const renderContent = () => {
       els = new Map();
       scroller.replaceChildren();
-      scroller.className = `ex-scroll ${loc === COMPUTER ? 'computer' : view}`;
+      scroller.className = `ex-scroll ${loc === COMPUTER ? `computer ${view}` : view}`;
       scroller.setAttribute('aria-label', locName(loc));
       const frag = document.createDocumentFragment();
       const add = (it: Item, host: HTMLElement) => {
@@ -421,15 +431,24 @@ export const explorer: AppManifest = {
       if (loc === COMPUTER) {
         const drives = shown.filter((i) => i.drive);
         const folders = shown.filter((i) => !i.drive);
+        const cHead = (drv: boolean) =>
+          h(
+            'div',
+            { class: 'ex-head ex-chead' },
+            h('div', { class: 'ex-col ex-c-name' }, h('span', {}, 'Name')),
+            h('div', { class: 'ex-col ex-c-ctype' }, h('span', {}, 'Type')),
+            h('div', { class: 'ex-col ex-c-total' }, h('span', {}, drv ? 'Total size' : '')),
+            h('div', { class: 'ex-col ex-c-free' }, h('span', {}, drv ? 'Free space' : '')),
+          );
         if (drives.length) {
           const g = h('div', { class: 'ex-group-items' });
           drives.forEach((i) => add(i, g));
-          frag.append(h('div', { class: 'ex-group' }, `Hard Disk Drives (${drives.length})`), g);
+          frag.append(h('div', { class: 'ex-group' }, `Hard Disk Drives (${drives.length})`), ...(view === 'details' ? [cHead(true)] : []), g);
         }
         if (folders.length) {
           const g = h('div', { class: 'ex-group-items' });
           folders.forEach((i) => add(i, g));
-          frag.append(h('div', { class: 'ex-group' }, `Folders (${folders.length})`), g);
+          frag.append(h('div', { class: 'ex-group' }, `Folders (${folders.length})`), ...(view === 'details' ? [cHead(false)] : []), g);
         }
       } else if (view === 'details') {
         const col = (key: SortKey, label: string, cls: string) =>
@@ -899,8 +918,8 @@ export const explorer: AppManifest = {
     };
 
     const spaceMenu = (): MenuItem[] => [
-      { label: 'Large icons', checked: view === 'icons', disabled: !isReal(), action: () => setView('icons') },
-      { label: 'Details', checked: view === 'details', disabled: !isReal(), action: () => setView('details') },
+      { label: 'Large icons', checked: view === 'icons', action: () => setView('icons') },
+      { label: 'Details', checked: view === 'details', action: () => setView('details') },
       { label: 'Refresh', icon: menuIcon('refresh'), action: () => void refresh(true) },
       { separator: true },
       { label: 'Paste', icon: menuIcon('paste'), disabled: !clipboard || !isReal(), action: () => paste() },

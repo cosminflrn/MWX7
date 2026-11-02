@@ -136,8 +136,8 @@
 .set-about-logo svg { display: block; width: 72px; height: 72px; }
 
 /* ---- Window color ---- */
-.set-swatches { display: grid; grid-template-columns: repeat(auto-fill, 44px); gap: 10px; max-width: 420px; }
-.set-swatch { position: relative; width: 44px; height: 44px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 8px; cursor: default; outline: none; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3); }
+.set-swatches { display: flex; flex-wrap: nowrap; gap: 6px; }
+.set-swatch { position: relative; flex: 1 1 0; min-width: 0; max-width: 44px; aspect-ratio: 1; width: auto; height: auto; padding: 0; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 8px; cursor: default; outline: none; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3); }
 /* glossy top highlight */
 .set-swatch::after { content: ''; position: absolute; inset: 0 0 48% 0; border-radius: 7px 7px 50% 50% / 7px 7px 14px 14px; background: linear-gradient(rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.12)); pointer-events: none; }
 .set-swatch:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 2px #b8d6fb; }
