@@ -227,6 +227,9 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
   const [bg, bgx] = canvas2d();
   const glow = document.createElement('canvas');
   const gx = glow.getContext('2d')!;
+  // Upscaling the tiny glow in one 12x jump showed bilinear blocks; a half-res middle step keeps it silky.
+  const mid = document.createElement('canvas');
+  const mx = mid.getContext('2d')!;
   const sprite = document.createElement('canvas');
   let W = 1;
   let H = 1;
@@ -300,8 +303,10 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
       canvas.width = bg.width = W;
       canvas.height = bg.height = H;
       // The glow is rendered tiny and upscaled: bilinear filtering does the blur for free (canvas `filter` costs ~4 ms).
-      glow.width = Math.max(2, Math.round(W / 12));
-      glow.height = Math.max(2, Math.round(H / 12));
+      glow.width = Math.max(2, Math.round(W / 10));
+      glow.height = Math.max(2, Math.round(H / 10));
+      mid.width = Math.max(2, Math.round(W / 2.5));
+      mid.height = Math.max(2, Math.round(H / 2.5));
       paintBackground();
       paintSprite();
     },
@@ -310,7 +315,7 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
       ctx.globalAlpha = 1;
       ctx.drawImage(bg, 0, 0);
       const cy = H * 0.5;
-      const step = Math.max(4, Math.round(W / 150));
+      const step = Math.max(2, Math.round(W / 360));
 
       // Glow pass.
       const gw = glow.width;
@@ -334,10 +339,14 @@ function auroraRenderer(scale = 0.6, maxW = 1280): Renderer {
           gx.stroke();
         }
       }
+      mx.imageSmoothingEnabled = true;
+      mx.imageSmoothingQuality = 'high';
+      mx.clearRect(0, 0, mid.width, mid.height);
+      mx.drawImage(glow, 0, 0, mid.width, mid.height);
       ctx.globalCompositeOperation = 'lighter';
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(glow, 0, 0, W, H);
+      ctx.drawImage(mid, 0, 0, W, H);
 
       // Hairline sheets.
       ctx.lineWidth = Math.max(0.7, H / 900);

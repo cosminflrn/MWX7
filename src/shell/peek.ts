@@ -54,10 +54,15 @@ export function windowThumbnail(w: Win, maxW = THUMB_W, maxH = THUMB_H): HTMLEle
   return h('div', { class: 'peek-thumb', style: `width:${Math.round(w.rect.w * scale)}px;height:${Math.round(w.rect.h * scale)}px` }, clone);
 }
 
+// A minimized window shown temporarily for a peek, to be hidden again afterwards.
+let shownMin: Win | null = null;
+
 function unpeek(): void {
   window.clearTimeout(peekTimer);
   document.body.classList.remove('peeking');
   document.querySelectorAll('.win.peek-target').forEach((n) => n.classList.remove('peek-target'));
+  if (shownMin?.minimized) shownMin.el.style.display = 'none';
+  shownMin = null;
 }
 
 export function closePeek(): void {
@@ -76,8 +81,14 @@ function scheduleClose(): void {
 function openPeek(appId: string, anchor: HTMLElement): void {
   const wins = windowsOf(appId);
   if (!wins.length) return;
-  closePeek();
+  window.clearTimeout(closeTimer);
+  unpeek();
+  // Moving between dock icons slides the open panel over instead of closing and reopening it (Win7).
+  const prev = pop ? pop.getBoundingClientRect() : null;
+  if (prev && pop?.dataset.app === appId) return;
+  pop?.remove();
   const panel = h('div', { class: 'peek-pop' });
+  panel.dataset.app = appId;
   pop = panel;
   panel.addEventListener('pointerenter', () => window.clearTimeout(closeTimer));
   panel.addEventListener('pointerleave', scheduleClose);
@@ -103,9 +114,13 @@ function openPeek(appId: string, anchor: HTMLElement): void {
     });
     tile.addEventListener('pointerenter', () => {
       window.clearTimeout(peekTimer);
-      if (w.minimized) return;
       peekTimer = window.setTimeout(() => {
         document.querySelectorAll('.win.peek-target').forEach((n) => n.classList.remove('peek-target'));
+        if (w.minimized) {
+          // Peek works for minimized windows too: show it in place for as long as the peek lasts.
+          shownMin = w;
+          w.el.style.display = '';
+        }
         w.el.classList.add('peek-target');
         document.body.classList.add('peeking');
       }, 380);
@@ -119,15 +134,26 @@ function openPeek(appId: string, anchor: HTMLElement): void {
   const left = Math.min(Math.max(8, r.left + r.width / 2 - panel.offsetWidth / 2), window.innerWidth - panel.offsetWidth - 8);
   panel.style.left = `${Math.round(left)}px`;
   panel.style.bottom = `${Math.round(window.innerHeight - r.top + 14)}px`;
-  panel.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  if (prev) {
+    const now = panel.getBoundingClientRect();
+    panel.animate(
+      [
+        { transform: `translateX(${prev.left - now.left}px)`, width: `${prev.width}px` },
+        { transform: 'none', width: `${now.width}px` },
+      ],
+      { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    );
+  } else panel.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
 
 /** Wire Aero Peek onto a dock item. */
 export function attachPeek(btn: HTMLElement, appId: string): void {
   let hoverTimer = 0;
   btn.addEventListener('pointerenter', () => {
+    if (!windowsOf(appId).length) return;
     window.clearTimeout(closeTimer);
-    hoverTimer = window.setTimeout(() => openPeek(appId, btn), 480);
+    // Once a panel is up, neighbouring icons switch to theirs almost at once.
+    hoverTimer = window.setTimeout(() => openPeek(appId, btn), pop ? 90 : 480);
   });
   btn.addEventListener('pointerleave', () => {
     window.clearTimeout(hoverTimer);

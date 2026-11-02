@@ -1,3 +1,4 @@
+import { blurWindows, showDesktop } from '../core/wm';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { settings } from '../core/settings';
@@ -42,6 +43,12 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
 
   mountDeskIcons(iconLayer);
 
+  // A click on the wallpaper or an icon takes focus away from the windows.
+  for (const el of [desktop, iconLayer])
+    el.addEventListener('pointerdown', (e) => {
+      if (!(e.target as HTMLElement).closest('.win')) blurWindows();
+    });
+
   desktop.addEventListener('contextmenu', (e) => {
     if ((e.target as HTMLElement).closest('.desk-icon, .win')) return;
     e.preventDefault();
@@ -55,6 +62,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
         { label: 'New Folder', icon: menuIcon('new-folder'), action: () => void createOnDesktop('New folder', true) },
         { label: 'New Text Document', icon: menuIcon('new-file'), action: () => void createOnDesktop('New Text Document.txt', false) },
         { separator: true },
+        { label: 'Show Desktop', icon: menuIcon('minimize'), action: () => showDesktop() },
         { label: 'Overview', icon: menuIcon('maximize'), action: () => openOverview() },
         { label: 'About MWX 7', icon: menuIcon('info'), action: () => launch('about') },
       ],

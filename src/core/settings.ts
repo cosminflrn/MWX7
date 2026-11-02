@@ -12,6 +12,8 @@ const defaults: Settings = {
   bootSequence: true,
   sounds: true,
   volume: 0.8,
+  glassColor: '#1e64dc',
+  glassIntensity: 55,
 };
 
 let current: Settings = { ...defaults };

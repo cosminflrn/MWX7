@@ -44,36 +44,25 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 
 ## Icons (`icons/`)
 
-Tango Icon Theme 0.8.90 (warm, glossy 2005-era style), by Ulisse Perusin, Steven Garrity, Lapo Calamandrei, Ryan Collier,
-Rodney Dawes, Andreas Nilsson, Tuomas Kuosmanen, Garrett LeSage and Jakub Steiner (the Tango Desktop Project).
-Source: https://tango.freedesktop.org/releases/tango-icon-theme-0.8.90.tar.gz
-License: Public Domain (upstream `COPYING` and `AUTHORS` are included as `icons/TANGO-COPYING.txt` and
+Crystal Clear icon set by Everaldo Coelho (http://www.everaldo.com/), glossy XP-era style. Source mirror:
+https://github.com/niko-yanev/crystal-clear. License: GNU LGPL 2.1 or later (full text in `icons/CRYSTAL-CLEAR-LGPL.txt`,
+upstream notice in `icons/CRYSTAL-CLEAR-README.txt`). The PNGs are unmodified 128x128 originals; `icons/16/*.png` are the
+same artwork downscaled to 32x32 (shown at 16 px). Because the artwork is LGPL, it may be replaced by any user: keep the
+file names and swap the PNGs.
+
+Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gaming), Public Domain (`icons/TANGO-COPYING.txt`,
 `icons/TANGO-AUTHORS.txt`).
 
-Processing: SVGs rendered to 256x256 PNG with cairosvg; `folder-documents/pictures/music` are the Tango folder with a
-small Tango document / film / music-note icon composited on the front. The 32x32 menu icons in `icons/16/` are Tango's
-own hand-hinted 32x32 PNGs where they exist (otherwise the SVG rendered at 32 px).
-
-| File | Tango icon |
+| File | Crystal Clear icon |
 |---|---|
-| `notepad.png` | apps/accessories-text-editor |
-| `calculator.png` | apps/accessories-calculator |
-| `terminal.png` | apps/utilities-terminal |
-| `settings.png` | categories/preferences-system |
-| `about.png` | apps/help-browser |
-| `folder.png` | places/folder |
-| `folder-documents.png` / `folder-pictures.png` / `folder-music.png` | places/folder + mimetypes/text-x-generic / emblems/emblem-photos / mimetypes/audio-x-generic |
-| `computer.png`, `explorer.png` | devices/computer |
-| `trash-empty.png` / `trash-full.png` | places/user-trash / status/user-trash-full |
-| `search.png` | actions/system-search |
-| `user.png` | apps/system-users |
-| `shutdown.png` / `logoff.png` | actions/system-shutdown / actions/system-log-out |
-| `paint.png` | categories/applications-graphics |
-| `pinball.png` | devices/input-gaming |
-| `desktop.png` | places/user-desktop |
-| `file.png` / `text.png` / `image.png` | mimetypes/text-x-generic-template / text-x-generic / image-x-generic |
-| `drive.png` | devices/drive-harddisk |
-| `16/*.png` | actions/* (document-open, edit-cut/copy/paste/delete, document-save-as, folder-new, document-new, document-properties, view-refresh, process-stop, go-bottom, view-fullscreen, go-up, system-*), apps/preferences-desktop-wallpaper, status/dialog-information, places/user-trash |
+| `notepad` / `text` / `file` | apps/kwrite / minetypes/txt / minetypes/document |
+| `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
+| `settings`, `about`, `search` | apps/kcontrol, actions/info, actions/filefind |
+| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder, folder_music, folder_image; apps/my_documents |
+| `computer`, `explorer`, `drive`, `desktop` | apps/mymac, apps/file-manager, devices/hdd_mount, filesystems/desktop |
+| `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
+| `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/logout, minetypes/image |
+| `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, logout, background), filesystems/(folder_green, folder_grey_open, trashcan_empty) |
 
 ## Font (`../fonts/selawik/`)
 
@@ -81,3 +70,11 @@ Selawik, (c) 2015 Microsoft Corporation, Reserved Font Name "Selawik". Source: h
 License: SIL Open Font License 1.1 (`fonts/selawik/OFL.txt`).
 The repository ships only sources, so the four weights (Light 200, Regular 400, Semibold 600, Bold 700) were built
 from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 with fontTools. The sources were not modified; only the build format changed. OFL terms apply: the font may not be sold by itself.
+
+## Music (`music/`)
+
+| File | Title | Performer | Source | License |
+|---|---|---|---|---|
+| `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
+
+Unmodified copies of the Ogg Vorbis files published by the project.

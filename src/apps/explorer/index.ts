@@ -554,6 +554,7 @@ export const explorer: AppManifest = {
     const openItem = (it: Item) => {
       if (it.dir) return navigate(it.path);
       if (isImage(it.name)) return showPreview(it);
+      if (/^(mp3|ogg|oga|wav|m4a|flac)$/.test(extOf(it.name))) return os.launch('mediaplayer', { path: it.path });
       if (isText(it.name) || !extOf(it.name)) return os.launch('notepad', { path: it.path });
       notify(`There is no app associated with ${kindOf(it.name, false)}s yet.`);
     };

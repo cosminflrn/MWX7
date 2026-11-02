@@ -2,7 +2,7 @@ import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
-import { activeWindow, centerWindow, closeWindow, minimizeWindow, toggleMaximize } from '../core/wm';
+import { activeWindow, centerWindow, closeWindow, minimizeWindow, showDesktop, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
@@ -155,7 +155,26 @@ export function mountMenubar(bar: HTMLElement): void {
     html: OVERVIEW_GLYPH,
     onclick: () => openOverview(),
   });
-  right.append(searchBtn, overviewBtn, clock, controls);
+  // Win7 "Show desktop" strip at the far right: hover peeks through every window, click minimizes them all.
+  let peekT = 0;
+  const showDesk = h('button', {
+    class: 'mb-showdesk',
+    title: 'Show desktop',
+    'aria-label': 'Show desktop',
+    onclick: () => {
+      window.clearTimeout(peekT);
+      document.body.classList.remove('peeking');
+      showDesktop();
+    },
+  });
+  showDesk.addEventListener('pointerenter', () => {
+    peekT = window.setTimeout(() => document.body.classList.add('peeking'), 450);
+  });
+  showDesk.addEventListener('pointerleave', () => {
+    window.clearTimeout(peekT);
+    document.body.classList.remove('peeking');
+  });
+  right.append(searchBtn, overviewBtn, clock, controls, showDesk);
 
   const tick = () => {
     const d = new Date();

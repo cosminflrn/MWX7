@@ -1,7 +1,9 @@
 import { registerApp } from '../core/registry';
 import { about } from './about';
+import { browser } from './browser';
 import { calculator } from './calculator';
 import { explorer } from './explorer';
+import { mediaplayer } from './mediaplayer';
 import { notepad } from './notepad';
 import { paint } from './paint';
 import { pinball } from './pinball';
@@ -12,5 +14,5 @@ import { settingsApp } from './settings';
  * AppManifest, then add ONE line here. Order = Start menu / dock order.
  */
 export function registerAll(): void {
-  [explorer, notepad, paint, calculator, pinball, settingsApp, about].forEach(registerApp);
+  [explorer, browser, mediaplayer, notepad, paint, calculator, pinball, settingsApp, about].forEach(registerApp);
 }

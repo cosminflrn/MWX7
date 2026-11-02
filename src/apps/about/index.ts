@@ -4,7 +4,7 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.7.0';
 
 export const about: AppManifest = {
   id: 'about',
@@ -49,7 +49,7 @@ export const about: AppManifest = {
       h(
         'p',
         { class: 'about-small' },
-        'Icons: Tango (public domain) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
+        'Icons: Crystal Clear (LGPL, Everaldo Coelho) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
       ),
     );
   },

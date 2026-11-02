@@ -15,7 +15,7 @@ const PANEL_W = 232;
 const FRAME_X = 18;
 const FRAME_Y = 40;
 const MENUBAR_H = 28;
-const DOCK_RESERVE = 82;
+const DOCK_RESERVE = 70;
 
 /**
  * Fixed-size window that hugs the content: table + score panel at 1:1, scaled down uniformly when the screen
@@ -162,6 +162,7 @@ export const pinball: AppManifest = {
       music.start();
     };
     win.body.addEventListener('pointerdown', wake, true);
+    win.body.addEventListener('keydown', wake, true);
 
     // Losing focus never pauses the game, but a key released elsewhere must not stay "held".
     const onBlur = () => releaseAll();

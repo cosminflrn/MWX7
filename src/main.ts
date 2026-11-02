@@ -12,6 +12,7 @@ import { notify } from './core/os';
 import { initWM, warmUpGenie } from './core/wm';
 import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
+import { mountGlass } from './shell/glass';
 import { mountMenubar } from './shell/menubar';
 import { mountNotifications } from './shell/notifications';
 import { mountSelection } from './shell/selection';
@@ -53,6 +54,7 @@ async function start(): Promise<void> {
 
   const $ = (id: string) => document.getElementById(id)!;
   initWM($('windows'));
+  mountGlass();
   mountDesktop($('desktop'), $('desktop-icons'));
   mountMenubar($('menubar'));
   mountDock($('dock'));

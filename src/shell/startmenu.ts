@@ -24,14 +24,16 @@ export function mountStartMenu(): void {
    * the dock — just above fully magnified icons. It only moves when the
    * pointer enters or leaves the dock, never while gliding along it.
    */
-  const RAISE = 30;
+  // High enough to clear magnified icons, their labels and Aero Peek thumbnails.
+  const RAISE = 228;
   const place = () => {
     if (!el) return;
     const shelf = document.querySelector<HTMLElement>('#dock .dock-shelf');
     const top = shelf ? shelf.getBoundingClientRect().top : window.innerHeight - 80;
     const raised = document.getElementById('dock')?.classList.contains('hover') ? RAISE : 0;
     el.style.left = `${Math.round((window.innerWidth - el.offsetWidth) / 2)}px`;
-    el.style.bottom = `${Math.round(window.innerHeight - top + 10 + raised)}px`;
+    const room = top - 10 - (28 + 8) - el.offsetHeight;
+    el.style.bottom = `${Math.round(window.innerHeight - top + 10 + Math.max(0, Math.min(raised, room)))}px`;
   };
 
   const loop = () => {

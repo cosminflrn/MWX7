@@ -17,9 +17,12 @@ import { menuIcon, openMenu } from '../ui/menu';
  * behaviour (click running app = focus / minimize, glow indicator, right-click
  * jump list) and the Start orb as its first item.
  */
-const BASE = 48;
-const MAX_SCALE = 1.6;
 const RANGE = 140;
+// Icon size + magnification follow the dock's mode (full-width taskbar is smaller and zooms less).
+const metrics = (dock: HTMLElement) => {
+  const full = dock.classList.contains('full');
+  return { base: full ? 34 : 48, max: full ? 1.4 : 1.6 };
+};
 
 export function mountDock(dock: HTMLElement): void {
   const shelf = h('div', { class: 'dock-shelf' });
@@ -206,6 +209,7 @@ export function mountDock(dock: HTMLElement): void {
   };
   const tick = () => {
     raf = 0;
+    const { base: BASE, max: MAX_SCALE } = metrics(dock);
     if (!rest || rest.length !== items().length) measureRest();
     if (pointerX !== null) easedX = easedX === null ? pointerX : easedX + (pointerX - easedX) * 0.22;
     let moving = false;

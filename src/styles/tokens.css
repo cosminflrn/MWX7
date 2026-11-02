@@ -5,8 +5,15 @@
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
 
   /* Aero glass (Win7 "Sky" color) */
-  --glass-tint: linear-gradient(180deg, rgba(48, 118, 232, 0.38), rgba(22, 84, 214, 0.32));
-  --glass-tint-inactive: linear-gradient(180deg, rgba(120, 155, 215, 0.34), rgba(100, 136, 200, 0.3));
+  /* Driven by Settings → Window Color (src/shell/glass.ts); these are the defaults. */
+  --glass-rgb: 30, 100, 220;
+  --glass-a: 0.46;
+  --glass-tint: linear-gradient(180deg, rgba(var(--glass-rgb), var(--glass-a)), rgba(var(--glass-rgb), calc(var(--glass-a) * 0.86)));
+  --glass-tint-inactive: linear-gradient(180deg, rgba(var(--glass-rgb), calc(var(--glass-a) * 0.5)), rgba(var(--glass-rgb), calc(var(--glass-a) * 0.42))),
+    linear-gradient(rgba(150, 165, 190, 0.22), rgba(150, 165, 190, 0.22));
+  /* One glass recipe for window frames, the top bar and the dock */
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.06) 34px, rgba(255, 255, 255, 0) 70px);
+  --glass-ring: 0 0 0 1px rgba(0, 25, 80, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 1px 0 1px rgba(255, 255, 255, 0.28);
   --glass-streaks: linear-gradient(
     118deg,
     rgba(255, 255, 255, 0) 0 22%,

@@ -115,6 +115,10 @@ export interface Settings {
   sounds: boolean;
   /** 0..1 */
   volume: number;
+  /** Aero glass colour (#rrggbb), Win7 "Window Color" */
+  glassColor: string;
+  /** Aero glass colour intensity 0..100 */
+  glassIntensity: number;
 }
 
 export interface OSApi {

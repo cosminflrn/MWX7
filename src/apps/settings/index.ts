@@ -6,7 +6,7 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 
 type SectionId = 'personalization' | 'accounts' | 'sound' | 'system';
 
@@ -77,6 +77,69 @@ export const settingsApp: AppManifest = {
         lead('Click a picture to use it as your desktop background.'),
         sub('Desktop Background'),
         grid,
+        windowColor(),
+      );
+    };
+
+    // ---- Window colour (Win7 "Window Color and Appearance") ----
+    const SWATCHES: [string, string][] = [
+      ['Sky', '#1e64dc'], ['Twilight', '#4a4f8f'], ['Sea', '#1d9aa5'], ['Leaf', '#3f9a3f'],
+      ['Lime', '#9ac93a'], ['Sun', '#e8c52b'], ['Pumpkin', '#e8812a'], ['Ruby', '#c42b3a'],
+      ['Fuchsia', '#c23a9a'], ['Blush', '#ee9fb4'], ['Violet', '#7d4cc4'], ['Lavender', '#a99bd6'],
+      ['Taupe', '#8a7f73'], ['Chocolate', '#6b4630'], ['Slate', '#5f6b78'], ['Frost', '#b9d3e8'],
+    ];
+    const windowColor = () => {
+      const cur = () => os.settings.get();
+      const swatches = h('div', { class: 'set-swatches', role: 'listbox', 'aria-label': 'Window color' });
+      const picker = h('input', { type: 'color', class: 'set-colorinput', 'aria-label': 'Custom color', value: cur().glassColor });
+      const slider = h('input', { type: 'range', class: 'set-range', min: '0', max: '100', step: '1', value: String(cur().glassIntensity), 'aria-label': 'Color intensity' });
+      const val = h('span', { class: 'set-muted set-range-val' }, String(cur().glassIntensity));
+      const draw = () => {
+        const c = cur().glassColor.toLowerCase();
+        swatches.replaceChildren(
+          ...SWATCHES.map(([name, hex]) =>
+            h('button', {
+              class: `set-swatch${c === hex ? ' sel' : ''}`,
+              type: 'button',
+              role: 'option',
+              'aria-selected': String(c === hex),
+              title: name,
+              style: `background:${hex}`,
+              onclick: () => {
+                os.settings.set({ glassColor: hex });
+                picker.value = hex;
+                draw();
+              },
+            }),
+          ),
+        );
+      };
+      draw();
+      slider.addEventListener('input', () => {
+        val.textContent = slider.value;
+        os.settings.set({ glassIntensity: Number(slider.value) });
+      });
+      picker.addEventListener('input', () => {
+        os.settings.set({ glassColor: picker.value });
+        draw();
+      });
+      const mixer = h('div', { class: 'set-mixer', hidden: true }, h('label', { class: 'set-mixer-row' }, h('span', {}, 'Custom color'), picker));
+      const toggle = h('button', { class: 'set-disclosure', type: 'button', 'aria-expanded': 'false' }, h('span', { class: 'set-disclosure-arrow' }, '\u25B8'), 'Show color mixer');
+      toggle.addEventListener('click', () => {
+        mixer.hidden = !mixer.hidden;
+        toggle.setAttribute('aria-expanded', String(!mixer.hidden));
+        toggle.classList.toggle('open', !mixer.hidden);
+        toggle.lastChild!.textContent = mixer.hidden ? 'Show color mixer' : 'Hide color mixer';
+      });
+      return h(
+        'div',
+        { class: 'set-wincolor' },
+        sub('Window Color'),
+        lead('Change the color of your window borders, Start menu and taskbar.'),
+        swatches,
+        h('div', { class: 'set-intensity' }, h('span', {}, 'Color intensity:'), slider, val),
+        toggle,
+        mixer,
       );
     };
 
@@ -155,10 +218,26 @@ export const settingsApp: AppManifest = {
     const links = new Map<SectionId, HTMLElement>();
     const mark = (id: SectionId) => links.forEach((el, k) => el.classList.toggle('cur', k === id));
 
+    // While a click-initiated smooth scroll runs, ignore observer/scroll updates so the highlight doesn't flicker.
+    let locked = false;
+    let lockTimer = 0;
+    const unlock = () => {
+      locked = false;
+      window.clearTimeout(lockTimer);
+      content.removeEventListener('scrollend', unlock);
+      syncBottom();
+    };
+    const syncBottom = () => {
+      if (content.scrollTop + content.clientHeight >= content.scrollHeight - 2 && content.scrollTop > 0) mark(SECTIONS[SECTIONS.length - 1].id);
+    };
     const jump = (id: SectionId) => {
       const target = sections[SECTIONS.findIndex((x) => x.id === id)];
-      content.scrollTo({ top: target.offsetTop - content.offsetTop, behavior: 'smooth' });
       mark(id);
+      locked = true;
+      window.clearTimeout(lockTimer);
+      content.addEventListener('scrollend', unlock, { once: true });
+      lockTimer = window.setTimeout(unlock, 900);
+      content.scrollTo({ top: target.offsetTop - content.offsetTop, behavior: 'smooth' });
     };
 
     for (const sec of SECTIONS) {
@@ -179,15 +258,23 @@ export const settingsApp: AppManifest = {
     // Highlight whichever section occupies the top band of the scroll area.
     const io = new IntersectionObserver(
       (entries) => {
+        if (locked) return;
         for (const e of entries) if (e.isIntersecting) mark((e.target as HTMLElement).dataset.sec as SectionId);
       },
       { root: content, rootMargin: '0px 0px -70% 0px', threshold: 0 },
     );
     sections.forEach((el) => io.observe(el));
+    const onScroll = () => {
+      if (!locked) syncBottom();
+    };
+    content.addEventListener('scroll', onScroll, { passive: true });
 
     const wanted = typeof args.page === 'string' ? (args.page as SectionId) : undefined;
     if (wanted && SECTIONS.some((x) => x.id === wanted)) requestAnimationFrame(() => jump(wanted));
 
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      window.clearTimeout(lockTimer);
+    };
   },
 };
