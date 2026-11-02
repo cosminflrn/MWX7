@@ -3,6 +3,7 @@ import { newBall, stepWorld, type Ball, type PhysEvents } from './physics';
 import {
   BALL_R,
   H,
+  LANE_DIV,
   NEON,
   PLUNGER_REST_Y,
   PLUNGER_TRAVEL,
@@ -199,7 +200,7 @@ export class Game {
 
   private ballAtPlunger(): boolean {
     const b = this.ball;
-    return b.active && !b.held && b.x > 380 && b.y > 600 && Math.abs(b.vy) < 120;
+    return b.active && !b.held && b.x > LANE_DIV + 2 && b.y > 600 && Math.abs(b.vy) < 120;
   }
 
   private launch(): void {
@@ -368,7 +369,7 @@ export class Game {
 
     if (this.phase === 'play' && this.saveT > 0) this.saveT = Math.max(0, this.saveT - dt);
 
-    if (b.active && !b.inPlay && b.y > 300 && b.x < 370) b.inPlay = true;
+    if (b.active && !b.inPlay && b.y > 300 && b.x < LANE_DIV - 8) b.inPlay = true;
 
     if (b.held) {
       this.saucerT -= dt;

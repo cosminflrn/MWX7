@@ -10,6 +10,25 @@ import { H, W } from './table';
 
 const SAVE_PATH = '/Documents/.pinball.json';
 const STEP = 1 / 240;
+const PANEL_W = 232;
+/** Chrome around the window body: title bar (30) on top, 8px glass frame on the other three sides, plus a 1px border all round. */
+const FRAME_X = 18;
+const FRAME_Y = 40;
+const MENUBAR_H = 28;
+const DOCK_RESERVE = 82;
+
+/**
+ * Fixed-size window that hugs the content: table + score panel at 1:1, scaled down uniformly when the screen
+ * cannot hold it (the OS would otherwise clamp one axis and leave gaps).
+ */
+function fitWindow(): { width: number; height: number; resizable: false } {
+  const cw = W + PANEL_W;
+  const availH = (typeof window === 'undefined' ? 900 : window.innerHeight) - MENUBAR_H - DOCK_RESERVE - 24;
+  const availW = (typeof window === 'undefined' ? 1600 : window.innerWidth) - 40;
+  const s = Math.min(1, (availH - FRAME_Y) / H, (availW - FRAME_X) / cw);
+  return { width: Math.floor(cw * s) + FRAME_X, height: Math.floor(H * s) + FRAME_Y, resizable: false };
+}
+const WINDOW = fitWindow();
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
 export const pinball: AppManifest = {
@@ -21,12 +40,15 @@ export const pinball: AppManifest = {
   pinned: false,
   desktop: true,
   singleInstance: true,
-  window: { width: 1600, height: 1000, resizable: true, minWidth: 700, minHeight: 560 },
+  window: WINDOW,
 
   mount({ win, fs }) {
     const sfx = new Sfx();
     const music = new Music(sfx);
     const game = new Game(sfx);
+    // Music starts the moment the app opens. The boot clicks have already unlocked audio for the page; if not, `wake` retries on first input.
+    sfx.unlock();
+    music.start();
 
     // ---- DOM ----
     const canvas = h('canvas', { class: 'pb-canvas', 'aria-label': 'Space Pinball table' });
@@ -68,6 +90,7 @@ export const pinball: AppManifest = {
         { class: 'pb-keys' },
         h('span', {}, h('kbd', {}, '\u2190'), h('kbd', {}, '\u2192'), ' flippers'),
         h('span', {}, h('kbd', {}, '\u2191'), ' hold to launch'),
+        h('span', {}, h('kbd', {}, 'M'), ' mute'),
         h('span', {}, h('kbd', {}, 'F2'), ' new game')
       )
     );
@@ -109,8 +132,7 @@ export const pinball: AppManifest = {
 
     win.body.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      sfx.unlock();
-      music.start();
+      wake();
       if (e.code in flipKeys || isPlunger(e.code)) e.preventDefault();
       if (e.repeat) return;
       if (e.code === 'F2') {
@@ -132,33 +154,14 @@ export const pinball: AppManifest = {
         refreshFlippers();
       } else if (isPlunger(e.code)) game.setPlunger(false);
     });
-    // Mouse / touch: left half = left flipper, right half = right flipper, far right strip = plunger.
-    const pointerZone = (e: PointerEvent): 'plunger' | 0 | 1 => {
-      const r = canvas.getBoundingClientRect();
-      const fx = (e.clientX - r.left) / r.width;
-      return fx > 0.9 ? 'plunger' : fx < 0.5 ? 0 : 1;
-    };
-    const pointerHeld = new Map<number, 'plunger' | 0 | 1>();
-    canvas.addEventListener('pointerdown', (e) => {
-      win.body.focus();
+    // Desktop only, keyboard only: there is deliberately no mouse / touch handling for gameplay.
+    // Audio fallback: if the browser still holds the context suspended at mount, the first click or key in the window starts it.
+    const wake = () => {
+      if (sfx.ctx && sfx.ctx.state === 'running') return;
       sfx.unlock();
       music.start();
-      if (game.phase === 'over') return newGame();
-      const z = pointerZone(e);
-      pointerHeld.set(e.pointerId, z);
-      canvas.setPointerCapture(e.pointerId);
-      if (z === 'plunger') game.setPlunger(true);
-      else game.setFlipper(z, true);
-    });
-    const pointerUp = (e: PointerEvent) => {
-      const z = pointerHeld.get(e.pointerId);
-      if (z === undefined) return;
-      pointerHeld.delete(e.pointerId);
-      if (z === 'plunger') game.setPlunger(false);
-      else game.setFlipper(z, false);
     };
-    canvas.addEventListener('pointerup', pointerUp);
-    canvas.addEventListener('pointercancel', pointerUp);
+    win.body.addEventListener('pointerdown', wake, true);
 
     // Losing focus never pauses the game, but a key released elsewhere must not stay "held".
     const onBlur = () => releaseAll();
@@ -196,31 +199,25 @@ export const pinball: AppManifest = {
     }
     buildMenus();
 
-    // ---- layout: the table fills the window height; the score panel scales with it and sits beside the table ----
+    // ---- layout: the window is sized to the content; scale table and panel uniformly, the panel absorbs rounding slack ----
     let lastKey = '';
-    const PANEL_W = 232;
     const fit = () => {
       const bw = win.body.clientWidth;
       const bh = win.body.clientHeight;
       if (!bw || !bh) return;
-      // The panel grows a little faster than the table so wide windows are filled; 520 = its minimum natural height.
-      const clamp = (v: number) => Math.max(0.8, Math.min(1.9, v * 1.3, bh / 520));
-      let s = Math.min((bh - 8) / H, (bw - PANEL_W * 0.8) / W);
-      for (let i = 0; i < 3; i++) s = Math.min((bh - 8) / H, (bw - PANEL_W * clamp(s)) / W);
-      s = Math.max(0.2, s);
-      const u = clamp(s);
+      const s = Math.max(0.2, Math.min(bh / H, bw / (W + PANEL_W)));
       const cssW = Math.floor(W * s);
       const cssH = Math.floor(H * s);
       const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3, 1600 / cssW)); // cap texture size on huge screens
-      const key = `${cssW}|${cssH}|${dpr}|${u}|${bh}`;
+      const key = `${cssW}|${cssH}|${dpr}|${bw}|${bh}`;
       if (key === lastKey) return;
       lastKey = key;
       stage.style.width = `${cssW}px`;
       stage.style.height = `${cssH}px`;
       // CSS zoom scales the whole panel (text, bars, bezels) with the table.
-      panel.style.setProperty('zoom', String(u));
-      panel.style.width = `${PANEL_W}px`;
-      panel.style.height = `${bh / u}px`;
+      panel.style.setProperty('zoom', String(s));
+      panel.style.width = `${(bw - cssW) / s}px`;
+      panel.style.height = `${bh / s}px`;
       renderer.resize(cssW, dpr);
     };
     const ro = new ResizeObserver(fit);
