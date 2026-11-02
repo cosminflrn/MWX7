@@ -40,7 +40,7 @@ export const ICON_DEFS = `
   </defs>
 </svg>`;
 
-/** Raster icons (Tango, public domain — see public/media/icons/). */
+/** Raster icons (Crystal Clear, LGPL — see public/media/CREDITS.md). */
 const png = (name: string) =>
   `<img class="icon-img" alt="" draggable="false" src="${import.meta.env.BASE_URL}media/icons/${name}.png">`;
 

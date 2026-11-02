@@ -49,7 +49,7 @@ export const about: AppManifest = {
       h(
         'p',
         { class: 'about-small' },
-        'Icons: Tango (public domain) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
+        'Icons: Crystal Clear (LGPL, Everaldo Coelho) · Font: Selawik (OFL) · Footage & photos: Pexels · Sounds: FluidR3 (MIT). Details in media/CREDITS.md.',
       ),
     );
   },

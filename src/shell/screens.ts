@@ -15,16 +15,24 @@ import { createWallpaperLayer } from './wallpapers';
 const POWER_GLYPH =
   '<svg viewBox="0 0 64 64"><path d="M22.5 21.5a15 15 0 1 0 19 0" fill="none" stroke="#cfd6df" stroke-width="4.5" stroke-linecap="round"/><path d="M32 13v18" stroke="#cfd6df" stroke-width="4.5" stroke-linecap="round"/></svg>';
 
-/** Original 90s-BIOS-style power-saving badge (star + swoosh), not any real certification mark. */
+/** Original cursive "energy" wordmark + five-point star with a sweeping arc, in classic BIOS yellow (hand-drawn paths). */
 const POWER_SAVER_BADGE = `
-<svg viewBox="0 0 220 96" xmlns="http://www.w3.org/2000/svg" aria-label="MWX Power Saver">
-  <defs>
-    <linearGradient id="ps-g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2fd0ff"/><stop offset="1" stop-color="#4be37a"/></linearGradient>
-  </defs>
-  <path d="M10 70 C 50 98, 150 98, 210 30" fill="none" stroke="url(#ps-g)" stroke-width="5" stroke-linecap="round"/>
-  <path d="M174 6 l7.2 14.6 16.1 2.3-11.6 11.4 2.7 16-14.4-7.6-14.4 7.6 2.7-16-11.6-11.4 16.1-2.3z" fill="none" stroke="url(#ps-g)" stroke-width="3.4" stroke-linejoin="round"/>
-  <text x="12" y="44" fill="#e9f7ff" font-family="Arial, Helvetica, sans-serif" font-style="italic" font-weight="700" font-size="34" letter-spacing="-1">power</text>
-  <text x="14" y="66" fill="#7fe0ff" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="13" letter-spacing="4.2">MWX SAVER</text>
+<svg viewBox="0 0 240 120" xmlns="http://www.w3.org/2000/svg" aria-label="Energy Star">
+  <g fill="none" stroke="#f4d000" stroke-linecap="round" stroke-linejoin="round">
+    <!-- cursive 'energy', letter by letter (e n e r g y), baseline y=70 -->
+    <path stroke-width="3.6" d="M22 66 H40 C 42 52, 24 50, 24 62 C 24 74, 38 74, 44 66"/>
+    <path stroke-width="3.6" d="M46 70 C 48 60, 50 54, 52 52 C 52 60, 52 66, 54 66 C 56 56, 66 50, 68 58 C 69 64, 68 68, 72 68"/>
+    <path stroke-width="3.6" d="M76 66 H94 C 96 52, 78 50, 78 62 C 78 74, 92 74, 98 66"/>
+    <path stroke-width="3.6" d="M102 70 C 104 62, 105 56, 106 52 C 107 58, 110 54, 116 52"/>
+    <path stroke-width="3.6" d="M130 54 C 120 48, 116 60, 122 64 C 128 66, 132 58, 132 52 C 132 66, 132 80, 124 82 C 118 83, 118 76, 124 76"/>
+    <path stroke-width="3.6" d="M138 52 C 138 62, 140 68, 146 66 C 152 64, 156 56, 156 50 C 156 66, 154 82, 146 90 C 140 94, 136 90, 142 88"/>
+    <!-- swoosh arc sweeping under the word and up to the star -->
+    <path stroke-width="3.4" d="M16 82 C 56 108, 150 112, 196 56"/>
+  </g>
+  <!-- five-point star riding the end of the arc -->
+  <path fill="#f4d000" d="M200 14 l6.4 13 14.3 2-10.4 10.1 2.5 14.2-12.8-6.7-12.8 6.7 2.5-14.2-10.4-10.1 14.3-2z"/>
+  <text x="120" y="116" text-anchor="middle" fill="#f4d000" font-family="Arial, Helvetica, sans-serif" font-weight="700"
+    font-size="13" letter-spacing="5">ENERGY STAR</text>
 </svg>`;
 
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
