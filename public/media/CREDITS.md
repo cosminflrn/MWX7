@@ -44,31 +44,36 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 
 ## Icons (`icons/`)
 
-Oxygen icon theme, (c) 2007 Nuno Pinheiro, David Vignoni, David Miller, Johann Ollivier Lapeyre, Kenneth Wimer,
-Riccardo Iaconelli and the Oxygen Team. Source: https://github.com/KDE/oxygen-icons (commit 48f4538).
-License: LGPL-3.0-or-later (full text in `icons/LICENSE-LGPL-3.0.txt`; upstream `COPYING.txt` and `AUTHORS.txt`
-are included alongside). The icons are unmodified apart from rasterisation to 256x256 PNG (SVG sources were rendered
-with resvg) and 256-colour quantisation for the folder icons to keep them small.
+Tango Icon Theme 0.8.90 (warm, glossy 2005-era style), by Ulisse Perusin, Steven Garrity, Lapo Calamandrei, Ryan Collier,
+Rodney Dawes, Andreas Nilsson, Tuomas Kuosmanen, Garrett LeSage and Jakub Steiner (the Tango Desktop Project).
+Source: https://tango.freedesktop.org/releases/tango-icon-theme-0.8.90.tar.gz
+License: Public Domain (upstream `COPYING` and `AUTHORS` are included as `icons/TANGO-COPYING.txt` and
+`icons/TANGO-AUTHORS.txt`).
 
-| File | Oxygen icon |
+Processing: SVGs rendered to 256x256 PNG with cairosvg; `folder-documents/pictures/music` are the Tango folder with a
+small Tango document / film / music-note icon composited on the front. The 32x32 menu icons in `icons/16/` are Tango's
+own hand-hinted 32x32 PNGs where they exist (otherwise the SVG rendered at 32 px).
+
+| File | Tango icon |
 |---|---|
 | `notepad.png` | apps/accessories-text-editor |
 | `calculator.png` | apps/accessories-calculator |
 | `terminal.png` | apps/utilities-terminal |
 | `settings.png` | categories/preferences-system |
-| `about.png` | status/dialog-information |
-| `folder.png` | mimetypes/inode-directory |
-| `folder-documents.png` | places/folder-documents |
-| `folder-pictures.png` | places/folder-pictures |
-| `folder-music.png` | places/folder-music |
-| `computer.png` | devices/computer |
-| `trash-empty.png` | places/user-trash |
-| `trash-full.png` | places/user-trash-full |
-| `search.png` | apps/preferences-desktop-search (binoculars) |
-| `user.png` | places/user-identity |
-| `explorer.png` | apps/system-file-manager |
-| `shutdown.png` | actions/system-shutdown |
-| `logoff.png` | actions/system-log-out |
+| `about.png` | apps/help-browser |
+| `folder.png` | places/folder |
+| `folder-documents.png` / `folder-pictures.png` / `folder-music.png` | places/folder + mimetypes/text-x-generic / emblems/emblem-photos / mimetypes/audio-x-generic |
+| `computer.png`, `explorer.png` | devices/computer |
+| `trash-empty.png` / `trash-full.png` | places/user-trash / status/user-trash-full |
+| `search.png` | actions/system-search |
+| `user.png` | apps/system-users |
+| `shutdown.png` / `logoff.png` | actions/system-shutdown / actions/system-log-out |
+| `paint.png` | categories/applications-graphics |
+| `pinball.png` | devices/input-gaming |
+| `desktop.png` | places/user-desktop |
+| `file.png` / `text.png` / `image.png` | mimetypes/text-x-generic-template / text-x-generic / image-x-generic |
+| `drive.png` | devices/drive-harddisk |
+| `16/*.png` | actions/* (document-open, edit-cut/copy/paste/delete, document-save-as, folder-new, document-new, document-properties, view-refresh, process-stop, go-bottom, view-fullscreen, go-up, system-*), apps/preferences-desktop-wallpaper, status/dialog-information, places/user-trash |
 
 ## Font (`../fonts/selawik/`)
 
