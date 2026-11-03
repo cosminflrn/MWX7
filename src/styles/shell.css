@@ -89,7 +89,8 @@
   box-shadow: 0 1px 10px rgba(0, 20, 50, 0.22);
   /* Black text on a soft white glow, like Win7 caption text: legible on clear or tinted glass */
   color: #000;
-  text-shadow: 0 0 4px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.8), 0 0 16px rgba(255, 255, 255, 0.5);
+  /* the same glow plate as window captions */
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.75), 0 0 18px rgba(255, 255, 255, 0.5);
 }
 
 .mb-left,
@@ -114,6 +115,11 @@
   align-items: center;
 }
 
+/* Buttons drop inherited text-shadow in the UA sheet; keep the glow plate on every item. */
+#menubar button { color: inherit; text-shadow: inherit; }
+/* Segoe UI's ascent sits the text ~2px low in a 24px box (measured on Windows); nudge it to the optical centre. */
+.mb-item { padding-bottom: 4px; }
+.mb-item.mb-icon { padding-bottom: 2px; }
 .mb-item:hover { background: rgba(255, 255, 255, 0.3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); }
 .mb-item.open { background: rgba(255, 255, 255, 0.42); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6); }
 
@@ -1113,3 +1119,7 @@ body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 
 
 
+
+/* Full-screen window unfocused (Start menu open, desktop clicked): lights stay, but grey */
+#menubar.fs-inactive .mb-wc .wc { background: radial-gradient(circle at 50% 25%, #f1f3f6, #c9d0d8 75%); }
+#menubar.fs-inactive .mb-wc .wc::after { opacity: 0.45; filter: grayscale(1); }

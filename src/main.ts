@@ -9,7 +9,7 @@ import { seedFS } from './core/fs';
 import { forgetPersistedData, settings } from './core/settings';
 import { play } from './core/sound';
 import { launch, notify } from './core/os';
-import { initWM, warmUpGenie } from './core/wm';
+import { initWM } from './core/wm';
 import { mountDesktop } from './shell/desktop';
 import { mountDock } from './shell/dock';
 import { mountGlass } from './shell/glass';
@@ -79,7 +79,6 @@ async function start(): Promise<void> {
   );
 
   mountSelection($('desktop'), $('desktop-icons'));
-  warmUpGenie();
   await startup();
 
   launch('welcome');
