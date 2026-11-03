@@ -55,14 +55,14 @@ Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gami
 
 | File | Crystal Clear icon |
 |---|---|
-| `notepad` / `text` / `file` | apps/kwrite / minetypes/txt / minetypes/document |
+| `notepad` / `text` / `file` | apps/kedit / minetypes/txt / minetypes/document |
 | `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
 | `settings`, `about`, `search` | apps/kservices, actions/info, actions/filefind |
-| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder, folder_music, folder_image, folder_txt |
-| `computer`, `explorer`, `drive`, `desktop` | apps/mymac, apps/display, devices/hdd_mount, filesystems/desktop |
+| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder_yellow, apps/mp3, apps/lphoto, minetypes/document2 |
+| `computer`, `explorer`, `drive`, `desktop` | apps/klaptop, apps/display, devices/hdd_mount, filesystems/desktop |
 | `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
-| `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/logout, minetypes/image |
-| `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, logout, background), filesystems/(folder_green, folder_grey_open, trashcan_empty) |
+| `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/restart, minetypes/image |
+| `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, restart for logoff, looknfeel for wallpaper), filesystems/(folder_green, folder_yellow for open, trashcan_empty) |
 
 ## Font (`../fonts/selawik/`)
 
