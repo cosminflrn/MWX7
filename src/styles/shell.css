@@ -492,11 +492,10 @@
 #notifications {
   position: fixed;
   z-index: 250000;
-  /* Bottom-right, beside the centered dock (Win7 tray balloons) — never over window controls */
-  bottom: 14px;
+  top: calc(var(--menubar-h) + 10px);
   right: 12px;
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   gap: 8px;
   pointer-events: none;
 }

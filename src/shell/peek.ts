@@ -61,8 +61,13 @@ function unpeek(): void {
   window.clearTimeout(peekTimer);
   document.body.classList.remove('peeking');
   document.querySelectorAll('.win.peek-target').forEach((n) => n.classList.remove('peek-target'));
-  if (shownMin?.minimized) shownMin.el.style.display = 'none';
+  const m = shownMin;
   shownMin = null;
+  // Fade the temporarily shown minimized window back out instead of cutting it.
+  if (m?.minimized)
+    m.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease-out' }).onfinish = () => {
+      if (m.minimized && shownMin !== m) m.el.style.display = 'none';
+    };
 }
 
 export function closePeek(): void {
@@ -120,6 +125,7 @@ function openPeek(appId: string, anchor: HTMLElement): void {
           // Peek works for minimized windows too: show it in place for as long as the peek lasts.
           shownMin = w;
           w.el.style.display = '';
+          w.el.animate([{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
         }
         w.el.classList.add('peek-target');
         document.body.classList.add('peeking');
