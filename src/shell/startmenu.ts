@@ -101,8 +101,7 @@ export function mountStartMenu(): void {
         h(
           'div',
           { class: 'sm-left' },
-          ...listApps().map((a) => appRow(a.id, a.name, a.icon)),
-          h('div', { class: 'sm-spacer' }),
+          h('div', { class: 'sm-list' }, ...listApps().map((a) => appRow(a.id, a.name, a.icon))),
           h('label', { class: 'sm-search' }, search, h('span', { html: icons.search })),
         ),
         h(

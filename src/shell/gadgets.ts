@@ -1,4 +1,5 @@
 import { h } from '../ui/dom';
+import { MENUBAR_H } from '../core/wm';
 import '../styles/gadgets.css';
 
 /**
@@ -9,20 +10,35 @@ import '../styles/gadgets.css';
 
 const W = 148;
 const GAP = 10;
-// Below the notification toasts (top-right), so the two never overlap.
-const TOP = 132;
+// Right under the status bar, 8px gap (no dead space at the top).
+const TOP = MENUBAR_H + 8;
 const RIGHT = 16;
+// Dock shelf (48 + 16) plus the same 8px gap the desktop icons keep.
+const DOCK_SPACE = 48 + 16 + 8;
 
 let layer: HTMLElement | null = null;
+/** The user's Show/Hide choice. */
 let shown = true;
+/** False on logon / lock / setup screens: gadgets belong to the desktop only. */
+let live = false;
 let wake: () => void = () => {};
 
+const apply = () => {
+  layer?.classList.toggle('off', !(shown && live));
+  wake();
+};
+
+export const gadgetsShown = (): boolean => shown;
 
 export function toggleGadgets(): void {
-  if (!layer) return;
   shown = !shown;
-  layer.classList.toggle('off', !shown);
-  wake();
+  apply();
+}
+
+/** Called by the session screens: true once the desktop is revealed, false when logging off / shutting down. */
+export function setGadgetsLive(on: boolean): void {
+  live = on;
+  apply();
 }
 
 const svg = (viewBox: string, html: string, cls = '') =>
@@ -181,7 +197,7 @@ function buildWeather() {
 }
 
 export function mountGadgets(desktop: HTMLElement): void {
-  const host = h('div', { id: 'gadgets', html: DEFS });
+  const host = h('div', { id: 'gadgets', class: 'off', html: DEFS });
   layer = host;
   // Between the desktop icons and the windows so windows always cover the gadgets.
   const windows = desktop.querySelector('#windows');
@@ -193,51 +209,94 @@ export function mountGadgets(desktop: HTMLElement): void {
   const meter = buildMeter();
   const wx = buildWeather();
   const cards = [clock.el, cal.el, meter.el, wx];
+  /** Flow order: column-major from the right edge, like desktop icons snapping to a grid. */
+  let order = [...cards];
   const pos = new Map<HTMLElement, { x: number; y: number }>();
+  const preview = h('div', { class: 'gdg-preview' });
+  preview.hidden = true;
 
   const place = (el: HTMLElement) => {
     const p = pos.get(el)!;
     el.style.transform = `translate3d(${Math.round(p.x)}px,${Math.round(p.y)}px,0)`;
   };
-  const layout = () => {
+  /** Slot rectangles for a list: columns start right under the status bar and wrap before the dock. */
+  const flow = (list: HTMLElement[]) => {
+    const limit = window.innerHeight - DOCK_SPACE;
+    let col = 0;
     let y = TOP;
-    for (const el of cards) {
-      pos.set(el, { x: window.innerWidth - RIGHT - W, y });
-      y += el.offsetHeight + GAP;
-      place(el);
-    }
+    return list.map((el) => {
+      const hh = el.offsetHeight;
+      if (y > TOP && y + hh > limit) {
+        col++;
+        y = TOP;
+      }
+      const r = { x: window.innerWidth - RIGHT - W - col * (W + GAP), y, h: hh };
+      y += hh + GAP;
+      return r;
+    });
   };
-  host.append(...cards);
-  requestAnimationFrame(layout);
-
-  // Keep dragged gadgets reachable after the browser window shrinks.
-  window.addEventListener('resize', () => {
-    for (const el of cards) {
-      const p = pos.get(el);
-      if (!p) continue;
-      p.x = Math.max(0, Math.min(window.innerWidth - W, p.x));
-      p.y = Math.max(30, Math.min(window.innerHeight - el.offsetHeight - 70, p.y));
-      place(el);
-    }
+  const layout = () => {
+    flow(order).forEach((r, i) => {
+      pos.set(order[i], { x: r.x, y: r.y });
+      place(order[i]);
+    });
+  };
+  host.append(...cards, preview);
+  requestAnimationFrame(() => {
+    layout();
+    // Enable the snap animation only after the first placement.
+    requestAnimationFrame(() => host.classList.add('ready'));
   });
+  window.addEventListener('resize', layout);
 
   let top = 1;
   for (const el of cards) {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      const p = pos.get(el)!;
-      const ox = e.clientX - p.x;
-      const oy = e.clientY - p.y;
+      const start = pos.get(el)!;
+      const ox = e.clientX - start.x;
+      const oy = e.clientY - start.y;
+      let target = order.indexOf(el);
       el.setPointerCapture(e.pointerId);
       el.style.zIndex = String(++top);
       el.classList.add('drag');
       const move = (ev: PointerEvent) => {
-        p.x = Math.max(0, Math.min(window.innerWidth - W, ev.clientX - ox));
-        p.y = Math.max(30, Math.min(window.innerHeight - el.offsetHeight - 60, ev.clientY - oy));
-        place(el);
+        const x = Math.max(0, Math.min(window.innerWidth - W, ev.clientX - ox));
+        const y = Math.max(MENUBAR_H, Math.min(window.innerHeight - el.offsetHeight - 40, ev.clientY - oy));
+        el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+        // Try every insertion slot; the landing spot nearest the dragged card wins.
+        const rest = order.filter((c) => c !== el);
+        let best = 0;
+        let bestD = Infinity;
+        let bestR = { x: 0, y: 0, h: 0 };
+        for (let i = 0; i <= rest.length; i++) {
+          const trial = [...rest.slice(0, i), el, ...rest.slice(i)];
+          const r = flow(trial)[i];
+          const d = (r.x - x) ** 2 + (r.y - y) ** 2;
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+            bestR = r;
+          }
+        }
+        target = best;
+        preview.hidden = false;
+        preview.style.cssText = `width:${W}px;height:${bestR.h}px;transform:translate3d(${bestR.x}px,${bestR.y}px,0)`;
+        // Neighbours slide aside to show where the card will land.
+        const trialOrder = [...rest.slice(0, best), el, ...rest.slice(best)];
+        flow(trialOrder).forEach((r, i) => {
+          const c = trialOrder[i];
+          if (c === el) return;
+          pos.set(c, { x: r.x, y: r.y });
+          place(c);
+        });
       };
       const up = () => {
         el.classList.remove('drag');
+        preview.hidden = true;
+        const rest = order.filter((c) => c !== el);
+        order = [...rest.slice(0, target), el, ...rest.slice(target)];
+        layout();
         el.removeEventListener('pointermove', move);
         el.removeEventListener('pointerup', up);
         el.removeEventListener('pointercancel', up);
@@ -268,7 +327,7 @@ export function mountGadgets(desktop: HTMLElement): void {
   };
   let timer = 0;
   wake = () => {
-    const run = shown && !document.hidden;
+    const run = shown && live && !document.hidden;
     if (run && !raf) {
       last = 0;
       raf = requestAnimationFrame(frame);

@@ -81,3 +81,18 @@
 .gdg-wx-city { position: relative; margin-top: 4px; font-size: 13px; font-weight: 600; }
 .gdg-wx-desc { position: relative; font-size: 11.5px; color: #cfe3fb; }
 .gdg-wx-note { position: relative; margin-top: 3px; font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: #8fb2dc; }
+
+/* Snap animation only after the first placement, never while a card is being dragged. */
+#gadgets.ready .gdg:not(.drag) { transition: transform 0.2s cubic-bezier(.2, .8, .2, 1); }
+.gdg.drag { z-index: 50; opacity: 0.94; }
+.gdg-preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(rgba(170, 210, 255, 0.3), rgba(120, 175, 240, 0.2));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.gdg-preview[hidden] { display: none; }
