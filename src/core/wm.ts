@@ -175,8 +175,9 @@ function initialRect(cfg: NonNullable<AppManifest['window']>): Rect {
   const resizable = cfg.resizable !== false;
   const baseW = cfg.width ?? 760;
   const baseH = cfg.height ?? 520;
-  const width = Math.round(Math.min(resizable ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
-  const height = Math.round(Math.min(resizable ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
+  // Apps that state a size get exactly it; only the default size grows with large screens.
+  const width = Math.round(Math.min(resizable && cfg.width == null ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
+  const height = Math.round(Math.min(resizable && cfg.height == null ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
   const x = Math.round((wa.w - width) / 2);
   const y = Math.round(wa.y + (wa.h - height) / 2);
   return {
