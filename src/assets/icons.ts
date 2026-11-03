@@ -40,8 +40,8 @@ export const ICON_DEFS = `
   </defs>
 </svg>`;
 
-/** Raster icons (Crystal Clear, LGPL — see public/media/CREDITS.md). */
-const png = (name: string) =>
+/** Raster icons: original MWX 7 artwork, 256px (menu set in icons/16 is 32px). See public/media/CREDITS.md. */
+export const png = (name: string) =>
   `<img class="icon-img" alt="" draggable="false" src="${import.meta.env.BASE_URL}media/icons/${name}.png">`;
 
 const svg = (body: string, vb = '0 0 64 64') => `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${body}</svg>`;

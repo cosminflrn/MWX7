@@ -260,7 +260,6 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   else addResizeHandles(w, cfg.minWidth ?? 280, cfg.minHeight ?? 180);
 
   el.querySelector('.wc-close')!.addEventListener('click', () => closeWindow(id));
-  el.querySelector('.wc-min')!.addEventListener('pointerdown', (e) => (e as PointerEvent).button === 0 && prepareMinimize(id));
   el.querySelector('.wc-min')!.addEventListener('click', () => minimizeWindow(id));
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
@@ -322,7 +321,6 @@ export function focusWindow(id: string): void {
     activeId = id;
     for (const v of wins.values()) v.el.classList.toggle('active', v.id === id);
     bus.emit('window:focus', w);
-    refreshSnapshot(w);
   }
 }
 
@@ -384,169 +382,152 @@ function focusTopmost(): void {
 
 /* ---------- genie ---------- */
 
-const GENIE_MS = 520;
+const GENIE_MS = 540;
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (x: number) => x * x * (3 - 2 * x);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Room around the window so its drop shadow travels with it. */
+const PAD = 34;
 
-/**
- * Rasterizes the window once (DOM → canvas). The glass is replaced by a solid
- * frame colour because backdrop blur can't be captured.
- */
-let toCanvasFn: typeof import('html-to-image').toCanvas | null = null;
-const loadRasterizer = async () => (toCanvasFn ??= (await import('html-to-image')).toCanvas);
-
-/** Backdrop blur can't be captured, so the snapshot gets an opaque version of the current glass colour. */
-function solidGlass(active = true): string {
-  const cs = getComputedStyle(document.documentElement);
-  const [r, g, b] = cs.getPropertyValue('--glass-rgb').split(',').map((v) => Number(v) || 0);
-  const a = Math.min(0.9, Number(cs.getPropertyValue('--glass-a')) || 0.46);
-  // Translucent like the real frame (the canvas keeps alpha), just without the blur.
-  const k = active ? 1 : 0.55;
-  return `linear-gradient(rgba(255,255,255,.4), rgba(255,255,255,.14) 34px, rgba(255,255,255,.08)), rgba(${r},${g},${b},${Math.min(0.92, (a + 0.18) * k).toFixed(2)})`;
+/** Scroll offsets of every scrolled element, by child-index path, so copies can be scrolled the same way. */
+type ScrollMap = Array<{ path: number[]; t: number; l: number }>;
+function readScroll(root: HTMLElement): ScrollMap {
+  const out: ScrollMap = [];
+  const walk = (el: Element, path: number[]) => {
+    if (el.scrollTop || el.scrollLeft) out.push({ path, t: el.scrollTop, l: el.scrollLeft });
+    for (let i = 0; i < el.children.length; i++) walk(el.children[i], [...path, i]);
+  };
+  walk(root, []);
+  return out;
 }
-
-/** Room around the window in the snapshot, so its drop shadow travels with it. */
-const SNAP_PAD = 36;
-
-/**
- * Clones don't keep scroll positions, so a scrolled pane would be captured at its top. While
- * rasterizing, each scrolled element is reset to 0 and its children are shifted by the same
- * amount — pixel-identical on screen — then everything is put back.
- */
-function freezeScroll(root: HTMLElement): () => void {
-  const undo: Array<() => void> = [];
-  root.querySelectorAll<HTMLElement>('*').forEach((el) => {
-    const { scrollTop: t, scrollLeft: l } = el;
-    if (!t && !l) return;
-    const kids = [...el.children] as HTMLElement[];
-    const prev = kids.map((k) => k.style.transform);
-    el.scrollTop = 0;
-    el.scrollLeft = 0;
-    kids.forEach((k, i) => (k.style.transform = `translate(${-l}px, ${-t}px) ${prev[i]}`.trim()));
-    undo.push(() => {
-      kids.forEach((k, i) => (k.style.transform = prev[i]));
+function applyScroll(root: Element, map: ScrollMap): void {
+  for (const { path, t, l } of map) {
+    let el: Element | undefined = root;
+    for (const i of path) el = el?.children[i];
+    if (el) {
       el.scrollTop = t;
       el.scrollLeft = l;
-    });
-  });
-  return () => undo.reverse().forEach((f) => f());
+    }
+  }
 }
+const scrolls = new WeakMap<Win, ScrollMap>();
 
-/** The window exactly as it looks now — focus, scroll position, frame and shadow — as a canvas. */
-async function snapshot(w: Win, budget = 4000, exact = true): Promise<HTMLCanvasElement | null> {
-  const toCanvas = await loadRasterizer();
-  const r = w.el.getBoundingClientRect();
-  const thaw = exact ? freezeScroll(w.el) : () => {};
-  const job = toCanvas(w.el, {
-    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-    skipFonts: true,
-    width: Math.round(r.width) + SNAP_PAD * 2,
-    height: Math.round(r.height) + SNAP_PAD * 2,
-    filter: (n) => !(n instanceof HTMLElement && n.classList.contains('rz')),
-    style: {
-      // html-to-image also inlines the logical inset properties, which would win over left/top.
-      left: '0',
-      top: '0',
-      insetInlineStart: '0',
-      insetBlockStart: '0',
-      margin: `${SNAP_PAD}px`,
-      // html-to-image sizes the clone to the canvas (which includes the shadow padding); pin the window to its real size.
-      width: `${Math.round(r.width)}px`,
-      height: `${Math.round(r.height)}px`,
-      boxSizing: 'border-box',
-      transform: 'none',
-      opacity: '1',
-      // Backdrop blur can't be captured; the glass keeps its tint and stays see-through.
-      backdropFilter: 'none',
-      background: solidGlass(w.el.classList.contains('active')),
-    },
-  }).catch(() => null);
-  void job.then(thaw);
-  const timeout = new Promise<null>((res) => window.setTimeout(() => res(null), budget));
-  return Promise.race([job, timeout]);
+function copyGlass(active: boolean): string {
+  const cs = getComputedStyle(document.documentElement);
+  const rgb = cs.getPropertyValue('--glass-rgb').trim() || '30, 100, 220';
+  const a = Number(cs.getPropertyValue('--glass-a')) || 0.1;
+  return `linear-gradient(rgba(255,255,255,${active ? 0.55 : 0.6}), rgba(255,255,255,${active ? 0.35 : 0.45})), rgba(${rgb}, ${Math.min(0.9, a + 0.25)}), rgba(170,190,215,.6)`;
 }
 
 /**
- * The first rasterization is slow (module load, image embedding), which made
- * the first genie of a session stutter. Warm everything up in idle time and
- * keep a recent snapshot of each window so minimizing always starts instantly.
+ * One live copy of the window — exactly as it looks right now: focus, scroll, typed text, canvas
+ * pixels, frame and shadow. Real DOM, so text stays crisp, and nothing has to be rasterized first.
  */
-const idle = (fn: () => void) => {
-  const ric = (window as unknown as { requestIdleCallback?: (f: () => void, o: object) => number }).requestIdleCallback;
-  if (ric) ric.call(window, fn, { timeout: 1500 });
-  else window.setTimeout(fn, 300);
-};
-
-// One throwaway rasterization per window in idle time loads html-to-image's caches (embedded
-// icons, styles), so the real capture at minimize time is quick. The result is never shown.
-const primed = new WeakSet<Win>();
-function refreshSnapshot(w: Win): void {
-  if (primed.has(w)) return;
-  primed.add(w);
-  idle(() => {
-    if (wins.has(w.id) && !w.minimized) void snapshot(w, 4000, false);
+function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
+  const c = w.el.cloneNode(true) as HTMLElement;
+  c.querySelectorAll('.rz').forEach((n) => n.remove());
+  // An iframe copy would reload its page; a blank page stands in for the few frames it is visible.
+  c.querySelectorAll('iframe').forEach((f) => f.replaceWith(Object.assign(document.createElement('div'), { style: 'background:#fff;width:100%;height:100%' })));
+  const srcF = w.el.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
+  c.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach((f, i) => {
+    if (srcF[i]) f.value = srcF[i].value;
   });
-}
-
-export function warmUpGenie(): void {
-  idle(() => void loadRasterizer());
+  const srcC = w.el.querySelectorAll('canvas');
+  c.querySelectorAll('canvas').forEach((cv, i) => {
+    try {
+      cv.getContext('2d')?.drawImage(srcC[i], 0, 0);
+    } catch {
+      /* nothing drawn yet */
+    }
+  });
+  c.removeAttribute('id');
+  c.classList.remove('anim', 'peek-target');
+  // Dozens of backdrop blurs per frame would choke the GPU; the copies get a still, opaque-ish glass instead.
+  Object.assign(c.style, {
+    left: `${PAD}px`, top: '0px', display: '', visibility: 'visible', opacity: '1', transform: 'none', zIndex: '0', transition: 'none',
+    backdropFilter: 'none', webkitBackdropFilter: 'none', background: copyGlass(w.el.classList.contains('active')),
+  });
+  c.dataset.scroll = JSON.stringify(scroll);
+  return c;
 }
 
 /**
- * macOS-style genie: the snapshot is redrawn every frame in 2px rows. Each row
- * gets its own horizontal squeeze (an S-curve funnel toward the dock icon) and
- * its own vertical position, with lower rows leading — so the window bends and
- * pours into the icon as one continuous surface.
+ * macOS genie on live copies of the window, cut into horizontal strips. Each strip gets its own
+ * squeeze toward the dock icon and its own height (lower strips lead), and a clip-path trims it to
+ * the exact funnel edge — so the window bends and pours into the icon as one surface. Only
+ * transforms and clips change per frame: no rasterizing, no capture delay, no stutter.
  */
-function runGenie(snap: HTMLCanvasElement, r: Rect, t: DOMRect, reverse: boolean): Promise<void> {
-  const cv = document.createElement('canvas');
-  cv.className = 'genie-layer';
-  // The window ends up *behind* the dock icon: start slightly in front of the
-  // icon centre and finish inside its lower half, fading as it slides under.
+/**
+ * CSS matrix3d that maps a w×h box (origin top-left) exactly onto the quad p0..p3 (clockwise from
+ * top-left): a projective transform, so neighbouring strips share their edges and the funnel
+ * outline is continuous — all on the compositor, nothing repainted.
+ */
+function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): string {
+  const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+  const dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+  let g = 0, k = 0;
+  if (Math.abs(dx3) > 1e-6 || Math.abs(dy3) > 1e-6) {
+    const det = dx1 * dy2 - dx2 * dy1 || 1e-6;
+    g = (dx3 * dy2 - dx2 * dy3) / det;
+    k = (dx1 * dy3 - dx3 * dy1) / det;
+  }
+  const a = x1 - x0 + g * x1, b = x3 - x0 + k * x3, c = x0;
+  const d = y1 - y0 + g * y1, e = y3 - y0 + k * y3, f = y0;
+  return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${c},${f},0,1)`;
+}
+
+function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Promise<void> {
+  const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
+  // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
   t = new DOMRect(t.left + t.width * 0.18, t.top + t.height * 0.35, t.width * 0.64, t.height * 0.55);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  cv.width = Math.round(window.innerWidth * dpr);
-  cv.height = Math.round(window.innerHeight * dpr);
-  const out = cv.getContext('2d')!;
-  // Rows are drawn opaque into a scratch canvas (overlapping rows with alpha
-  // would show stripes); the fade is applied once, when compositing.
-  const scratch = document.createElement('canvas');
-  scratch.width = cv.width;
-  scratch.height = cv.height;
-  const ctx = scratch.getContext('2d')!;
-  ctx.scale(dpr, dpr);
-  ctx.imageSmoothingQuality = 'high';
-  document.body.append(cv);
+  const layer = document.createElement('div');
+  layer.className = 'genie-layer';
+  const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
+  const sh = r.h / n;
+  const strips: HTMLElement[] = [];
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('div');
+    s.className = 'genie-strip';
+    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${Math.ceil(sh) + 1}px` });
+    const c = copyOf(w, scroll);
+    c.style.top = `${PAD - i * sh}px`;
+    s.append(c);
+    layer.append(s);
+    strips.push(s);
+  }
+  document.body.append(layer);
+  for (const s of strips) applyScroll(s.firstElementChild!, scroll);
 
-  const rows = Math.max(40, Math.ceil(r.h / 2));
-  const srcRow = snap.height / rows;
   const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
+  const Q = (v: number, P: number) => smooth(clamp01(P * 2.2 - (1 - v) * 1.2));
+  const edge = (v: number, P: number) => {
+    const q = Q(v, P);
+    return [lerp(r.x, t.left, q), lerp(r.x + r.w, t.right, q)];
+  };
+  const H = Math.ceil(sh) + 1;
+  const place = (P: number) => {
+    layer.style.opacity = String(1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55)));
+    for (let i = 0; i < n; i++) {
+      const y0 = Y(i / n, P);
+      // Strips overlap by a hair (H > sh) so no seam ever shows.
+      const y1 = Y((i + H / sh) / n, P);
+      const [lt, rt] = edge(i / n, P);
+      const [lb, rb] = edge((i + H / sh) / n, P);
+      strips[i].style.transform = quad(r.w, H, lt, y0, rt, y0, rb, y1, lb, y1);
+    }
+  };
+  place(reverse ? 1 : 0);
 
   return new Promise((resolve) => {
     const start = performance.now();
     const frame = (now: number) => {
       const p = Math.min(1, (now - start) / GENIE_MS);
       const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-      const P = reverse ? 1 - e : e;
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      const alpha = 1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55));
-      let y0 = Y(0, P);
-      for (let i = 0; i < rows; i++) {
-        const v1 = (i + 1) / rows;
-        const y1 = Y(v1, P);
-        const qh = smooth(clamp01(P * 2.2 - (1 - (i + 0.5) / rows) * 1.2));
-        const left = lerp(r.x, t.left, qh);
-        const right = lerp(r.x + r.w, t.right, qh);
-        if (y1 - y0 > 0.02) ctx.drawImage(snap, 0, i * srcRow, snap.width, srcRow, left, y0, right - left, y1 - y0 + 0.6);
-        y0 = y1;
-      }
-      out.clearRect(0, 0, cv.width, cv.height);
-      out.globalAlpha = alpha;
-      out.drawImage(scratch, 0, 0);
+      place(reverse ? 1 - e : e);
       if (p < 1) requestAnimationFrame(frame);
       else {
-        cv.remove();
+        layer.remove();
         resolve();
       }
     };
@@ -568,41 +549,21 @@ function fade(w: Win, reverse: boolean): Promise<void> {
   );
 }
 
-const snaps = new WeakMap<Win, HTMLCanvasElement>();
-const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/**
- * Pressing the minimize button starts the capture right away (a click takes ~100 ms between
- * press and release), so the genie can begin sooner after the click.
- */
-const pending = new Map<string, { at: number; job: Promise<HTMLCanvasElement | null> }>();
-export function prepareMinimize(id: string): void {
-  const w = wins.get(id);
-  if (!w || w.minimized || reducedMotion()) return;
-  pending.set(id, { at: performance.now(), job: snapshot(w) });
-}
-
-const padded = (r: Rect): Rect => ({ x: r.x - SNAP_PAD, y: r.y - SNAP_PAD, w: r.w + SNAP_PAD * 2, h: r.h + SNAP_PAD * 2 });
-
 export function minimizeWindow(id: string): void {
   const w = wins.get(id);
   if (!w || w.minimized) return;
   w.minimized = true;
   const target = minimizeTarget(w.appId);
+  const scroll = readScroll(w.el);
+  scrolls.set(w, scroll);
+  bus.emit('window:minimize', w);
+  play('minimize');
   void (async () => {
-    // Capture the window exactly as it is right now and only then start: it stays on screen,
-    // focused, until the genie takes over, and focus moves on only after it has gone.
-    const pre = pending.get(id);
-    pending.delete(id);
-    const job = pre && performance.now() - pre.at < 1200 ? pre.job : snapshot(w);
-    const snap = target && !reducedMotion() ? await job : null;
-    if (!w.minimized) return;
-    bus.emit('window:minimize', w);
-    play('minimize');
-    if (snap && target) {
-      snaps.set(w, snap);
+    // The copies take over in the same frame the window hides; it keeps its focus until the end.
+    if (target && !reducedMotion()) {
+      const run = runGenie(w, scroll, target, false);
       w.el.style.display = 'none';
-      await runGenie(snap, padded(w.rect), target, false);
+      await run;
     } else await fade(w, false);
     if (w.minimized) {
       w.el.style.display = 'none';
@@ -618,16 +579,21 @@ export function minimizeWindow(id: string): void {
 function restore(w: Win): void {
   w.minimized = false;
   play('restore');
-  const snap = snaps.get(w);
   const target = minimizeTarget(w.appId);
+  const scroll = scrolls.get(w) ?? [];
   bus.emit('window:restore', w);
-  if (!snap || !target || reducedMotion()) {
+  const show = () => {
+    w.el.style.display = '';
+    // display:none drops scroll offsets; put them back.
+    applyScroll(w.el, scroll);
+  };
+  if (!target || reducedMotion()) {
+    show();
     void fade(w, true);
     return;
   }
-  w.el.style.display = 'none';
-  void runGenie(snap, padded(w.rect), target, true).then(() => {
-    if (!w.minimized) w.el.style.display = '';
+  void runGenie(w, scroll, target, true).then(() => {
+    if (!w.minimized) show();
   });
 }
 

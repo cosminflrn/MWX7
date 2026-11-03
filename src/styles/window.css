@@ -171,7 +171,10 @@
   /* Below the dock (99000) so the window slides behind its icon. */
   z-index: 98900;
   pointer-events: none;
+  overflow: hidden;
 }
+.genie-strip { position: absolute; overflow: hidden; transform-origin: 0 0; will-change: transform; }
+.genie-strip > .win { position: absolute; pointer-events: none; }
 
 
 /* Resize handles */

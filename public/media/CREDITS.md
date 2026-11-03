@@ -44,25 +44,15 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 
 ## Icons (`icons/`)
 
-Crystal Clear icon set by Everaldo Coelho (http://www.everaldo.com/), glossy XP-era style. Source mirror:
-https://github.com/niko-yanev/crystal-clear. License: GNU LGPL 2.1 or later (full text in `icons/CRYSTAL-CLEAR-LGPL.txt`,
-upstream notice in `icons/CRYSTAL-CLEAR-README.txt`). The PNGs are unmodified 128x128 originals; `icons/16/*.png` are the
-same artwork downscaled to 32x32 (shown at 16 px). Because the artwork is LGPL, it may be replaced by any user: keep the
-file names and swap the PNGs.
+Original artwork by MWX 7, drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
+256x256 for `icons/*.png` (shown at 128 px or less), 32x32 for `icons/16/*.png` (shown at 16 px). No third-party artwork except
+`pinball.png` (below) and `explorer.png`, kept from the earlier set. Replace any PNG by keeping its file name.
 
-Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gaming), Public Domain (`icons/TANGO-COPYING.txt`,
+`explorer.png`: Crystal Clear (apps/display) by Everaldo Coelho, http://www.everaldo.com/, GNU LGPL 2.1 or later
+(`icons/CRYSTAL-CLEAR-LGPL.txt`, `icons/CRYSTAL-CLEAR-README.txt`), unmodified 128x128 original.
+
+`pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gaming), Public Domain (`icons/TANGO-COPYING.txt`,
 `icons/TANGO-AUTHORS.txt`).
-
-| File | Crystal Clear icon |
-|---|---|
-| `notepad` / `text` / `file` | apps/kedit / minetypes/txt / minetypes/document |
-| `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
-| `settings`, `about`, `search` | apps/kservices, actions/info, actions/filefind |
-| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder_yellow, apps/mp3, apps/lphoto, minetypes/document2 |
-| `computer`, `explorer`, `drive`, `desktop` | apps/klaptop, apps/display, devices/hdd_mount, filesystems/desktop |
-| `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
-| `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/restart, minetypes/image |
-| `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, restart for logoff, looknfeel for wallpaper), filesystems/(folder_green, folder_yellow for open, trashcan_empty) |
 
 ## Font (`../fonts/selawik/`)
 
@@ -84,6 +74,28 @@ Unmodified copies of the Ogg Vorbis files published by the project.
 "Web437 IBM VGA 8x16" (`WebPlus_IBM_VGA_8x16.woff`, a.k.a. Px437 IBM VGA 8x16) from The Ultimate Oldschool PC Font Pack v2.2 by VileR, (c) 2016-2020. Source: https://int10h.org/oldschool-pc-fonts/ (WOFF taken from the npm package `@monowind/themes` 0.3.5, unmodified).
 License: Creative Commons Attribution-ShareAlike 4.0 (`fonts/vga/LICENSE-CC-BY-SA-4.0.txt`). Used by MWX Commander and the BIOS screen.
 
-## UI click (`sounds/click.ogg`, `sounds/click.mp3`)
+## UI sounds (`sounds/click.*`, `sounds/switch.*`)
 
-`mouseclick1.wav` from "UI SFX Set" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). A real mouse button press/release recording; here converted to mono, high-passed at 80 Hz, loudness-normalised and trimmed to 77 ms, then encoded to Ogg Vorbis and MP3.
+Both from "UI Audio" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). Chosen by waveform analysis (duration, attack, spectral centroid, energy above 6 kHz), converted to mono, high-passed, trimmed, level-matched (RMS about -23 dBFS for the click) and encoded to Ogg Vorbis and MP3.
+
+| File | Source sample | Use |
+|---|---|---|
+| `click.ogg`, `click.mp3` | `click1.wav` (26 ms, soft low-mid body, 2% energy above 6 kHz), 60 ms | UI click / right click (a touch lower in pitch) |
+| `switch.ogg`, `switch.mp3` | `switch32.wav` (heavy mechanical switch, 64% energy below 1.5 kHz), 240 ms | Power-on screen switch "clunk" |
+
+The start-up fan / hard-disk hum and the POST beep are synthesized in `src/core/sound.ts` (no third-party material).
+
+## Sample pictures (`pictures/`)
+
+Landscape photographs seeded into `/Pictures` for Photo Viewer. Pexels License (https://www.pexels.com/license/): free use and redistribution, no attribution required. Pexels contributor names could not be retrieved automatically; the photo id identifies the work. Processing: resized to 1600 px wide, metadata stripped, progressive JPEG quality 80 (all under 300 KB).
+
+| File | Pexels photo id |
+|---|---|
+| `cliffs-and-bay.jpg` | 462162 |
+| `alpine-lake.jpg` | 2662116 |
+| `snowy-peaks-moon.jpg` | 1287145 |
+| `aurora-over-snow.jpg` | 3408744 |
+| `coastal-ridge.jpg` | 2559941 |
+| `white-sand-beach.jpg` | 1450353 |
+
+Source URL pattern: `https://www.pexels.com/photo/<id>/`.

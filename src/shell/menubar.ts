@@ -3,7 +3,7 @@ import { bus } from '../core/events';
 import { settings } from '../core/settings';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
-import { activeWindow, centerWindow, closeWindow, minimizeWindow, prepareMinimize, showDesktop, toggleMaximize } from '../core/wm';
+import { activeWindow, allWindows, centerWindow, closeWindow, minimizeWindow, showDesktop, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
@@ -110,14 +110,16 @@ export function mountMenubar(bar: HTMLElement): void {
   const wcMax = h('button', { class: 'wc wc-max', title: 'Exit full screen', 'aria-label': 'Exit full screen' });
   const wcClose = h('button', { class: 'wc wc-close', title: 'Close', 'aria-label': 'Close' });
   const controls = h('div', { class: 'mb-wc' }, h('div', { class: 'mb-wc-inner win-controls' }, wcMin, wcMax, wcClose));
+  // The full-screen window keeps its place in the top bar while unfocused (Start menu, desktop click):
+  // only the lights go grey, like an inactive window's.
   const target = () => {
-    const w = activeWindow();
-    return w && w.state === 'max' && !w.minimized ? w : null;
+    const a = activeWindow();
+    if (a) return a.state === 'max' && !a.minimized ? a : null;
+    const top = allWindows()
+      .filter((w) => !w.minimized)
+      .sort((x, y) => y.z - x.z)[0];
+    return top && top.state === 'max' ? top : null;
   };
-  wcMin.addEventListener('pointerdown', (e) => {
-    const w = target();
-    if (w && e.button === 0) prepareMinimize(w.id);
-  });
   wcMin.addEventListener('click', () => {
     const w = target();
     if (w) minimizeWindow(w.id);
@@ -138,6 +140,7 @@ export function mountMenubar(bar: HTMLElement): void {
       fsApp = w.appId;
     }
     bar.classList.toggle('fs', !!w);
+    bar.classList.toggle('fs-inactive', !!w && w !== activeWindow());
   };
 
   // Right side: Search, Overview + clock

@@ -2,14 +2,16 @@ import { blurWindows, showDesktop } from '../core/wm';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { settings } from '../core/settings';
-import { h } from '../ui/dom';
 import { menuIcon, openMenu } from '../ui/menu';
 import { openOverview } from './overview';
 import { mountAmbience } from './ambience';
 import { mountDeskIcons } from './deskicons';
-import { VERSION } from '../apps/about';
+import { toggleGadgets } from './gadgets';
 import { fs } from '../core/fs';
 import { createWallpaperLayer, resolveWallpaperId, wallpapers } from './wallpapers';
+
+/** 16px menu glyph: a glossy glass tile with a clock face (menuIcon() has no gadgets artwork). */
+const GADGETS_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="1.5" width="13" height="13" rx="3.2" fill="#2f6fc0" stroke="#0c2f66" stroke-opacity=".7" stroke-width=".7"/><rect x="2" y="2" width="12" height="5.5" rx="2.6" fill="#fff" opacity=".35"/><circle cx="8" cy="8.6" r="3.6" fill="#f2f7fd" stroke="#0c2f66" stroke-opacity=".5" stroke-width=".5"/><path d="M8 8.6V6.4M8 8.6l1.6.9" stroke="#1d2a3c" stroke-width=".8" stroke-linecap="round" fill="none"/></svg>`;
 
 /** Creates "New folder", "New folder (2)", … on the desktop, like Windows. */
 async function createOnDesktop(base: string, folder: boolean): Promise<void> {
@@ -43,9 +45,6 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
   });
   mountAmbience();
 
-  // Like Windows 7's build watermark: sits above the wallpaper, below windows.
-  wall.el.after(h('div', { class: 'desk-version' }, h('span', {}, 'MWX 7'), h('span', {}, `Version ${VERSION}`)));
-
   mountDeskIcons(iconLayer);
 
   // A click on the wallpaper or an icon takes focus away from the windows.
@@ -66,6 +65,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
         { separator: true },
         { label: 'New Folder', icon: menuIcon('new-folder'), action: () => void createOnDesktop('New folder', true) },
         { label: 'New Text Document', icon: menuIcon('new-file'), action: () => void createOnDesktop('New Text Document.txt', false) },
+        { label: 'Gadgets', icon: GADGETS_ICON, action: () => toggleGadgets() },
         { separator: true },
         { label: 'Show Desktop', icon: menuIcon('minimize'), action: () => showDesktop() },
         { label: 'Overview', icon: menuIcon('maximize'), action: () => openOverview() },
