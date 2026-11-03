@@ -113,6 +113,28 @@ export const icons = {
   pinball: png('pinball'),
   drive: png('drive'),
   image: png('image'),
+  audio: png('audio'),
+  video: png('video'),
+  archive: png('archive'),
+  fileBlank: png('file-blank'),
 } as const;
 
 export type IconName = keyof typeof icons;
+
+const AUDIO = new Set(['ogg', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'oga', 'opus', 'wma', 'mid', 'midi']);
+const VIDEO = new Set(['mp4', 'webm', 'mkv', 'mov', 'avi', 'ogv', 'm4v', 'wmv']);
+const ARCHIVE = new Set(['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'iso']);
+const TEXTY = new Set(['txt', 'md', 'log', 'json', 'csv', 'ini', 'cfg', 'rtf', 'html', 'css', 'js', 'ts', 'xml', 'yml', 'yaml']);
+const IMAGES = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
+
+/** Icon for a file by extension: music, film, archive, picture, text; anything else gets a blank page. */
+export function fileIcon(name: string): string {
+  const i = name.lastIndexOf('.');
+  const ext = i > 0 ? name.slice(i + 1).toLowerCase() : '';
+  if (AUDIO.has(ext)) return icons.audio;
+  if (VIDEO.has(ext)) return icons.video;
+  if (ARCHIVE.has(ext)) return icons.archive;
+  if (IMAGES.has(ext)) return icons.image;
+  if (TEXTY.has(ext) || !ext) return icons.file;
+  return icons.fileBlank;
+}

@@ -83,7 +83,7 @@
 .gdg-wx-note { position: relative; margin-top: 3px; font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: #8fb2dc; }
 
 /* Snap animation only after the first placement, never while a card is being dragged. */
-#gadgets.ready .gdg:not(.drag) { transition: transform 0.2s cubic-bezier(.2, .8, .2, 1); }
+#gadgets.ready .gdg:not(.drag) { transition: transform 0.16s cubic-bezier(.2, .8, .2, 1); }
 .gdg.drag { z-index: 50; opacity: 0.94; }
 .gdg-preview {
   position: absolute;

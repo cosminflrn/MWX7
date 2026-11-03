@@ -220,12 +220,13 @@ function make(level: Level): AppManifest {
     const music = new GameMusic();
     music.start();
     win.body.addEventListener('pointerdown', () => music.start(), true);
-    showTutorial(win.body, 'mn', 'How to play Mines', [
+    const howTo = () => showTutorial(win.body, 'mn', 'How to play Mines', [
       'Click a square to reveal it; a number tells how many mines touch it.',
       'Right-click to plant a flag where you think a mine hides.',
       'Double-click a number to reveal its neighbours once enough flags are placed.',
       'Clear every safe square to win. Hitting a mine ends the game.',
     ]);
+    howTo();
     const buildMenus = () => win.setMenus([
       {
         label: 'Game',
@@ -247,6 +248,7 @@ function make(level: Level): AppManifest {
           { label: 'Exit', action: () => win.close() },
         ],
       },
+      { label: 'Help', items: [{ label: 'How to play', action: howTo }] },
     ]);
     buildMenus();
 

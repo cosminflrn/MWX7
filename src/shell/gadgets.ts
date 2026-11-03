@@ -209,41 +209,84 @@ export function mountGadgets(desktop: HTMLElement): void {
   const meter = buildMeter();
   const wx = buildWeather();
   const cards = [clock.el, cal.el, meter.el, wx];
-  /** Flow order: column-major from the right edge, like desktop icons snapping to a grid. */
-  let order = [...cards];
-  const pos = new Map<HTMLElement, { x: number; y: number }>();
+  /** Slot of every card: a column counted from the right edge plus a y in px. Positions are session-only. */
+  const pos = new Map<HTMLElement, { col: number; y: number }>();
   const preview = h('div', { class: 'gdg-preview' });
   preview.hidden = true;
 
+  const colX = (col: number) => window.innerWidth - RIGHT - W - col * (W + GAP);
+  const maxCol = () => Math.max(0, Math.floor((window.innerWidth - RIGHT - W) / (W + GAP)));
+  /** Lowest allowed top for a card of height hh: it must stay above the dock. */
+  const maxY = (hh: number) => Math.max(TOP, window.innerHeight - DOCK_SPACE - hh);
+
   const place = (el: HTMLElement) => {
     const p = pos.get(el)!;
-    el.style.transform = `translate3d(${Math.round(p.x)}px,${Math.round(p.y)}px,0)`;
+    el.style.transform = `translate3d(${Math.round(colX(p.col))}px,${Math.round(p.y)}px,0)`;
   };
-  /** Slot rectangles for a list: columns start right under the status bar and wrap before the dock. */
-  const flow = (list: HTMLElement[]) => {
+  /** Initial flow: columns start right under the status bar and wrap before the dock. */
+  const flow = () => {
     const limit = window.innerHeight - DOCK_SPACE;
     let col = 0;
     let y = TOP;
-    return list.map((el) => {
+    for (const el of cards) {
       const hh = el.offsetHeight;
       if (y > TOP && y + hh > limit) {
         col++;
         y = TOP;
       }
-      const r = { x: window.innerWidth - RIGHT - W - col * (W + GAP), y, h: hh };
+      pos.set(el, { col: Math.min(col, maxCol()), y });
       y += hh + GAP;
-      return r;
-    });
+    }
+  };
+
+  /**
+   * Nearest free slot to (x, y) for `el`, like desktop icons snapping to the nearest free cell: x snaps to a column,
+   * y to a 10px grid or flush against a neighbour (so stacks stay tidy). Other cards never move.
+   */
+  const nearestSlot = (el: HTMLElement, x: number, y: number, others: HTMLElement[]) => {
+    const hh = el.offsetHeight;
+    const lo = TOP;
+    const hi = maxY(hh);
+    const ys = new Set<number>();
+    for (let v = lo; v <= hi; v += 10) ys.add(v);
+    ys.add(hi);
+    for (const o of others) {
+      const p = pos.get(o)!;
+      ys.add(p.y + o.offsetHeight + GAP);
+      ys.add(p.y - hh - GAP);
+      ys.add(p.y);
+    }
+    let best: { col: number; y: number } | null = null;
+    let bestD = Infinity;
+    for (let col = 0; col <= maxCol(); col++) {
+      const peers = others.filter((o) => pos.get(o)!.col === col);
+      for (const cy of ys) {
+        if (cy < lo || cy > hi) continue;
+        if (peers.some((o) => cy < pos.get(o)!.y + o.offsetHeight + 6 && pos.get(o)!.y < cy + hh + 6)) continue;
+        const d = (colX(col) - x) ** 2 + (cy - y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = { col, y: cy };
+        }
+      }
+    }
+    return best;
   };
   const layout = () => {
-    flow(order).forEach((r, i) => {
-      pos.set(order[i], { x: r.x, y: r.y });
-      place(order[i]);
-    });
+    // After a resize: keep each card where it is when it still fits, otherwise the nearest free slot.
+    const done: HTMLElement[] = [];
+    for (const el of cards) {
+      const p = pos.get(el)!;
+      const slot = nearestSlot(el, colX(Math.min(p.col, maxCol())), p.y, done);
+      if (slot) pos.set(el, slot);
+      done.push(el);
+      place(el);
+    }
   };
   host.append(...cards, preview);
   requestAnimationFrame(() => {
-    layout();
+    flow();
+    cards.forEach(place);
     // Enable the snap animation only after the first placement.
     requestAnimationFrame(() => host.classList.add('ready'));
   });
@@ -253,58 +296,51 @@ export function mountGadgets(desktop: HTMLElement): void {
   for (const el of cards) {
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      const start = pos.get(el)!;
-      const ox = e.clientX - start.x;
-      const oy = e.clientY - start.y;
-      let target = order.indexOf(el);
+      e.stopPropagation();
+      e.preventDefault();
+      const p0 = pos.get(el);
+      if (!p0) return;
+      const sx = e.clientX;
+      const sy = e.clientY;
+      const x0 = colX(p0.col);
+      const y0 = p0.y;
+      const others = cards.filter((c) => c !== el);
+      let dragging = false;
+      let slot: { col: number; y: number } | null = null;
       el.setPointerCapture(e.pointerId);
-      el.style.zIndex = String(++top);
-      el.classList.add('drag');
       const move = (ev: PointerEvent) => {
-        const x = Math.max(0, Math.min(window.innerWidth - W, ev.clientX - ox));
-        const y = Math.max(MENUBAR_H, Math.min(window.innerHeight - el.offsetHeight - 40, ev.clientY - oy));
-        el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
-        // Try every insertion slot; the landing spot nearest the dragged card wins.
-        const rest = order.filter((c) => c !== el);
-        let best = 0;
-        let bestD = Infinity;
-        let bestR = { x: 0, y: 0, h: 0 };
-        for (let i = 0; i <= rest.length; i++) {
-          const trial = [...rest.slice(0, i), el, ...rest.slice(i)];
-          const r = flow(trial)[i];
-          const d = (r.x - x) ** 2 + (r.y - y) ** 2;
-          if (d < bestD) {
-            bestD = d;
-            best = i;
-            bestR = r;
-          }
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        // Press-and-move threshold, as on desktop icons: a plain click never nudges a gadget.
+        if (!dragging) {
+          if (Math.hypot(dx, dy) < 5) return;
+          dragging = true;
+          el.style.zIndex = String(++top);
+          el.classList.add('drag');
         }
-        target = best;
-        preview.hidden = false;
-        preview.style.cssText = `width:${W}px;height:${bestR.h}px;transform:translate3d(${bestR.x}px,${bestR.y}px,0)`;
-        // Neighbours slide aside to show where the card will land.
-        const trialOrder = [...rest.slice(0, best), el, ...rest.slice(best)];
-        flow(trialOrder).forEach((r, i) => {
-          const c = trialOrder[i];
-          if (c === el) return;
-          pos.set(c, { x: r.x, y: r.y });
-          place(c);
-        });
+        // 1:1 with the pointer, transform only, kept inside the desktop area.
+        const x = Math.max(0, Math.min(window.innerWidth - W, x0 + dx));
+        const y = Math.max(TOP, Math.min(maxY(el.offsetHeight), y0 + dy));
+        el.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+        slot = nearestSlot(el, x, y, others);
+        if (slot) {
+          preview.hidden = false;
+          preview.style.cssText = `width:${W}px;height:${el.offsetHeight}px;transform:translate3d(${Math.round(colX(slot.col))}px,${Math.round(slot.y)}px,0)`;
+        }
       };
       const up = () => {
-        el.classList.remove('drag');
-        preview.hidden = true;
-        const rest = order.filter((c) => c !== el);
-        order = [...rest.slice(0, target), el, ...rest.slice(target)];
-        layout();
         el.removeEventListener('pointermove', move);
         el.removeEventListener('pointerup', up);
         el.removeEventListener('pointercancel', up);
+        preview.hidden = true;
+        if (!dragging) return;
+        el.classList.remove('drag');
+        if (slot) pos.set(el, slot);
+        place(el);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', up);
-      e.preventDefault();
     });
   }
 

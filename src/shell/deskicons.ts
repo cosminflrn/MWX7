@@ -1,4 +1,4 @@
-import { icons } from '../assets/icons';
+import { icons, fileIcon } from '../assets/icons';
 import { bus } from '../core/events';
 import { basename, fs } from '../core/fs';
 import { settings } from '../core/settings';
@@ -208,7 +208,7 @@ export function mountDeskIcons(layer: HTMLElement): void {
       key: `file:${f.path}`,
       label: f.name,
       path: f.path,
-      icon: f.type === 'dir' ? icons.folder : icons.file,
+      icon: f.type === 'dir' ? icons.folder : fileIcon(f.name),
       open: () => {
         if (f.type === 'dir') launch(getApp('explorer') ? 'explorer' : 'notepad', { path: f.path });
         else if (textExt.test(f.name)) launch('notepad', { path: f.path });
