@@ -413,13 +413,6 @@ function applyScroll(root: Element, map: ScrollMap): void {
 }
 const scrolls = new WeakMap<Win, ScrollMap>();
 
-function copyGlass(active: boolean): string {
-  const cs = getComputedStyle(document.documentElement);
-  const rgb = cs.getPropertyValue('--glass-rgb').trim() || '30, 100, 220';
-  const a = Number(cs.getPropertyValue('--glass-a')) || 0.1;
-  return `linear-gradient(rgba(255,255,255,${active ? 0.55 : 0.6}), rgba(255,255,255,${active ? 0.35 : 0.45})), rgba(${rgb}, ${Math.min(0.9, a + 0.25)}), rgba(170,190,215,.6)`;
-}
-
 /**
  * One live copy of the window — exactly as it looks right now: focus, scroll, typed text, canvas
  * pixels, frame and shadow. Real DOM, so text stays crisp, and nothing has to be rasterized first.
@@ -446,7 +439,7 @@ function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
   // Dozens of backdrop blurs per frame would choke the GPU; the copies get a still, opaque-ish glass instead.
   Object.assign(c.style, {
     left: `${PAD}px`, top: '0px', display: '', visibility: 'visible', opacity: '1', transform: 'none', zIndex: '0', transition: 'none',
-    backdropFilter: 'none', webkitBackdropFilter: 'none', background: copyGlass(w.el.classList.contains('active')),
+    backdropFilter: 'none', webkitBackdropFilter: 'none',
   });
   c.dataset.scroll = JSON.stringify(scroll);
   return c;
@@ -480,7 +473,7 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
 function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Promise<void> {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
-  t = new DOMRect(t.left + t.width * 0.18, t.top + t.height * 0.35, t.width * 0.64, t.height * 0.55);
+  t = new DOMRect(t.left + t.width * 0.2, t.top + t.height * 0.15, t.width * 0.6, t.height * 0.6);
   const layer = document.createElement('div');
   layer.className = 'genie-layer';
   const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
@@ -592,6 +585,8 @@ function restore(w: Win): void {
     void fade(w, true);
     return;
   }
+  // Focused from the first frame: the copies wear the active look the window will have.
+  w.el.classList.add('active');
   void runGenie(w, scroll, target, true).then(() => {
     if (!w.minimized) show();
   });
