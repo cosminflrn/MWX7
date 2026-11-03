@@ -1,0 +1,32 @@
+/* Mines. Everything scoped under .mn. */
+.mn {
+  --c: 26px;
+  display: flex; flex-direction: column; padding: 10px; gap: 8px; box-sizing: border-box;
+  background: linear-gradient(180deg, #dbe6f3 0%, #cddcee 55%, #c3d3e8 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), inset 0 1px 0 #fff;
+  font-family: var(--font-ui); user-select: none; color: #1c2530;
+}
+.mn-head { height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; border-radius: 6px;
+  background: linear-gradient(180deg, #eaf1f9, #cfdcec); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 0 0 1px #8ea3bd; }
+.mn-lcd { min-width: 46px; padding: 2px 6px; border-radius: 4px; text-align: center; font: 700 22px/26px var(--font-mono); letter-spacing: 1px;
+  color: #ff5a3d; text-shadow: 0 0 6px rgba(255, 70, 40, 0.65); background: linear-gradient(180deg, #05080d, #121a26);
+  box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255, 255, 255, 0.7); font-variant-numeric: tabular-nums; }
+.mn-face { width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 1px solid #1b4b86; cursor: pointer;
+  background: radial-gradient(circle at 50% 18%, #bfe3ff, #4a9af0 55%, #1f5fc0); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 20, 60, 0.4); }
+.mn-face:hover { filter: brightness(1.08); }
+.mn-face:active { filter: brightness(0.92); }
+.mn-face svg { width: 100%; height: 100%; display: block; }
+.mn-board { flex: none; display: grid; gap: 0; border-radius: 3px; background: #aebfd6; box-shadow: 0 0 0 1px #7f93ab, inset 0 1px 2px rgba(40, 70, 110, 0.4); overflow: hidden; }
+.mn-cell { position: relative; width: var(--c); height: var(--c); box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  font: 700 calc(var(--c) * 0.6)/1 var(--font-ui); background: #e9f0f9; box-shadow: inset 0 0 0 0.5px rgba(80, 105, 140, 0.35); }
+.mn-cell svg { width: 70%; height: 70%; display: block; }
+.mn-tile { position: absolute; inset: 0; border-radius: 3px; cursor: default; display: flex; align-items: center; justify-content: center; will-change: transform, opacity;
+  background: linear-gradient(180deg, #8fcaff 0%, #4a9af0 48%, #2a70d6 50%, #4fa2f4 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), inset 0 0 0 2px rgba(20, 70, 160, 0.25), 0 0 0 0.5px rgba(10, 50, 130, 0.8); }
+.mn-tile:hover { filter: brightness(1.12); }
+.mn-cell.open .mn-tile { animation: mn-pop 0.26s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--d, 0) * 22ms); pointer-events: none; }
+@keyframes mn-pop { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.55); } }
+.mn-cell.hit { background: #ffb0a2; }
+.mn-cell.wrong::after { content: ''; position: absolute; inset: 4px; background: linear-gradient(45deg, transparent 46%, #d12a14 47% 53%, transparent 54%), linear-gradient(-45deg, transparent 46%, #d12a14 47% 53%, transparent 54%); }
+.mn-n1 { color: #1c63d8; } .mn-n2 { color: #2a8a2a; } .mn-n3 { color: #d3281c; } .mn-n4 { color: #12328a; }
+.mn-n5 { color: #8a1c1c; } .mn-n6 { color: #178a8a; } .mn-n7 { color: #1c2530; } .mn-n8 { color: #6b7684; }
