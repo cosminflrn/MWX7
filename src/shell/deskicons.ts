@@ -212,6 +212,8 @@ export function mountDeskIcons(layer: HTMLElement): void {
       open: () => {
         if (f.type === 'dir') launch(getApp('explorer') ? 'explorer' : 'notepad', { path: f.path });
         else if (textExt.test(f.name)) launch('notepad', { path: f.path });
+        else if (/\.(jpe?g|png|webp|gif)$/i.test(f.name) && getApp('photos')) launch('photos', { path: f.path });
+        else if (/\.(mp3|ogg|oga|wav|m4a|flac)$/i.test(f.name) && getApp('mediaplayer')) launch('mediaplayer', { path: f.path });
         else if (getApp('explorer')) launch('explorer', { path: '/Desktop' });
       },
     }));

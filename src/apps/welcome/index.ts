@@ -6,7 +6,7 @@ import { welcomeIcon } from './icon';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '0.9.0';
+const VERSION = '0.9.1';
 
 interface Tile {
   icon: string;
