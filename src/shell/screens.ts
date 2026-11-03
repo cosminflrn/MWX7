@@ -64,210 +64,231 @@ function skippable(el: HTMLElement): { skipped: () => boolean; dispose: () => vo
 
 /* ---------- 1. power switch ---------- */
 
-/** Original front of a beige 90s tower: drive bays, LEDs, turbo button and the big push POWER switch (drawn here, no third-party art). */
-const PC_FRONT = `
-<svg class="pc-svg" viewBox="0 0 360 470" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <linearGradient id="pcBeige" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e4dcc6"/><stop offset=".5" stop-color="#dad2bb"/><stop offset="1" stop-color="#c6bea6"/></linearGradient>
-    <linearGradient id="pcBay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfc7af"/><stop offset="1" stop-color="#ddd5be"/></linearGradient>
-    <linearGradient id="pcCap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ece5d1"/><stop offset=".55" stop-color="#d8d0b9"/><stop offset="1" stop-color="#c3bba3"/></linearGradient>
-    <radialGradient id="ledG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#d9ffd0"/><stop offset=".5" stop-color="#3fe03f"/><stop offset="1" stop-color="#16a416"/></radialGradient>
-    <radialGradient id="ledA" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff0c4"/><stop offset=".5" stop-color="#ffb81f"/><stop offset="1" stop-color="#d27a00"/></radialGradient>
-  </defs>
-  <!-- case -->
-  <rect x="14" y="8" width="332" height="446" rx="12" fill="#a79f88"/>
-  <rect x="14" y="4" width="332" height="446" rx="12" fill="url(#pcBeige)"/>
-  <rect x="15" y="5" width="330" height="444" rx="11" fill="none" stroke="#fff8e6" stroke-opacity=".7" stroke-width="1"/>
-  <rect x="30" y="20" width="300" height="414" rx="6" fill="none" stroke="#b3ab93" stroke-width="1"/>
-  <!-- 5.25" CD-ROM bay -->
-  <rect x="42" y="34" width="276" height="50" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
-  <rect x="54" y="46" width="206" height="14" rx="2" fill="#2a2a2a"/>
-  <rect x="54" y="46" width="206" height="3" fill="#000" opacity=".5"/>
-  <rect x="274" y="48" width="30" height="12" rx="2" fill="#cfc7af" stroke="#9a927c"/>
-  <circle cx="289" cy="72" r="2.4" fill="#4b4b3f"/>
-  <text x="54" y="76" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" letter-spacing="1.4" fill="#6f6a58">CD-ROM  16X</text>
-  <!-- 3.5" floppy bay -->
-  <rect x="42" y="98" width="170" height="40" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
-  <rect x="58" y="112" width="104" height="6" rx="1" fill="#1d1d1d"/>
-  <rect x="58" y="112" width="104" height="2" fill="#000" opacity=".6"/>
-  <rect x="172" y="108" width="28" height="14" rx="2" fill="#cfc7af" stroke="#9a927c"/>
-  <circle cx="186" cy="128" r="2" fill="#4b4b3f"/>
-  <text x="58" y="131" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing="1.2" fill="#6f6a58">3.5"  1.44MB</text>
-  <!-- LED panel -->
-  <rect x="226" y="98" width="92" height="40" rx="3" fill="#2b2b27" stroke="#8d866f"/>
-  <circle class="led led-pwr" cx="248" cy="113" r="5.2" fill="#143d14"/>
-  <circle class="led led-hdd" cx="296" cy="113" r="5.2" fill="#4a3208"/>
-  <text x="248" y="131" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing=".8" fill="#cfc7af">POWER</text>
-  <text x="296" y="131" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing=".8" fill="#cfc7af">HDD</text>
-  <!-- turbo -->
-  <rect x="42" y="154" width="276" height="42" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
-  <rect x="54" y="163" width="52" height="24" rx="3" fill="#b7af97"/>
-  <rect x="54" y="162" width="52" height="23" rx="3" fill="url(#pcCap)" stroke="#8f876f"/>
-  <text x="80" y="177" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="8.5" font-weight="700" letter-spacing="1" fill="#5c5748">TURBO</text>
-  <rect x="236" y="163" width="68" height="24" rx="2" fill="#120a0a" stroke="#8d866f"/>
-  <text x="270" y="182" text-anchor="middle" font-family="'Courier New',monospace" font-size="19" font-weight="700" fill="#ff3b2a" class="seg">66</text>
-  <text x="124" y="179" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing="1.2" fill="#6f6a58">MHz</text>
-  <!-- power switch housing -->
-  <rect x="56" y="214" width="248" height="142" rx="8" fill="#a79f88"/>
-  <rect x="62" y="220" width="236" height="130" rx="6" fill="#2a2923"/>
-  <rect x="62" y="220" width="236" height="12" rx="6" fill="#000" opacity=".45"/>
-  <g class="cap">
-    <rect x="72" y="234" width="216" height="106" rx="7" fill="#9d957d"/>
-    <rect x="72" y="228" width="216" height="106" rx="7" fill="url(#pcCap)" stroke="#8b836b"/>
-    <rect x="73.5" y="229.5" width="213" height="103" rx="6" fill="none" stroke="#fffdf2" stroke-opacity=".85"/>
-    <rect x="96" y="246" width="168" height="62" rx="5" fill="#cbc3ab" stroke="#aaa28a"/>
-    <text x="180" y="288" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="30" font-weight="900" letter-spacing="5" fill="#fbf7e8">POWER</text>
-    <text x="180" y="286" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="30" font-weight="900" letter-spacing="5" fill="#6a6554">POWER</text>
-    <circle cx="180" cy="320" r="0" fill="none"/>
-  </g>
-  <!-- vents -->
-  <g stroke="#aaa28a" stroke-width="3" stroke-linecap="round">
-    <path d="M70 376h220M70 388h220M70 400h220M70 412h220"/>
-  </g>
-  <g stroke="#fff8e6" stroke-opacity=".7" stroke-width="1"><path d="M70 378h220M70 390h220M70 402h220M70 414h220"/></g>
-  <text x="300" y="430" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" letter-spacing="2" fill="#6f6a58">MWX 486DX2</text>
-</svg>`;
+/**
+ * Photo: a beige 1990s tower + CRT on a desk (public/media/boot/pc-crt.jpg, Pexels, see CREDITS.md), 1920x1280.
+ * Everything that must stay registered to the photo (hit area, glass, LED) is positioned in % of the photo box,
+ * and the box is cover-cropped for any viewport aspect, so alignment holds when the window is resized.
+ */
+const PHOTO_ASPECT = 1.5;
+/** CRT glass corners in photo fractions: top-left, top-right, bottom-right, bottom-left. */
+const GLASS: [number, number][] = [
+  [472 / 1920, 294 / 1280],
+  [888 / 1920, 266 / 1280],
+  [832 / 1920, 732 / 1280],
+  [414 / 1920, 688 / 1280],
+];
+const GLASS_CLIP = `polygon(${GLASS.map(([u, v]) => `${(u * 100).toFixed(2)}% ${(v * 100).toFixed(2)}%`).join(',')})`;
+const SWITCH = { u: 1582 / 1920, v: 970 / 1280 };
 
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const smooth = (a: number, b: number, t: number) => {
+  const x = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return x * x * (3 - 2 * x);
+};
 
-/** Original illustration of a retro room (1600x900, drawn here): wall, window, poster, wooden desk, switched-off CRT, keyboard, mug. */
-const ROOM = `
-<svg class="room-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <linearGradient id="rmWall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a6a4e"/><stop offset=".55" stop-color="#a98562"/><stop offset="1" stop-color="#b7926b"/></linearGradient>
-    <radialGradient id="rmLight" cx=".3" cy=".25" r=".8"><stop offset="0" stop-color="#ffe3a8" stop-opacity=".35"/><stop offset="1" stop-color="#ffe3a8" stop-opacity="0"/></radialGradient>
-    <linearGradient id="rmVig" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".5"/><stop offset=".22" stop-color="#000" stop-opacity="0"/><stop offset=".78" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></linearGradient>
-    <linearGradient id="rmSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b5f8f"/><stop offset=".6" stop-color="#e9a56a"/><stop offset="1" stop-color="#f7d08a"/></linearGradient>
-    <linearGradient id="rmTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9824f"/><stop offset="1" stop-color="#9a683c"/></linearGradient>
-    <linearGradient id="rmFront" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7d5030"/><stop offset="1" stop-color="#5a3721"/></linearGradient>
-    <linearGradient id="rmFloor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2618"/><stop offset="1" stop-color="#1d120a"/></linearGradient>
-    <linearGradient id="rmCrt" x1="0" x2="1"><stop offset="0" stop-color="#e2dac4"/><stop offset=".5" stop-color="#d6cdb5"/><stop offset="1" stop-color="#bdb59d"/></linearGradient>
-    <radialGradient id="rmGlass" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#2c3436"/><stop offset=".6" stop-color="#141a1c"/><stop offset="1" stop-color="#0a0d0e"/></radialGradient>
-    <radialGradient id="rmShadow"><stop offset="0" stop-color="#1a0d04" stop-opacity=".55"/><stop offset="1" stop-color="#1a0d04" stop-opacity="0"/></radialGradient>
-    <pattern id="rmGrain" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(2)"><path d="M0 7h14" stroke="#000" stroke-opacity=".05"/></pattern>
-  </defs>
-  <!-- wall + wainscot -->
-  <rect width="1600" height="640" fill="url(#rmWall)"/>
-  <rect width="1600" height="640" fill="url(#rmLight)"/>
-  <rect y="470" width="1600" height="170" fill="#6e4d37"/>
-  <rect y="466" width="1600" height="8" fill="#c8a47a"/><rect y="474" width="1600" height="3" fill="#000" opacity=".25"/>
-  <g stroke="#000" stroke-opacity=".18" stroke-width="2"><path d="M200 477v163M420 477v163M640 477v163M860 477v163M1080 477v163M1300 477v163M1520 477v163"/></g>
-  <!-- window -->
-  <g>
-    <rect x="270" y="92" width="330" height="330" rx="3" fill="#e8d9bd" stroke="#6b4a31" stroke-width="8"/>
-    <rect x="288" y="110" width="294" height="294" fill="url(#rmSky)"/>
-    <path d="M288 330 L360 270 L420 318 L500 244 L582 316 V404 H288Z" fill="#2a3a4e" opacity=".85"/>
-    <path d="M288 366 L380 322 L470 360 L582 330 V404 H288Z" fill="#1c2735" opacity=".9"/>
-    <circle cx="500" cy="196" r="18" fill="#fff2c0" opacity=".9"/>
-    <path d="M435 110v294M288 257h294" stroke="#e8d9bd" stroke-width="9"/><path d="M435 110v294M288 257h294" stroke="#6b4a31" stroke-opacity=".45" stroke-width="1.5"/>
-    <rect x="256" y="418" width="358" height="14" rx="2" fill="#c8a47a" stroke="#6b4a31" stroke-width="2"/>
-    <!-- curtains -->
-    <path d="M262 80 Q300 110 296 250 Q292 380 270 428 L240 428 L240 80Z" fill="#a0432e"/>
-    <path d="M608 80 Q570 110 574 250 Q578 380 600 428 L630 428 L630 80Z" fill="#a0432e"/>
-    <path d="M262 80 Q272 250 270 428M282 90 Q290 250 284 428M608 80 Q598 250 600 428M588 90 Q580 250 586 428" stroke="#000" stroke-opacity=".2" stroke-width="3" fill="none"/>
-    <rect x="228" y="70" width="414" height="12" rx="6" fill="#4b2f1d"/>
-    <!-- sun patch on the wall -->
-    <path d="M640 200 L980 300 L990 560 L640 440Z" fill="#ffe6a8" opacity=".08"/>
-  </g>
-  <!-- poster -->
-  <g transform="rotate(-1.5 1190 270)">
-    <rect x="1100" y="132" width="180" height="250" fill="#000" opacity=".25" transform="translate(5 7)"/>
-    <rect x="1100" y="132" width="180" height="250" fill="#f1e6cc"/>
-    <rect x="1112" y="144" width="156" height="170" fill="#274a6e"/>
-    <circle cx="1190" cy="250" r="44" fill="#ee8a4a"/><rect x="1112" y="250" width="156" height="64" fill="#274a6e"/>
-    <path d="M1112 314 L1160 262 L1196 296 L1230 254 L1268 314Z" fill="#14283f"/>
-    <path d="M1112 270h156M1112 282h156M1112 294h156" stroke="#274a6e" stroke-width="3" opacity=".9"/>
-    <rect x="1130" y="328" width="120" height="9" fill="#274a6e" opacity=".85"/><rect x="1150" y="346" width="80" height="6" fill="#274a6e" opacity=".5"/>
-    <rect x="1170" y="124" width="40" height="16" fill="#e8dfa8" opacity=".75" transform="rotate(-4 1190 132)"/>
-  </g>
-  <!-- shelf with books -->
-  <rect x="1340" y="300" width="220" height="12" rx="2" fill="#5a3721"/><rect x="1340" y="312" width="220" height="4" fill="#000" opacity=".25"/>
-  <g>
-    <rect x="1356" y="238" width="26" height="62" fill="#3d6a58"/><rect x="1384" y="228" width="22" height="72" fill="#b55a3c"/><rect x="1408" y="246" width="30" height="54" fill="#d6b45a"/><rect x="1440" y="236" width="20" height="64" fill="#36507a"/>
-    <rect x="1472" y="262" width="52" height="38" rx="3" fill="#e8dfc8"/><path d="M1480 262v-10M1496 262v-16M1512 262v-10" stroke="#3d6a58" stroke-width="5" stroke-linecap="round"/>
-  </g>
-  <!-- desk top (perspective plane), front lip, apron, floor -->
-  <rect y="640" width="1600" height="36" fill="url(#rmTop)"/>
-  <path d="M0 676 H1600 V700 H0Z" fill="#c89862"/><rect y="700" width="1600" height="6" fill="#000" opacity=".2"/>
-  <rect y="640" width="1600" height="36" fill="url(#rmGrain)"/>
-  <path d="M0 656 Q500 650 1000 658 T1600 654M0 668 Q600 664 1100 670 T1600 666" stroke="#6b4426" stroke-opacity=".25" stroke-width="1.5" fill="none"/>
-  <rect y="706" width="1600" height="76" fill="url(#rmFront)"/>
-  <g>
-    <rect x="300" y="718" width="360" height="52" rx="3" fill="#6a4128" stroke="#2f1a0e" stroke-width="2"/><rect x="450" y="738" width="60" height="9" rx="4" fill="#d3b27a"/>
-    <rect x="940" y="718" width="360" height="52" rx="3" fill="#6a4128" stroke="#2f1a0e" stroke-width="2"/><rect x="1090" y="738" width="60" height="9" rx="4" fill="#d3b27a"/>
-  </g>
-  <rect y="782" width="1600" height="118" fill="url(#rmFloor)"/>
-  <path d="M0 830H1600M0 868H1600" stroke="#000" stroke-opacity=".35" stroke-width="2"/>
-  <!-- objects on the desk -->
-  <ellipse cx="800" cy="664" rx="270" ry="20" fill="url(#rmShadow)"/>
-  <!-- CRT monitor, switched off -->
-  <g>
-    <path d="M668 392 L728 354 H872 L932 392Z" fill="#b4ac95"/>
-    <rect x="640" y="388" width="320" height="238" rx="16" fill="url(#rmCrt)" stroke="#9d957c" stroke-width="2"/>
-    <rect x="642" y="390" width="316" height="234" rx="15" fill="none" stroke="#fffbe9" stroke-opacity=".7" stroke-width="2"/>
-    <rect x="662" y="406" width="276" height="188" rx="22" fill="#a8a08a"/>
-    <rect x="668" y="412" width="264" height="176" rx="18" fill="url(#rmGlass)" stroke="#6f6853" stroke-width="2"/>
-    <path d="M684 424 Q760 418 830 424 Q770 440 700 470 Q680 480 684 424Z" fill="#fff" opacity=".13"/>
-    <ellipse cx="900" cy="560" rx="22" ry="12" fill="#fff" opacity=".04"/>
-    <rect x="662" y="602" width="106" height="12" rx="3" fill="#cbc3ab"/><path d="M670 608h90" stroke="#9d957c" stroke-width="2" stroke-dasharray="2 4"/>
-    <circle cx="912" cy="608" r="5" fill="#3b3a32"/><circle cx="930" cy="608" r="3.4" fill="#4a2a12"/>
-    <path d="M778 626 H822 L836 644 H764Z" fill="#c7bea6"/>
-    <ellipse cx="800" cy="650" rx="86" ry="14" fill="#cbc3ab" stroke="#9d957c" stroke-width="2"/><ellipse cx="800" cy="646" rx="80" ry="10" fill="#e0d8c2"/>
-  </g>
-  <!-- keyboard -->
-  <g>
-    <path d="M648 666 L952 666 L972 696 L628 696Z" fill="#000" opacity=".28" transform="translate(0 4)"/>
-    <path d="M652 658 L948 658 L970 692 L630 692Z" fill="#d3cab2" stroke="#a79f88" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M660 664 L940 664 L956 686 L644 686Z" fill="#bfb7a0"/>
-    <g stroke="#e9e1ca" stroke-width="5" stroke-linecap="round" opacity=".95">
-      <path d="M666 669h268M662 675h276M657 681h286M672 686h256"/>
-    </g>
-    <g stroke="#a79f88" stroke-width="1" opacity=".7"><path d="M690 666l-6 22M722 666l-6 22M754 666l-4 22M786 666l-2 22M818 666v22M850 666l2 22M882 666l4 22M914 666l6 22"/></g>
-  </g>
-  <!-- mouse + pad -->
-  <path d="M1000 670 H1100 L1112 700 H988Z" fill="#2c4a6e" opacity=".9"/>
-  <path d="M1040 676 Q1058 668 1070 678 L1072 692 Q1056 698 1038 692Z" fill="#d9d0b8" stroke="#a79f88" stroke-width="1.5"/>
-  <path d="M1056 672 V684" stroke="#a79f88" stroke-width="1.5"/>
-  <path d="M1054 672 Q1000 650 966 668" stroke="#b8b09a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-  <!-- mug with steam -->
-  <g>
-    <ellipse cx="548" cy="664" rx="34" ry="8" fill="#1a0d04" opacity=".35"/>
-    <path d="M520 612 H576 L572 662 Q548 672 524 662Z" fill="#d94d38"/>
-    <path d="M520 612 H576 L574 632 Q548 640 522 632Z" fill="#000" opacity=".1"/>
-    <ellipse cx="548" cy="612" rx="28" ry="7" fill="#6b3a22"/><ellipse cx="548" cy="611" rx="25" ry="5" fill="#4a2814"/>
-    <path d="M576 622 Q600 624 596 642 Q592 656 573 654" fill="none" stroke="#d94d38" stroke-width="7" stroke-linecap="round"/>
-    <path d="M530 618 L530 656" stroke="#fff" stroke-opacity=".3" stroke-width="4" stroke-linecap="round"/>
-    <path d="M540 596 Q532 584 542 572 Q552 560 544 548M556 598 Q566 586 558 576" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="3" stroke-linecap="round"/>
-  </g>
-  <!-- tower contact shadow (the tower itself is an HTML overlay with the real power switch) -->
-  <ellipse cx="1155" cy="654" rx="140" ry="13" fill="#1a0d04" opacity=".5"/>
-  <rect width="1600" height="900" fill="url(#rmVig)"/>
-</svg>`;
+type Pt = [number, number];
 
-function powerScreen(hint: string) {
-  const sw = h('button', { class: 'power-btn', 'aria-label': 'Power on' });
-  const pc = h('div', { class: 'pc', html: PC_FRONT }, sw);
-  const scene = h('div', { class: 'scene' }, h('div', { class: 'scene-art', html: ROOM }), pc);
-  const screen = h('div', { class: 'screen power' }, scene, h('p', { class: 'power-hint' }, hint));
-  document.body.append(screen);
-  return { screen, pc, pressed: new Promise<void>((r) => sw.addEventListener('click', () => r(), { once: true })) };
+/** matrix3d that maps a w x h box (origin 0 0) onto an arbitrary quad (Heckbert's unit-square projection). */
+function quadMatrix(w: number, h: number, q: Pt[]): string {
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q;
+  const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+  const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+  const den = dx1 * dy2 - dx2 * dy1;
+  const g = Math.abs(sx) + Math.abs(sy) < 1e-9 ? 0 : (sx * dy2 - dx2 * sy) / den;
+  const hh = Math.abs(sx) + Math.abs(sy) < 1e-9 ? 0 : (dx1 * sy - sx * dy1) / den;
+  const a = x1 - x0 + g * x1, b = x3 - x0 + hh * x3, d = y1 - y0 + g * y1, e = y3 - y0 + hh * y3;
+  return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${hh / h},0,0,1,0,${x0},${y0},0,1)`;
 }
 
-async function powerOn(): Promise<void> {
-  const { screen, pc, pressed } = powerScreen('Push the power switch to start');
+const BIOS_INTRO = (): string[] => [
+  'MWX Systems BIOS v7.03.2026, A Web-Native Firmware',
+  'Copyright (C) 2026, MWX Systems, Inc.',
+  '',
+  'MWX 7 Reference Board  Rev. 7.0',
+  '',
+  `Main Processor   : Browser Core x${navigator.hardwareConcurrency || 4} @ 3.20 GHz`,
+];
+const BIOS_FOOT = 'Press DEL to run Setup, F12 for Boot Menu, ESC to skip\n10/28/2026-MWX7-7.03-BIOS';
+
+/** Cover-crop the photo, but never so tight that the glass and the power switch (u 0.2..0.86) leave the viewport. */
+function layout(vw: number, vh: number) {
+  let SW = Math.max(vw, vh * PHOTO_ASPECT);
+  if (vw / SW < 0.74) SW = Math.max(vw / 0.74, vh * PHOTO_ASPECT * 0.55);
+  const SH = SW / PHOTO_ASPECT;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const left = SW >= vw ? clamp(vw / 2 - 0.53 * SW, vw - SW, 0) : (vw - SW) / 2;
+  const top = SH >= vh ? clamp(vh / 2 - 0.5 * SH, vh - SH, 0) : (vh - SH) / 2;
+  return { SW, SH, left, top };
+}
+
+function powerScreen(hint: string) {
+  const pct = (n: number) => `${(n * 100).toFixed(3)}%`;
+  const photo = h('img', { class: 'pw-photo', src: `${import.meta.env.BASE_URL}media/boot/pc-crt.jpg`, alt: '', draggable: 'false' });
+  const sheen = h('div', { class: 'pw-sheen' });
+  sheen.style.clipPath = GLASS_CLIP;
+  const spill = h('div', { class: 'pw-spill' });
+  spill.style.left = pct((GLASS[0][0] + GLASS[2][0]) / 2);
+  spill.style.top = pct((GLASS[0][1] + GLASS[2][1]) / 2);
+  const led = h('i', { class: 'pw-led' });
+  led.style.left = pct(SWITCH.u);
+  led.style.top = pct(SWITCH.v - 0.026);
+  const dent = h('i', { class: 'pw-dent' });
+  dent.style.left = pct(SWITCH.u);
+  dent.style.top = pct(SWITCH.v);
+  const sw = h('button', { class: 'power-btn', 'aria-label': 'Power on' }, h('i', { class: 'pw-ring' }));
+  sw.style.left = pct(SWITCH.u);
+  sw.style.top = pct(SWITCH.v);
+  const scene = h('div', { class: 'scene' }, photo, sheen, spill, dent, led, sw);
+  const veil = h('div', { class: 'pw-veil' });
+  // The monitor image: same look as the real BIOS screen (class "bios"), mapped onto the glass by a matrix3d quad.
+  const text = h('pre', { class: 'bios-text' });
+  const foot = h('pre', { class: 'bios-foot' }, BIOS_FOOT);
+  foot.style.opacity = '0';
+  const fx = h('div', { class: 'crt-fx' });
+  const crt = h('div', { class: 'bios crt-img' }, text, foot, fx);
+  const hintEl = h('p', { class: 'power-hint' }, hint);
+  const screen = h('div', { class: 'screen power' }, scene, veil, crt, hintEl);
+  document.body.append(screen);
+
+  // ----- camera: idle push-in + pointer parallax, then the zoom into the glass -----
+  const t0 = performance.now();
+  let px = 0, py = 0, tpx = 0, tpy = 0;
+  const onMove = (e: PointerEvent) => {
+    tpx = (e.clientX / innerWidth - 0.5) * 2;
+    tpy = (e.clientY / innerHeight - 0.5) * 2;
+  };
+  window.addEventListener('pointermove', onMove);
+  let zoomStart = -1;
+  let zoomDur = 2300;
+  let zoomFrom = { s: 1, gx: 0, gy: 0 };
+  let crtOn = -1;
+  let done: (() => void) | null = null;
+  const cam = { s: 1, tx: 0, ty: 0 };
+  let bw = 0, bh = 0;
+  const gc: Pt = [(GLASS[0][0] + GLASS[2][0]) / 2, (GLASS[0][1] + GLASS[2][1]) / 2];
+  const glassH = ((GLASS[3][1] - GLASS[0][1]) + (GLASS[2][1] - GLASS[1][1])) / 2;
+
+  function frame(now: number) {
+    if (!screen.isConnected) {
+      window.removeEventListener('pointermove', onMove);
+      return;
+    }
+    const vw = innerWidth, vh = innerHeight;
+    const { SW, SH, left, top } = layout(vw, vh);
+    const Cx = left + SW / 2, Cy = top + SH / 2;
+    px += (tpx - px) * 0.04;
+    py += (tpy - py) * 0.04;
+    const idleT = (now - t0) / 1000;
+    const sIdle = 1.045 + 0.03 * (1 - Math.exp(-idleT / 25));
+    let s = sIdle;
+    let tx = -px * SW * 0.008, ty = -py * SH * 0.006;
+    let p = 0;
+    // viewport position of a photo fraction under camera (s, tx, ty)
+    const at = (u: number, v: number, cs: number, cx: number, cy: number): Pt => [Cx + cx + cs * (u - 0.5) * SW, Cy + cy + cs * (v - 0.5) * SH];
+    if (zoomStart >= 0) {
+      p = Math.min(1, (now - zoomStart) / zoomDur);
+      const e = ease(p);
+      const sEnd = (vh * 1.0) / (glassH * SH);
+      s = Math.exp(lerp(Math.log(zoomFrom.s), Math.log(sEnd), e));
+      const gx = lerp(zoomFrom.gx, vw / 2, e), gy = lerp(zoomFrom.gy, vh / 2, e);
+      tx = gx - Cx - s * (gc[0] - 0.5) * SW;
+      ty = gy - Cy - s * (gc[1] - 0.5) * SH;
+    }
+    if (zoomStart < 0) Object.assign(cam, { s, tx, ty });
+    scene.style.left = `${left}px`;
+    scene.style.top = `${top}px`;
+    scene.style.width = `${SW}px`;
+    scene.style.height = `${SH}px`;
+    scene.style.transform = `translate3d(${tx}px,${ty}px,0) scale(${s})`;
+
+    if (crtOn >= 0) {
+      // 4:3 slice of the real BIOS screen, so text keeps its proportions on the glass
+      const nbw = Math.round(vh * (4 / 3));
+      if (nbw !== bw || vh !== bh) {
+        bw = nbw;
+        bh = vh;
+        crt.style.width = `${bw}px`;
+        crt.style.height = `${bh}px`;
+      }
+      const glass = GLASS.map(([u, v]) => at(u, v, s, tx, ty));
+      const target: Pt[] = [[0, 0], [bw, 0], [bw, bh], [0, bh]];
+      const q = smooth(0.5, 1, p);
+      const quad = glass.map((c, i) => [lerp(c[0], target[i][0], q), lerp(c[1], target[i][1], q)] as Pt);
+      crt.style.transform = p >= 1 ? 'none' : quadMatrix(bw, bh, quad);
+      fx.style.opacity = String(1 - q);
+      crt.style.borderRadius = `${(1 - q) * 36}px`;
+      const glow = 1 - smooth(0.55, 0.9, p);
+      scene.style.opacity = String(glow);
+      veil.style.opacity = String(smooth(0.35, 0.8, p));
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  const pressed = new Promise<void>((r) => sw.addEventListener('click', () => r(), { once: true }));
+
+  /** Power-on: LED, CRT lights up and types the first BIOS lines, camera dives into the glass. Resolves at the identity frame. */
+  async function run(): Promise<void> {
+    ensureVgaFont();
+    void document.fonts.load("32px 'Web437 IBM VGA 8x16'");
+    hintEl.style.opacity = '0';
+    scene.classList.add('pressed');
+    await wait(110);
+    scene.classList.add('on');
+    play('spinup');
+    await wait(450);
+    // degauss-style flash, then the phosphor settles
+    bw = Math.round(innerHeight * (4 / 3));
+    bh = innerHeight;
+    crt.style.width = `${bw}px`;
+    crt.style.height = `${bh}px`;
+    crt.style.display = 'block';
+    crtOn = performance.now();
+    crt.animate([{ opacity: 0 }, { opacity: 0.9, offset: 0.12 }, { opacity: 0.45, offset: 0.3 }, { opacity: 1 }], { duration: 420, fill: 'forwards' });
+    scene.classList.add('lit');
+    await wait(520);
+    for (const [i, l] of BIOS_INTRO().entries()) {
+      text.textContent += l + '\n';
+      if (i === 1) foot.style.opacity = '1';
+      await wait(l ? 230 : 120);
+    }
+    await wait(420);
+    // dive
+    const L = layout(innerWidth, innerHeight);
+    zoomFrom = {
+      s: cam.s,
+      gx: L.left + L.SW / 2 + cam.tx + cam.s * (gc[0] - 0.5) * L.SW,
+      gy: L.top + L.SH / 2 + cam.ty + cam.s * (gc[1] - 0.5) * L.SH,
+    };
+    zoomDur = 2300;
+    zoomStart = performance.now();
+    await new Promise<void>((r) => (done = r));
+  }
+  // resolve `done` when the zoom ends (checked on a timer to keep the render loop free of logic)
+  const poll = window.setInterval(() => {
+    if (zoomStart >= 0 && performance.now() - zoomStart >= zoomDur + 30) {
+      window.clearInterval(poll);
+      done?.();
+    }
+    if (!screen.isConnected) window.clearInterval(poll);
+  }, 40);
+
+  return { screen, pc: scene, pressed, run, text };
+}
+
+async function powerOn(): Promise<{ screen: HTMLElement }> {
+  const { screen, pressed, run } = powerScreen('Push the power switch to start');
   await pressed;
   unlockAudio();
   play('switch');
-  pc.classList.add('pressed');
-  await wait(110);
-  pc.classList.add('on');
-  play('spinup');
-  await wait(2500);
-  screen.remove();
+  await run();
+  return { screen };
 }
 
 /* ---------- 2. BIOS POST ---------- */
 
-async function bios(): Promise<void> {
+async function bios(prev?: HTMLElement): Promise<void> {
   ensureVgaFont();
   const text = h('pre', { class: 'bios-text' });
   const screen = h(
@@ -275,9 +296,15 @@ async function bios(): Promise<void> {
     { class: 'screen bios' },
     h('div', { class: 'bios-badge', html: POWER_SAVER_BADGE }),
     text,
-    h('pre', { class: 'bios-foot' }, 'Press DEL to run Setup, F12 for Boot Menu, ESC to skip\n10/28/2026-MWX7-7.03-BIOS'),
+    h('pre', { class: 'bios-foot' }, BIOS_FOOT),
   );
   document.body.append(screen);
+  if (prev) {
+    // Continues the CRT image exactly: same intro text already on screen, power-saver badge fades in as the glass clears.
+    text.textContent = BIOS_INTRO().join('\n') + '\n';
+    screen.querySelector('.bios-badge')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, easing: 'ease-out' });
+    requestAnimationFrame(() => requestAnimationFrame(() => prev.remove()));
+  }
   const skip = skippable(screen);
   // DEL opens MWX Commander; the POST resumes when it closes.
   let wantSetup = false;
@@ -297,15 +324,10 @@ async function bios(): Promise<void> {
     if (!skip.skipped()) await wait(ms);
   };
 
-  const threads = navigator.hardwareConcurrency || 4;
   const memMB = ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) * 1024;
 
-  await line('MWX Systems BIOS v7.03.2026, A Web-Native Firmware', 60);
-  await line('Copyright (C) 2026, MWX Systems, Inc.', 260);
-  await line('');
-  await line('MWX 7 Reference Board  Rev. 7.0', 200);
-  await line('');
-  await line(`Main Processor   : Browser Core x${threads} @ 3.20 GHz`, 220);
+  if (!prev) for (const l of BIOS_INTRO().slice(0, 5)) await line(l, l ? 160 : 60);
+  if (!prev) await line(BIOS_INTRO()[5], 220);
   out('Memory Testing   : ');
   const memLine = text.textContent!.length;
   const steps = 28;
@@ -489,8 +511,8 @@ function removeCurtain(): void {
  * boot logo → first-run setup → logon. (MWX 7 remembers nothing on purpose.)
  */
 export async function startup(): Promise<void> {
-  await powerOn();
-  await bios();
+  const { screen } = await powerOn();
+  await bios(screen);
   await bootLogo();
   await setup();
   await logon();

@@ -44,6 +44,14 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 | `11-beach.jpg` | Beautiful Tropical Beach with Palm Trees and Turquoise Water | https://www.pexels.com/photo/12858509/ |
 | `12-horse.jpg` | Close-up Photo of Brown Horse | https://www.pexels.com/photo/1730760/ |
 
+## Power-on photo (`boot/`)
+
+| File | Title | Author | Source | License |
+|---|---|---|---|---|
+| `boot/pc-crt.jpg` | "Vintage Desktop Computer With Monitor and Keyboard" (Pexels photo 37148217) | Pexels contributor | https://www.pexels.com/photo/vintage-desktop-computer-with-monitor-and-keyboard-37148217/ | Pexels License |
+
+Processing: 1920x1280 download, the small Apple logo, the model label and the "PowerPC" mark on the tower front were retouched out (filled with the surrounding beige), re-encoded as progressive JPEG quality 84. The CRT glass, power-switch hit area and LED are overlays in `src/shell/screens.ts`.
+
 ## Icons (`icons/`)
 
 Original artwork by MWX 7, drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
@@ -68,6 +76,7 @@ from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 wi
 | File | Title | Performer | Source | License |
 |---|---|---|---|---|
 | `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
+| `goldberg-aria-da-capo.ogg` | J.S. Bach, Goldberg Variations BWV 988: Aria da Capo e Fine (Open Goldberg Variations), background music of the Welcome tour | Kimiko Ishizaka (piano) | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
 
 Unmodified copies of the Ogg Vorbis files published by the project.
 
