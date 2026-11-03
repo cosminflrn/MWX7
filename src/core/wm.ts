@@ -175,8 +175,10 @@ function initialRect(cfg: NonNullable<AppManifest['window']>): Rect {
   const resizable = cfg.resizable !== false;
   const baseW = cfg.width ?? 760;
   const baseH = cfg.height ?? 520;
-  const width = Math.round(Math.min(resizable ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
-  const height = Math.round(Math.min(resizable ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
+  // Document-style windows grow with large screens; small utility windows (Task Manager, notes) keep their size.
+  const grow = resizable && baseW >= 560;
+  const width = Math.round(Math.min(grow ? Math.max(baseW, wa.w * 0.58) : baseW, wa.w - 40));
+  const height = Math.round(Math.min(grow ? Math.max(baseH, wa.h * 0.72) : baseH, wa.h - 24));
   const x = Math.round((wa.w - width) / 2);
   const y = Math.round(wa.y + (wa.h - height) / 2);
   return {
@@ -388,7 +390,7 @@ const smooth = (x: number) => x * x * (3 - 2 * x);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Room around the window so its drop shadow travels with it. */
-const PAD = 34;
+const PAD = 56;
 
 /** Scroll offsets of every scrolled element, by child-index path, so copies can be scrolled the same way. */
 type ScrollMap = Array<{ path: number[]; t: number; l: number }>;
@@ -470,7 +472,7 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
   return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${c},${f},0,1)`;
 }
 
-function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Promise<void> {
+function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onShown: () => void = () => {}): Promise<void> {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
   t = new DOMRect(t.left + t.width * 0.2, t.top + t.height * 0.15, t.width * 0.6, t.height * 0.6);
@@ -482,15 +484,27 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Prom
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
     s.className = 'genie-strip';
-    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${Math.ceil(sh) + 1}px` });
+    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${sh + 0.5}px` });
     const c = copyOf(w, scroll);
     c.style.top = `${PAD - i * sh}px`;
     s.append(c);
     layer.append(s);
     strips.push(s);
   }
+  // Hidden until every copied image has decoded: a copy shown a frame early drew icons as white boxes.
+  layer.style.visibility = 'hidden';
+  // Under the dock, and cut off at the shelf's top edge: through the dock's clear glass the window
+  // would otherwise show as a pale blob. It pours down and vanishes beneath the icon.
+  const shelf = document.querySelector('#dock .dock-shelf')?.getBoundingClientRect();
+  if (shelf) layer.style.clipPath = `inset(0 0 ${Math.max(0, window.innerHeight - shelf.top)}px 0)`;
   document.body.append(layer);
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
+  const imgs = [...layer.querySelectorAll('img')];
+  imgs.forEach((im) => (im.loading = 'eager'));
+  const decoded = Promise.race([
+    Promise.all(imgs.map((im) => im.decode().catch(() => undefined))),
+    new Promise((res) => window.setTimeout(res, 160)),
+  ]);
 
   const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
   const Q = (v: number, P: number) => smooth(clamp01(P * 2.2 - (1 - v) * 1.2));
@@ -498,12 +512,12 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Prom
     const q = Q(v, P);
     return [lerp(r.x, t.left, q), lerp(r.x + r.w, t.right, q)];
   };
-  const H = Math.ceil(sh) + 1;
+  const H = sh + 0.5;
   const place = (P: number) => {
     layer.style.opacity = String(1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55)));
     for (let i = 0; i < n; i++) {
       const y0 = Y(i / n, P);
-      // Strips overlap by a hair (H > sh) so no seam ever shows.
+      // Half-pixel overlap: no seams, and no visible double glass where strips meet.
       const y1 = Y((i + H / sh) / n, P);
       const [lt, rt] = edge(i / n, P);
       const [lb, rb] = edge((i + H / sh) / n, P);
@@ -512,7 +526,9 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Prom
   };
   place(reverse ? 1 : 0);
 
-  return new Promise((resolve) => {
+  return decoded.then(() => new Promise<void>((resolve) => {
+    layer.style.visibility = '';
+    onShown();
     const start = performance.now();
     const frame = (now: number) => {
       const p = Math.min(1, (now - start) / GENIE_MS);
@@ -525,7 +541,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean): Prom
       }
     };
     requestAnimationFrame(frame);
-  });
+  }));
 }
 
 function fade(w: Win, reverse: boolean): Promise<void> {
@@ -554,9 +570,8 @@ export function minimizeWindow(id: string): void {
   void (async () => {
     // The copies take over in the same frame the window hides; it keeps its focus until the end.
     if (target && !reducedMotion()) {
-      const run = runGenie(w, scroll, target, false);
-      w.el.style.display = 'none';
-      await run;
+      // The real window hides in the very frame the copies appear.
+      await runGenie(w, scroll, target, false, () => (w.el.style.display = 'none'));
     } else await fade(w, false);
     if (w.minimized) {
       w.el.style.display = 'none';

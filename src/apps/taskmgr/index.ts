@@ -31,7 +31,7 @@ export const taskmgr: AppManifest = {
   pinned: false,
   desktop: false,
   singleInstance: true,
-  window: { width: 560, height: 520, minWidth: 440, minHeight: 420 },
+  window: { width: 480, height: 520, minWidth: 400, minHeight: 420 },
 
   mount({ win, os }) {
     win.body.classList.add('tm');
@@ -141,8 +141,12 @@ export const taskmgr: AppManifest = {
       resize(cpuG);
       resize(memG);
     });
-    ro.observe(cpuG.canvas);
-    ro.observe(memG.canvas);
+    // Observe the containers: the absolutely-positioned canvases only change size through them.
+    for (const g of [cpuG, memG]) {
+      ro.observe(g.canvas);
+      if (g.canvas.parentElement) ro.observe(g.canvas.parentElement);
+    }
+    ro.observe(win.body);
 
     // CPU estimate: long tasks reported by the browser plus timer lateness, i.e. how busy the main thread was.
     let busyMs = 0;
@@ -200,6 +204,8 @@ export const taskmgr: AppManifest = {
     };
 
     const draw = (g: Graph, frac: number, color: string) => {
+      // Cheap self-heal: a maximize/restore can change the box without the observer having fired yet (or after the tab was hidden).
+      if (g.canvas.clientWidth !== g.w || g.canvas.clientHeight !== g.h || (window.devicePixelRatio || 1) !== g.dpr) resize(g);
       const { ctx, w, h: hh, dpr } = g;
       if (!w || !hh) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

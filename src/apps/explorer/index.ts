@@ -1,4 +1,4 @@
-import { icons } from '../../assets/icons';
+import { icons, fileIcon } from '../../assets/icons';
 import { basename, dirname, normalize } from '../../core/fs';
 import type { AppManifest, MenuItem } from '../../core/types';
 import { h } from '../../ui/dom';
@@ -146,7 +146,7 @@ export const explorer: AppManifest = {
           return icons.folder;
       }
     };
-    const iconFor = (it: Item): string => (it.drive ? driveIcon : it.dir ? folderIcon(it.path) : icons.file);
+    const iconFor = (it: Item): string => (it.drive ? driveIcon : it.dir ? folderIcon(it.path) : fileIcon(it.name));
 
     /** Icon (or image thumbnail) element; `.ex-ico` is sized by CSS per view. */
     const iconEl = (it: Item, thumb: boolean): HTMLElement => {
@@ -346,9 +346,8 @@ export const explorer: AppManifest = {
         },
         { caret: true, icon: 'settings' },
       );
-      // Icon-only quick commands keep the bar compact; the tooltip carries the name.
-      const quick = (label: string, icon: string, onclick: () => void, disabled: boolean) =>
-        h('button', { class: 'ex-btn ex-quick', disabled, title: label, 'aria-label': label, onclick }, ico(icon));
+      // Every command carries an icon and a text label.
+      const quick = (label: string, icon: string, onclick: () => void, disabled: boolean) => btn(label, onclick, { disabled, icon });
       const seg = (v: View, label: string, glyph: string) =>
         h('button', {
           class: `ex-seg${view === v ? ' on' : ''}`,
@@ -360,7 +359,7 @@ export const explorer: AppManifest = {
         });
 
       const parts: Node[] = [organize];
-      if (chosen.length) parts.push(btn('Open', () => void openSelection()));
+      if (chosen.length) parts.push(btn('Open', () => void openSelection(), { icon: 'open' }));
       parts.push(h('span', { class: 'ex-cmd-sep' }), btn('New folder', () => void newFolder(), { disabled: !isReal() || inTrash(loc), icon: 'new-folder' }));
       const has = chosen.length > 0;
       parts.push(
@@ -372,7 +371,7 @@ export const explorer: AppManifest = {
         quick('Rename', 'rename', () => startRename(), sel.size !== 1),
         quick('Properties', 'properties', () => void showProperties(), !isReal() && !has),
       );
-      if (loc === TRASH) parts.push(btn('Restore', () => void restore(), { disabled: !chosen.length }), btn('Empty Trash', emptyTrash, { disabled: !trashCount }));
+      if (loc === TRASH) parts.push(btn('Restore', () => void restore(), { disabled: !chosen.length, icon: 'refresh' }), btn('Empty Trash', emptyTrash, { disabled: !trashCount, icon: 'trash' }));
       cmdBar.replaceChildren(
         ...parts,
         h('span', { class: 'ex-cmd-fill' }),

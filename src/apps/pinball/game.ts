@@ -428,7 +428,7 @@ export class Game {
     this.lastOrb = null;
     if (this.ballNo >= this.ballsMax) {
       this.phase = 'over';
-      this.ticker = 'Game over - press F2 for a new game';
+      this.ticker = 'Game over - press Space for a new game';
       this.sfx.over();
       this.persistHigh();
     } else {

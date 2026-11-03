@@ -14,7 +14,7 @@ fetching), so the author is listed as "Pexels contributor"; the page URL identif
 | `meadow.mp4`, `meadow.jpg`, `meadow-thumb.jpg` | "Scenery of Relaxing Farm Field During Daytime" (Pexels video 4471213) | Pexels contributor | https://www.pexels.com/video/scenery-of-relaxing-farm-field-during-daytime-4471213/ | Pexels License |
 | `sierra.mp4`, `sierra.jpg`, `sierra-thumb.jpg` | "Clouds Moving over Mountains" (Pexels video 14372030) | Pexels contributor | https://www.pexels.com/video/clouds-moving-over-mountains-14372030/ | Pexels License |
 
-Processing: a 22 s window was cut from the 1080p source (meadow: from 8 s at 1.25x speed; sierra: from 14 s at real
+Processing: a 22 s window was cut from the 1080p source (meadow: 2560x1440 from 8 s at 1.25x speed, CRF 19; sierra: from 14 s at real
 speed), scaled/cropped to 1920x1080, 24 fps, H.264 High yuv420p, no audio, two-pass about 2.3 Mbit/s, `+faststart`.
 The final 2 s are cross-faded into the first 2 s so the 20 s clip loops with no visible seam (the last frame is the
 frame immediately before frame 0 in the source). The `.jpg` posters are frame 0 (quality 85); thumbnails are 320x180.
@@ -44,6 +44,14 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 | `11-beach.jpg` | Beautiful Tropical Beach with Palm Trees and Turquoise Water | https://www.pexels.com/photo/12858509/ |
 | `12-horse.jpg` | Close-up Photo of Brown Horse | https://www.pexels.com/photo/1730760/ |
 
+## Power-on photo (`boot/`)
+
+| File | Title | Author | Source | License |
+|---|---|---|---|---|
+| `boot/pc-crt.jpg` | "Vintage Desktop Computer With Monitor and Keyboard" (Pexels photo 37148217) | Pexels contributor | https://www.pexels.com/photo/vintage-desktop-computer-with-monitor-and-keyboard-37148217/ | Pexels License |
+
+Processing: 1920x1280 download, the small Apple logo, the model label and the "PowerPC" mark on the tower front were retouched out (filled with the surrounding beige), re-encoded as progressive JPEG quality 84. The CRT glass, power-switch hit area and LED are overlays in `src/shell/screens.ts`.
+
 ## Icons (`icons/`)
 
 Original artwork by MWX 7, drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
@@ -68,8 +76,16 @@ from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 wi
 | File | Title | Performer | Source | License |
 |---|---|---|---|---|
 | `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
+| `goldberg-aria-da-capo.ogg` | J.S. Bach, Goldberg Variations BWV 988: Aria da Capo e Fine (Open Goldberg Variations), background music of the Welcome tour | Kimiko Ishizaka (piano) | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
 
 Unmodified copies of the Ogg Vorbis files published by the project.
+
+| File | Title | Performer | Source | License |
+|---|---|---|---|---|
+| `solitaire-goldberg-variatio-3.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 3 (Canone all'Unisuono) | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
+| `mines-goldberg-variatio-12.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 12 (Canone alla Quarta) | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
+
+Game-music loops (Solitaire, Mines): the last 4 s of the recording are cross-faded into the first 4 s and the piece is re-encoded (Ogg Vorbis, quality 2.5-3), so the file loops without a gap. Played with a looping `<audio>`.
 
 ## VGA bitmap font (`../fonts/vga/`)
 

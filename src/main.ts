@@ -7,7 +7,6 @@ import { registerAll } from './apps';
 import { ICON_DEFS, icons } from './assets/icons';
 import { seedFS } from './core/fs';
 import { forgetPersistedData, settings } from './core/settings';
-import { play } from './core/sound';
 import { launch, notify } from './core/os';
 import { initWM } from './core/wm';
 import { mountDesktop } from './shell/desktop';
@@ -69,16 +68,7 @@ async function start(): Promise<void> {
     if (!(e.target as HTMLElement).closest('input, textarea, [contenteditable]')) e.preventDefault();
   });
 
-  // A soft, satisfying click for every left / right mouse press.
-  document.addEventListener(
-    'pointerdown',
-    (e) => {
-      if (e.pointerType !== 'mouse') return;
-      if (e.button === 0) play('click');
-      else if (e.button === 2) play('rclick');
-    },
-    true,
-  );
+  // No UI click sound: the owner prefers silence to a click that doesn't feel like a real mouse.
 
   mountSelection($('desktop'), $('desktop-icons'));
   await startup();
