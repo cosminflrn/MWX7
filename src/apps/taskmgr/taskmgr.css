@@ -23,7 +23,7 @@
 .tm-actions { flex: none; display: flex; justify-content: flex-end; gap: 8px; }
 .tm-actions .btn:disabled { opacity: 0.5; pointer-events: none; }
 
-.tm-perf { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr 1fr auto; gap: 10px; }
+.tm-perf.on { display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr 1fr auto; gap: 10px; }
 .tm-card { display: grid; grid-template-columns: 112px 1fr; gap: 10px; min-height: 0; }
 .tm-gauge { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
 .tm-lbl { font-weight: 600; color: #34506f; }

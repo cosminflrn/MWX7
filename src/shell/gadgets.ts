@@ -9,7 +9,8 @@ import '../styles/gadgets.css';
 
 const W = 148;
 const GAP = 10;
-const TOP = 70;
+// Below the notification toasts (top-right), so the two never overlap.
+const TOP = 132;
 const RIGHT = 16;
 
 let layer: HTMLElement | null = null;
