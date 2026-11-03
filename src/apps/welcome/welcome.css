@@ -3,6 +3,9 @@
   flex-direction: column;
   background: linear-gradient(#f4f9ff, #fff 40%);
   color: #1d2b3c;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .welcome .wl-hero {
   display: flex;
@@ -19,6 +22,8 @@
 .welcome .wl-head { padding: 10px 26px 2px; font-size: 14px; color: #1a4f9c; }
 .welcome .wl-grid {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 4px 10px;
@@ -50,17 +55,20 @@
 .welcome .wl-ico svg, .welcome .wl-ico img { width: 40px; height: 40px; display: block; filter: drop-shadow(0 2px 3px rgba(0, 40, 100, 0.25)); }
 .welcome .wl-txt { display: flex; flex-direction: column; gap: 2px; }
 .welcome .wl-txt b { font-size: 13px; font-weight: 600; color: #0f4fa8; }
+.welcome .wl-txt { min-width: 0; }
 .welcome .wl-txt small { font-size: 11.5px; line-height: 1.4; color: #5a6b80; }
 .welcome .wl-foot {
   position: relative;
   display: flex;
-  justify-content: flex-end;
+  flex: none;
+  flex-direction: row-reverse;
+  justify-content: space-between;
   align-items: center;
-  padding: 10px 20px 24px;
+  padding: 10px 20px;
   border-top: 1px solid #d3e0ee;
   background: linear-gradient(#f2f6fb, #e4ecf6);
 }
-.welcome .wl-ver { position: absolute; right: 10px; bottom: 5px; font-size: 11px; color: #6b7b90; user-select: none; }
+.welcome .wl-ver { font-size: 11px; color: #6b7b90; user-select: none; }
 /* Primary Win7 button: glossy blue with a split highlight */
 .welcome .wl-begin {
   min-width: 92px;

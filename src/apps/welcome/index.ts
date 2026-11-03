@@ -2,10 +2,11 @@ import { icons } from '../../assets/icons';
 import { getApp } from '../../core/registry';
 import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
+import { welcomeIcon } from './icon';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '0.9.0';
+const VERSION = '0.9.1';
 
 interface Tile {
   icon: string;
@@ -17,11 +18,11 @@ interface Tile {
 export const welcome: AppManifest = {
   id: 'welcome',
   name: 'Welcome to MWX 7',
-  icon: icons.orb,
+  icon: welcomeIcon,
   description: 'A quick tour of what you can do',
   keywords: ['getting started', 'tour', 'intro', 'help'],
   singleInstance: true,
-  window: { width: 620, height: 440, resizable: false },
+  window: { width: 680, height: 500, resizable: false },
 
   mount({ win, os }) {
     win.body.classList.add('welcome');

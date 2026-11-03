@@ -168,8 +168,8 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  /* Below the dock (99000) so the window slides behind its icon. */
-  z-index: 98900;
+  /* Above the dock: seen through the dock's clear glass, a window sliding *behind* it showed as a white blob. */
+  z-index: 99100;
   pointer-events: none;
   overflow: hidden;
 }

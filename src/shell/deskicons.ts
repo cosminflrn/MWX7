@@ -18,7 +18,8 @@ const CELL_W = 96;
 const CELL_H = 92;
 const ORIGIN_X = 10;
 const ORIGIN_Y = MENUBAR_H + 10;
-const DOCK_SPACE = 100;
+/** Dock height (icon + 16px shelf) plus an 8px gap, so the last row sits right above the dock. */
+const DOCK_SPACE = 48 + 16 + 8;
 
 interface Item {
   key: string;
@@ -211,6 +212,8 @@ export function mountDeskIcons(layer: HTMLElement): void {
       open: () => {
         if (f.type === 'dir') launch(getApp('explorer') ? 'explorer' : 'notepad', { path: f.path });
         else if (textExt.test(f.name)) launch('notepad', { path: f.path });
+        else if (/\.(jpe?g|png|webp|gif)$/i.test(f.name) && getApp('photos')) launch('photos', { path: f.path });
+        else if (/\.(mp3|ogg|oga|wav|m4a|flac)$/i.test(f.name) && getApp('mediaplayer')) launch('mediaplayer', { path: f.path });
         else if (getApp('explorer')) launch('explorer', { path: '/Desktop' });
       },
     }));

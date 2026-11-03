@@ -1,5 +1,4 @@
 import type { VFS } from '../../core/types';
-import { sampleImages } from './art';
 
 /**
  * MWX 7 is session-only, so a fresh boot would show an empty-looking Documents folder.
@@ -82,10 +81,30 @@ const NOTES: Record<string, string> = {
   ].join('\n'),
 };
 
+// Pointer files for the bundled media (same format Photo Viewer / Media Player seed themselves; apps can't import each other).
+const PICS = ['Cliffs and Bay:cliffs-and-bay', 'Alpine Lake:alpine-lake', 'Snowy Peaks and Moon:snowy-peaks-moon', 'Aurora over Snow:aurora-over-snow', 'Coastal Ridge:coastal-ridge', 'White Sand Beach:white-sand-beach'];
+const TRACKS = ['Variatio 1:1', 'Variatio 4:4', 'Variatio 5:5'];
+
+async function seedMedia(fs: VFS): Promise<void> {
+  const has = async (dir: string, re: RegExp) => (await fs.list(dir)).some((f) => f.type !== 'dir' && re.test(f.name));
+  if (!(await has('/Pictures', /\.(jpe?g|png|webp)$/i))) {
+    for (const p of PICS) {
+      const [name, file] = p.split(':');
+      await fs.write(`/Pictures/${name}.jpg`, `mwx-media:media/pictures/${file}.jpg`);
+    }
+  }
+  if (!(await has('/Music', /\.(mp3|ogg|oga|wav|m4a|flac)$/i))) {
+    for (const t of TRACKS) {
+      const [name, n] = t.split(':');
+      await fs.write(`/Music/Goldberg Variations - ${name}.ogg`, `mwx-media:media/music/goldberg-variatio-${n}.ogg`);
+    }
+  }
+}
+
 async function run(fs: VFS): Promise<void> {
+  await seedMedia(fs);
   const docs = await fs.list('/Documents');
   if (docs.length !== 1 || docs[0].name !== 'Welcome.txt') return;
   await fs.mkdir('/Documents/Projects');
   for (const [path, text] of Object.entries(NOTES)) await fs.write(path, text);
-  for (const img of sampleImages()) await fs.write(`/Pictures/${img.name}`, img.svg);
 }

@@ -95,7 +95,11 @@ export const photos: AppManifest = {
     const rotL = btn('', 'Rotate counterclockwise', I.rotL, () => rotate(-90));
     const rotR = btn('', 'Rotate clockwise', I.rotR, () => rotate(90));
     const del = btn('del', 'Delete', I.del, () => void remove());
-    const bar = h('div', { class: 'ph-bar' }, count, prev, zoom, show, rotL, rotR, next, h('span', { class: 'ph-sep' }), del);
+    // 3-column grid (1fr auto 1fr) keeps the slideshow button dead-centre whatever the side groups hold.
+    const bar = h('div', { class: 'ph-bar' },
+      h('div', { class: 'ph-side l' }, count, prev, zoom),
+      show,
+      h('div', { class: 'ph-side r' }, rotL, rotR, next, h('span', { class: 'ph-sep' }), del));
     win.body.append(stage, bar);
     stage.append(nameTag);
 
@@ -313,6 +317,12 @@ export const photos: AppManifest = {
     void (async () => {
       await ensureSeeded(fs);
       pics = await loadPics(fs);
+      // A picture opened from elsewhere (e.g. the Desktop) joins the list so it still opens.
+      if (typeof args.path === 'string' && IMG_EXT.test(args.path) && !pics.some((p) => p.path === args.path)) {
+        const c = await fs.read(args.path);
+        const url = c ? urlFromContent(c) : null;
+        if (url) pics.unshift({ path: args.path, name: basename(args.path), url });
+      }
       const want = typeof args.path === 'string' ? pics.findIndex((p) => p.path === args.path) : -1;
       void go(want >= 0 ? want : 0);
       if (typeof args.path === 'string' && want < 0 && args.path) os.notify('Photo Viewer', `Couldn't open ${basename(args.path)}`);
