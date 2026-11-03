@@ -44,25 +44,15 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 
 ## Icons (`icons/`)
 
-Crystal Clear icon set by Everaldo Coelho (http://www.everaldo.com/), glossy XP-era style. Source mirror:
-https://github.com/niko-yanev/crystal-clear. License: GNU LGPL 2.1 or later (full text in `icons/CRYSTAL-CLEAR-LGPL.txt`,
-upstream notice in `icons/CRYSTAL-CLEAR-README.txt`). The PNGs are unmodified 128x128 originals; `icons/16/*.png` are the
-same artwork downscaled to 32x32 (shown at 16 px). Because the artwork is LGPL, it may be replaced by any user: keep the
-file names and swap the PNGs.
+Original artwork by MWX 7, drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
+256x256 for `icons/*.png` (shown at 128 px or less), 32x32 for `icons/16/*.png` (shown at 16 px). No third-party artwork except
+`pinball.png` (below) and `explorer.png`, kept from the earlier set. Replace any PNG by keeping its file name.
 
-Exception: `pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gaming), Public Domain (`icons/TANGO-COPYING.txt`,
+`explorer.png`: Crystal Clear (apps/display) by Everaldo Coelho, http://www.everaldo.com/, GNU LGPL 2.1 or later
+(`icons/CRYSTAL-CLEAR-LGPL.txt`, `icons/CRYSTAL-CLEAR-README.txt`), unmodified 128x128 original.
+
+`pinball.png` is from the Tango Icon Theme 0.8.90 (devices/input-gaming), Public Domain (`icons/TANGO-COPYING.txt`,
 `icons/TANGO-AUTHORS.txt`).
-
-| File | Crystal Clear icon |
-|---|---|
-| `notepad` / `text` / `file` | apps/kedit / minetypes/txt / minetypes/document |
-| `calculator`, `paint`, `terminal` | apps/calc, apps/kpaint, apps/terminal |
-| `settings`, `about`, `search` | apps/kservices, actions/info, actions/filefind |
-| `folder`, `folder-music`, `folder-pictures`, `folder-documents` | filesystems/folder_yellow, apps/mp3, apps/lphoto, minetypes/document2 |
-| `computer`, `explorer`, `drive`, `desktop` | apps/klaptop, apps/display, devices/hdd_mount, filesystems/desktop |
-| `trash-empty` / `trash-full` | filesystems/trashcan_empty / trashcan_full |
-| `user`, `shutdown`, `logoff`, `image` | apps/personal, apps/shutdown, apps/restart, minetypes/image |
-| `16/*` | actions/* (button_cancel, editcopy/cut/delete/paste, filenew, edit, reload, find, configure, exit, window_*), apps/(kcontrol, shutdown, restart for logoff, looknfeel for wallpaper), filesystems/(folder_green, folder_yellow for open, trashcan_empty) |
 
 ## Font (`../fonts/selawik/`)
 
