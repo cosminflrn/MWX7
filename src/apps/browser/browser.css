@@ -96,7 +96,7 @@
 }
 .br-start-in { width: min(760px, 100%); padding: 6vh 24px 32px; display: flex; flex-direction: column; align-items: center; }
 .br-logo { display: flex; align-items: center; gap: 12px; }
-.br-logo svg { width: 64px; height: 64px; filter: drop-shadow(0 4px 6px rgba(0, 40, 100, 0.3)); }
+.br-logo svg, .br-logo img { width: 64px; height: 64px; filter: drop-shadow(0 4px 6px rgba(0, 40, 100, 0.3)); }
 .br-logo-t { font: 300 40px var(--font-ui); letter-spacing: -0.5px; color: #1d4f91; text-shadow: 0 1px 0 #fff; }
 .br-search { display: flex; width: min(560px, 100%); margin-top: 24px; }
 .br-sbox {
