@@ -5,7 +5,7 @@ import { h } from '../../ui/dom';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 
 interface Tile {
   icon: string;
@@ -21,7 +21,7 @@ export const welcome: AppManifest = {
   description: 'A quick tour of what you can do',
   keywords: ['getting started', 'tour', 'intro', 'help'],
   singleInstance: true,
-  window: { width: 760, height: 520, minWidth: 600, minHeight: 440 },
+  window: { width: 620, height: 440, resizable: false },
 
   mount({ win, os }) {
     win.body.classList.add('welcome');
@@ -35,7 +35,7 @@ export const welcome: AppManifest = {
       {
         icon: icons.desktop,
         title: 'Try the desktop magic',
-        text: 'Hover the dock for Aero Peek, open Overview, minimize a window to see the genie, or go full screen.',
+        text: 'Aero Peek, Overview and the genie minimize.',
       },
     ];
 
@@ -71,7 +71,12 @@ export const welcome: AppManifest = {
           ),
         ),
       ),
-      h('div', { class: 'wl-foot' }, h('span', {}, `MWX 7 · Version ${VERSION}`), h('button', { class: 'wl-close', onclick: () => win.close() }, 'Close')),
+      h(
+        'div',
+        { class: 'wl-foot' },
+        h('button', { class: 'wl-begin', onclick: () => win.close() }, 'Begin'),
+        h('span', { class: 'wl-ver' }, `MWX 7 · Version ${VERSION}`),
+      ),
     );
   },
 };

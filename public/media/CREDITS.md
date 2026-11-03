@@ -74,9 +74,16 @@ Unmodified copies of the Ogg Vorbis files published by the project.
 "Web437 IBM VGA 8x16" (`WebPlus_IBM_VGA_8x16.woff`, a.k.a. Px437 IBM VGA 8x16) from The Ultimate Oldschool PC Font Pack v2.2 by VileR, (c) 2016-2020. Source: https://int10h.org/oldschool-pc-fonts/ (WOFF taken from the npm package `@monowind/themes` 0.3.5, unmodified).
 License: Creative Commons Attribution-ShareAlike 4.0 (`fonts/vga/LICENSE-CC-BY-SA-4.0.txt`). Used by MWX Commander and the BIOS screen.
 
-## UI click (`sounds/click.ogg`, `sounds/click.mp3`)
+## UI sounds (`sounds/click.*`, `sounds/switch.*`)
 
-`mouseclick1.wav` from "UI SFX Set" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). A real mouse button press/release recording; here converted to mono, high-passed at 80 Hz, loudness-normalised and trimmed to 77 ms, then encoded to Ogg Vorbis and MP3.
+Both from "UI Audio" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). Chosen by waveform analysis (duration, attack, spectral centroid, energy above 6 kHz), converted to mono, high-passed, trimmed, level-matched (RMS about -23 dBFS for the click) and encoded to Ogg Vorbis and MP3.
+
+| File | Source sample | Use |
+|---|---|---|
+| `click.ogg`, `click.mp3` | `click1.wav` (26 ms, soft low-mid body, 2% energy above 6 kHz), 60 ms | UI click / right click (a touch lower in pitch) |
+| `switch.ogg`, `switch.mp3` | `switch32.wav` (heavy mechanical switch, 64% energy below 1.5 kHz), 240 ms | Power-on screen switch "clunk" |
+
+The start-up fan / hard-disk hum and the POST beep are synthesized in `src/core/sound.ts` (no third-party material).
 
 ## Sample pictures (`pictures/`)
 

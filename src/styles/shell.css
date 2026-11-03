@@ -5,21 +5,6 @@
   background: #1a52bf;
 }
 
-#desktop .desk-version {
-  position: absolute;
-  right: 14px;
-  bottom: 76px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 12px;
-  line-height: 1.35;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-  pointer-events: none;
-  user-select: none;
-}
-
 #desktop-icons {
   position: absolute;
   inset: 0;
@@ -452,11 +437,14 @@
   width: min(640px, calc(100vw - 32px));
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(246, 248, 252, 0.8);
-  backdrop-filter: blur(34px) saturate(190%);
-  -webkit-backdrop-filter: blur(34px) saturate(190%);
-  border: 0.5px solid rgba(0, 0, 0, 0.22);
-  box-shadow: 0 24px 70px rgba(0, 10, 30, 0.4), inset 0 0 0 0.5px rgba(255, 255, 255, 0.6);
+  /* Same glass as .menu-pop */
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.32));
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 0;
+  color: #000;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.6);
+  box-shadow: var(--glass-ring), 0 24px 70px rgba(0, 10, 30, 0.35);
   animation: sp-in 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -465,7 +453,7 @@
 }
 
 .sp-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
-.sp-glass { color: #6b7686; }
+.sp-glass { color: #1d2b3c; }
 .sp-glass svg, .sp-glass img { width: 21px; height: 21px; }
 
 .sp-input {
@@ -474,18 +462,18 @@
   outline: 0;
   background: none;
   font: 300 22px var(--font-ui);
-  color: #111;
+  color: #000;
 }
 
 .sp-input:focus-visible { box-shadow: none; }
 .sp-results { max-height: 50vh; overflow: auto; }
-.sp-box.has-results .sp-results { border-top: 0.5px solid rgba(0, 0, 0, 0.12); padding: 4px 6px 8px; }
+.sp-box.has-results .sp-results { border-top: 1px solid rgba(255, 255, 255, 0.55); padding: 4px 6px 8px; }
 
 .sp-group {
   padding: 8px 10px 3px;
   font-size: 11px;
   font-weight: 600;
-  color: #7a8494;
+  color: #1d2b3c;
 }
 
 .sp-row {
@@ -504,10 +492,14 @@
 
 .sp-row-icon svg, .sp-row-icon img { width: 24px; height: 24px; }
 .sp-row-title { font-size: 14px; }
-.sp-row-sub { color: #7a8494; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.sp-row.sel { color: #fff; background: linear-gradient(#3f8ef0, #2a76de); }
-.sp-row.sel .sp-row-sub { color: rgba(255, 255, 255, 0.8); }
-.sp-empty { padding: 14px; color: #7a8494; text-align: center; }
+.sp-row-sub { color: #26364a; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sp-row.sel {
+  color: #000;
+  background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(200, 230, 255, 0.4) 49%, rgba(120, 190, 250, 0.4) 51%, rgba(180, 220, 255, 0.55));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 0 1px rgba(30, 90, 170, 0.55);
+}
+.sp-row.sel .sp-row-sub { color: #1d2b3c; }
+.sp-empty { padding: 14px; color: #26364a; text-align: center; }
 
 /* ===== Notifications ===== */
 #notifications {
@@ -561,23 +553,35 @@
   background: radial-gradient(ellipse at 50% 45%, #15181d, #000 70%);
 }
 
+.pc { position: relative; width: 420px; filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.7)); }
+.pc-svg { display: block; width: 100%; height: auto; }
+/* Hit area = the switch cap (viewBox 360x470) */
 .power-btn {
-  width: 96px;
-  height: 96px;
-  padding: 26px;
-  border-radius: 50%;
+  position: absolute;
+  left: 20%;
+  top: 48.5%;
+  width: 60%;
+  height: 22.5%;
+  padding: 0;
   border: 0;
-  background: radial-gradient(circle at 50% 35%, #4a515b, #23272d 60%, #121417);
-  box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #3a4049, inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.8);
+  border-radius: 7px;
+  background: transparent;
   cursor: pointer;
-  opacity: 0.85;
-  transition: box-shadow 0.3s, opacity 0.3s;
 }
-
-.power-btn svg, .power-btn img { width: 100%; height: 100%; }
-.power-btn:hover { opacity: 1; box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #4a8fd6, 0 0 22px rgba(80, 160, 255, 0.55), inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6), 0 10px 30px rgba(0, 0, 0, 0.8); }
-.power-btn.on { opacity: 1; box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #5fb4ff, 0 0 40px rgba(90, 180, 255, 0.9), inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6); }
-.power-hint { margin: 0; color: #59616c; font-size: 13px; letter-spacing: 0.02em; }
+.power-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.power-btn:focus-visible { outline: 2px solid #4a8fd6; outline-offset: 3px; }
+.pc .cap { transition: transform 0.09s cubic-bezier(0.3, 0, 0.5, 1); }
+.pc.pressed .cap { transform: translateY(6px); }
+.pc.pressed .power-btn { pointer-events: none; background: transparent; }
+.pc .led { transition: fill 0.05s; }
+.pc.on .led-pwr { fill: url(#ledG); filter: drop-shadow(0 0 5px #3fe03f); }
+.pc.on .led-hdd { animation: hdd-flicker 2.4s steps(1, end) both; }
+.pc.on .seg { opacity: 1; }
+@keyframes hdd-flicker {
+  0%, 12%, 22%, 30%, 38%, 54%, 60%, 70%, 78%, 88%, 100% { fill: #4a3208; filter: none; }
+  6%, 16%, 26%, 34%, 44%, 57%, 65%, 74%, 83%, 94% { fill: url(#ledA); filter: drop-shadow(0 0 5px #ffb81f); }
+}
+.power-hint { margin: 0; color: #6d7681; font-size: 13px; letter-spacing: 0.02em; }
 
 /* BIOS: IBM VGA 8x16 at exactly 2x (32px) so every glyph pixel is a 2x2 block */
 .bios {
@@ -794,7 +798,7 @@
 
 /* ===== BIOS power-saver badge ===== */
 .bios-badge { position: absolute; top: 32px; right: 48px; }
-.bios-badge-px { display: block; width: 450px; height: 225px; image-rendering: pixelated; }
+.bios-badge svg { display: block; width: 200px; height: 100px; }
 
 /* ===== First-run setup (Windows 7 OOBE style) ===== */
 .oobe { background: #062a63; }
@@ -1123,3 +1127,4 @@ body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 /* Full-screen window unfocused (Start menu open, desktop clicked): lights stay, but grey */
 #menubar.fs-inactive .mb-wc .wc { background: radial-gradient(circle at 50% 25%, #f1f3f6, #c9d0d8 75%); }
 #menubar.fs-inactive .mb-wc .wc::after { opacity: 0.45; filter: grayscale(1); }
+.pc .seg { opacity: 0.22; transition: opacity 0.1s; }
