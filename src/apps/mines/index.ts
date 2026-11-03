@@ -1,5 +1,7 @@
 import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
+import { GameMusic } from './music';
+import { showTutorial } from './tutorial';
 import { minesIcon } from './icon';
 import './mines.css';
 
@@ -215,7 +217,16 @@ function make(level: Level): AppManifest {
       for (const j of around) if (state === 'play') reveal(j);
     });
 
-    win.setMenus([
+    const music = new GameMusic();
+    music.start();
+    win.body.addEventListener('pointerdown', () => music.start(), true);
+    showTutorial(win.body, 'mn', 'How to play Mines', [
+      'Click a square to reveal it; a number tells how many mines touch it.',
+      'Right-click to plant a flag where you think a mine hides.',
+      'Double-click a number to reveal its neighbours once enough flags are placed.',
+      'Clear every safe square to win. Hitting a mine ends the game.',
+    ]);
+    const buildMenus = () => win.setMenus([
       {
         label: 'Game',
         items: [
@@ -231,13 +242,19 @@ function make(level: Level): AppManifest {
             },
           })),
           { separator: true },
+          { label: 'Music', checked: music.enabled, action: () => { music.setEnabled(!music.enabled); buildMenus(); } },
+          { separator: true },
           { label: 'Exit', action: () => win.close() },
         ],
       },
     ]);
+    buildMenus();
 
     reset();
-    return stop;
+    return () => {
+      music.dispose();
+      stop();
+    };
   },
 };
 }

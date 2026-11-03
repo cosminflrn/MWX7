@@ -42,7 +42,12 @@ export const stickynotes: AppManifest = {
     const setColor = (c: string) => {
       color = c;
       win.body.dataset.c = c;
+      setMenus();
     };
+    // Same six colours in the top menu bar as in the context menu.
+    const setMenus = () =>
+      win.setMenus([{ label: 'Color', items: COLORS.map(([id, label]) => ({ label, icon: swatch(id), checked: id === color, action: () => setColor(id) })) }]);
+    setMenus();
     const menu = (e: MouseEvent) => {
       e.preventDefault();
       const items: MenuItem[] = COLORS.map(([id, label]) => ({ label, icon: swatch(id), checked: id === color, action: () => setColor(id) }));

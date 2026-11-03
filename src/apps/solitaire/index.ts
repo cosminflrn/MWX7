@@ -1,4 +1,6 @@
 import type { AppManifest } from '../../core/types';
+import { GameMusic } from './music';
+import { showTutorial } from './tutorial';
 import { h } from '../../ui/dom';
 import { solitaireIcon } from './icon';
 import './solitaire.css';
@@ -368,13 +370,32 @@ export const solitaire: AppManifest = {
       raf = requestAnimationFrame(step);
     }
 
-    win.setMenus([{ label: 'Game', items: [{ label: 'New Game', action: () => newGame() }, { separator: true }, { label: 'Exit', action: () => win.close() }] }]);
+    const music = new GameMusic();
+    const buildMenus = () =>
+      win.setMenus([{ label: 'Game', items: [
+        { label: 'New Game', action: () => newGame() },
+        { separator: true },
+        { label: 'Music', checked: music.enabled, action: () => { music.setEnabled(!music.enabled); buildMenus(); } },
+        { separator: true },
+        { label: 'Exit', action: () => win.close() },
+      ] }]);
+    buildMenus();
+    // Music starts on open; if the browser still blocks audio, the first click in the window starts it.
+    music.start();
+    win.body.addEventListener('pointerdown', () => music.start(), true);
+    showTutorial(win.body, 'sol', 'How to play Solitaire', [
+      'Build four suit piles from Ace up to King.',
+      'On the table, stack cards in descending order, alternating red and black.',
+      'Click the stock to deal; drag cards between piles, or double-click to send one to a pile.',
+      'Only a King can fill an empty column.',
+    ]);
 
     newGame();
     return () => {
       cancelAnimationFrame(raf);
       stopTimer();
       timeouts.forEach(clearTimeout);
+      music.dispose();
     };
   },
 };

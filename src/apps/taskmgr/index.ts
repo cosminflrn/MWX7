@@ -37,7 +37,7 @@ export const taskmgr: AppManifest = {
     win.body.classList.add('tm');
     win.setTitle('Task Manager');
 
-    let tab: 'apps' | 'perf' = 'apps';
+    let tab: 'apps' | 'perf' = 'perf';
     let selected: string | null = null;
     let sig = '';
     let cpu = 0;
@@ -56,7 +56,7 @@ export const taskmgr: AppManifest = {
       refreshList();
     } }, 'End Task');
     const switchBtn = h('button', { class: 'btn', onclick: () => selected && os.focusWindow(selected) }, 'Switch To');
-    const appsPage = h('div', { class: 'tm-page on' }, list, h('div', { class: 'tm-actions' }, switchBtn, endBtn));
+    const appsPage = h('div', { class: 'tm-page' }, list, h('div', { class: 'tm-actions' }, switchBtn, endBtn));
 
     const iconFor = (appId: string): string => os.apps().find((a) => a.id === appId)?.icon ?? '';
     const refreshList = () => {
@@ -101,7 +101,7 @@ export const taskmgr: AppManifest = {
     const statWins = h('b', {}, '0');
     const statHeap = h('b', {}, '—');
     const stat = (label: string, el: HTMLElement) => h('div', {}, h('small', {}, label), el);
-    const perfPage = h('div', { class: 'tm-page tm-perf' },
+    const perfPage = h('div', { class: 'tm-page tm-perf on' },
       card('CPU Usage', cpuBig, cpuG), card('Memory', memBig, memG),
       h('div', { class: 'tm-stats' }, stat('Up Time', statUp), stat('Processes', statProcs), stat('Open windows', statWins), stat('JS heap', statHeap)));
 
@@ -110,7 +110,7 @@ export const taskmgr: AppManifest = {
     const stMem = h('span', {}, 'Physical Memory: 0%');
 
     const tabBtn = (id: 'apps' | 'perf', label: string) => h('button', { class: `tm-tab${id === tab ? ' on' : ''}`, role: 'tab', 'data-tab': id, onclick: () => setTab(id) }, label);
-    const tabs = h('div', { class: 'tm-tabs', role: 'tablist' }, tabBtn('apps', 'Applications'), tabBtn('perf', 'Performance'));
+    const tabs = h('div', { class: 'tm-tabs', role: 'tablist' }, tabBtn('perf', 'Performance'), tabBtn('apps', 'Applications'));
     win.body.append(tabs, appsPage, perfPage, h('div', { class: 'tm-status' }, stProcs, stCpu, stMem));
 
     const setTab = (t: 'apps' | 'perf') => {
@@ -265,6 +265,7 @@ export const taskmgr: AppManifest = {
     };
 
     sample();
+    setTab('perf');
     const timer = window.setInterval(sample, 1000);
 
     return () => {
