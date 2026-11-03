@@ -18,7 +18,8 @@ const CELL_W = 96;
 const CELL_H = 92;
 const ORIGIN_X = 10;
 const ORIGIN_Y = MENUBAR_H + 10;
-const DOCK_SPACE = 100;
+/** Dock height (icon + 16px shelf) plus an 8px gap, so the last row sits right above the dock. */
+const DOCK_SPACE = 48 + 16 + 8;
 
 interface Item {
   key: string;

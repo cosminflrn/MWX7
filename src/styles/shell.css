@@ -67,11 +67,11 @@
   justify-content: space-between;
   padding: 0 10px;
   /* The same Aero glass as window title bars (tint follows Settings → Window Color) */
-  background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.08)), var(--glass-tint);
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  /* No outline, just a soft shadow below */
-  box-shadow: 0 1px 10px rgba(0, 20, 50, 0.22);
+  /* Same ring as the dock shelf, but only along the bottom edge */
+  box-shadow: 0 1px 0 0 rgba(0, 25, 80, 0.6), inset 0 -1px 0 rgba(255, 255, 255, 0.5), 0 2px 18px rgba(0, 10, 30, 0.3);
   /* Black text on a soft white glow, like Win7 caption text: legible on clear or tinted glass */
   color: #000;
   /* the same glow plate as window captions */
@@ -331,10 +331,18 @@
   flex: 1.3;
   display: flex;
   flex-direction: column;
-  min-height: min(470px, calc(100vh - 290px));
+  /* Fixed body height keeps the menu at its classic ~520px; the program list scrolls inside */
+  height: min(404px, calc(100vh - 290px));
+  min-height: 0;
   padding: 6px;
   background: #fff;
 }
+.sm-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: -4px; padding-right: 2px; scrollbar-width: thin; scrollbar-color: #b9c4d3 transparent; }
+.sm-list::-webkit-scrollbar { width: 9px; }
+.sm-list::-webkit-scrollbar-track { background: transparent; }
+.sm-list::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #e9eef5, #c5d0de); border: 1px solid #98a6ba; border-radius: 5px; }
+.sm-list::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #dfeaf8, #a9c4e8); border-color: #5a8fd6; }
+.sm-left .sm-search { flex: none; margin-top: 6px; }
 
 .sm-right {
   flex: 1;
@@ -546,14 +554,25 @@
 
 .screen.off { background: #000; }
 
-/* Power button */
+/* Power button: a retro room; the scene covers the screen at 16:9 and the tower stands on the desk */
 .power {
-  flex-direction: column;
-  gap: 26px;
-  background: radial-gradient(ellipse at 50% 45%, #15181d, #000 70%);
+  display: block;
+  overflow: hidden;
+  background: #1d120a;
 }
+.scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100vw, 177.78vh);
+  height: max(56.25vw, 100vh);
+  transform: translate(-50%, -50%);
+}
+.scene-art, .room-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* tower: x 1040..1270 of the 1600 wide room, feet on the desk top (y 652 of 900) */
+.scene .pc { position: absolute; left: 65%; width: 14.4%; bottom: 27.6%; filter: drop-shadow(0 6px 10px rgba(20, 8, 0, 0.55)); }
 
-.pc { position: relative; width: 420px; filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.7)); }
+.pc { position: relative; width: 420px; }
 .pc-svg { display: block; width: 100%; height: auto; }
 /* Hit area = the switch cap (viewBox 360x470) */
 .power-btn {
@@ -581,7 +600,7 @@
   0%, 12%, 22%, 30%, 38%, 54%, 60%, 70%, 78%, 88%, 100% { fill: #4a3208; filter: none; }
   6%, 16%, 26%, 34%, 44%, 57%, 65%, 74%, 83%, 94% { fill: url(#ledA); filter: drop-shadow(0 0 5px #ffb81f); }
 }
-.power-hint { margin: 0; color: #6d7681; font-size: 13px; letter-spacing: 0.02em; }
+.power-hint { position: absolute; left: 0; right: 0; bottom: 5vh; margin: 0; text-align: center; color: #e8d3b0; font-size: 14px; letter-spacing: 0.03em; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
 
 /* BIOS: IBM VGA 8x16 at exactly 2x (32px) so every glyph pixel is a 2x2 block */
 .bios {
@@ -797,8 +816,8 @@
 }
 
 /* ===== BIOS power-saver badge ===== */
-.bios-badge { position: absolute; top: 32px; right: 48px; }
-.bios-badge svg { display: block; width: 200px; height: 100px; }
+.bios-badge { position: absolute; top: 28px; right: 44px; }
+.bios-badge svg { display: block; width: 250px; height: 125px; }
 
 /* ===== First-run setup (Windows 7 OOBE style) ===== */
 .oobe { background: #062a63; }

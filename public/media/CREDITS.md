@@ -19,6 +19,8 @@ speed), scaled/cropped to 1920x1080, 24 fps, H.264 High yuv420p, no audio, two-p
 The final 2 s are cross-faded into the first 2 s so the 20 s clip loops with no visible seam (the last frame is the
 frame immediately before frame 0 in the source). The `.jpg` posters are frame 0 (quality 85); thumbnails are 320x180.
 
+Sierra re-cut: the original window had a slow camera pan in its first ~10 s (about 55 px at 1920 wide, measured by phase correlation on the bottom half) and a pan back at its end. The shipped clip is the zero-camera-motion stretch (13-37 s of that window, re-encoded at CRF 18, 30 fps), 24 s, with a 2 s cross-fade at the seam; the poster/thumbnail are its frame 0 so poster and video match exactly.
+
 Notes: `meadow` is a static-camera shot of a gently rolling green barley field under blue sky with white clouds and
 wind-moved grass (real time, not a true time-lapse, so cloud drift is slow). `sierra` is an alpine peak (Machapuchare
 massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both file names are fixed by the OS spec.
@@ -80,7 +82,7 @@ Both from "UI Audio" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: 
 
 | File | Source sample | Use |
 |---|---|---|
-| `click.ogg`, `click.mp3` | `click1.wav` (26 ms, soft low-mid body, 2% energy above 6 kHz), 60 ms | UI click / right click (a touch lower in pitch) |
+| `click.ogg`, `click.mp3` | `click4.wav` (22 ms press tick, 8 ms attack, spectral centroid 3.6 kHz, 40% of energy in 2-5 kHz) plus `click5.wav` (16 ms, quieter) as the release tick 70 ms later, mixed, high-passed at 500 Hz, mono | Mouse click / right click (microswitch tick) |
 | `switch.ogg`, `switch.mp3` | `switch32.wav` (heavy mechanical switch, 64% energy below 1.5 kHz), 240 ms | Power-on screen switch "clunk" |
 
 The start-up fan / hard-disk hum and the POST beep are synthesized in `src/core/sound.ts` (no third-party material).
