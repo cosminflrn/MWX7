@@ -1,0 +1,24 @@
+/* Sticky Notes. Everything is scoped under .sn; the colour comes from the data-c attribute. */
+.sn { display: flex; flex-direction: column; --paper: #fff7a8; --head: #f1d95b; --edge: #c9ae2f; --ink: #3a3414; background: var(--paper); color: var(--ink); }
+.sn[data-c='blue'] { --paper: #cfe8fb; --head: #9ccbf0; --edge: #6aa5d4; --ink: #17324d; }
+.sn[data-c='green'] { --paper: #d4f2c4; --head: #a4dc8b; --edge: #74b45a; --ink: #1d3b14; }
+.sn[data-c='pink'] { --paper: #fbd3e2; --head: #f1a2c0; --edge: #cf7898; --ink: #4a1a2d; }
+.sn[data-c='purple'] { --paper: #e2d4f6; --head: #c1a4e8; --edge: #9577c4; --ink: #2f1d4a; }
+.sn[data-c='white'] { --paper: #fbfbfb; --head: #dcdfe4; --edge: #aeb4be; --ink: #262a31; }
+.sn-head {
+  flex: none; height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--head) 70%, #fff), var(--head)); border-bottom: 1px solid var(--edge);
+}
+.sn-hb {
+  width: 22px; height: 22px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none; color: var(--ink); cursor: pointer;
+  display: grid; place-items: center; opacity: 0.7; transition: opacity 120ms, background 120ms, border-color 120ms;
+}
+.sn-hb:hover { opacity: 1; background: rgba(255, 255, 255, 0.45); border-color: var(--edge); }
+.sn-hb svg { width: 14px; height: 14px; display: block; }
+.sn-text {
+  flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline: 0; margin: 0; padding: 10px 12px; background: transparent; color: var(--ink);
+  font: 17px/1.35 'Segoe Print', 'Bradley Hand', 'Noteworthy', 'Chalkboard SE', 'Comic Neue', 'Segoe UI', cursive;
+}
+.sn-text::selection { background: rgba(60, 120, 220, 0.3); }
+.sn-dlg { padding: 14px 16px 4px; }
+.sn-dlg b { display: block; font-size: 14px; margin-bottom: 4px; }

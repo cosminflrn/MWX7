@@ -135,6 +135,12 @@ export interface OSApi {
   launch(appId: string, args?: Record<string, unknown>): void;
   notify(title: string, body?: string, icon?: string): void;
   apps(): AppManifest[];
+  /** Open windows, in stacking order (bottom first). Used by Task Manager. */
+  windows(): Array<{ id: string; title: string; appId: string; minimized: boolean }>;
+  /** Brings the window to the front (restoring it if minimized). */
+  focusWindow(id: string): void;
+  /** Closes a window; `force` skips the app's before-close veto. */
+  closeWindow(id: string, force?: boolean): void;
   settings: {
     get(): Settings;
     set(patch: Partial<Settings>): void;

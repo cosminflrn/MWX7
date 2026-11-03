@@ -3,7 +3,7 @@ import { fs } from './fs';
 import { getApp, listApps } from './registry';
 import { settings } from './settings';
 import type { OSApi } from './types';
-import { focusWindow, openWindow, windowsOf } from './wm';
+import { allWindows, closeWindow, focusWindow, openWindow, windowsOf } from './wm';
 
 export function notify(title: string, body?: string, icon?: string): void {
   bus.emit('notify', { title, body, icon });
@@ -29,5 +29,11 @@ export const os: OSApi = {
   launch,
   notify,
   apps: () => listApps(),
+  windows: () =>
+    allWindows()
+      .sort((a, b) => a.z - b.z)
+      .map((w) => ({ id: w.id, title: w.title, appId: w.appId, minimized: w.minimized })),
+  focusWindow,
+  closeWindow,
   settings,
 };

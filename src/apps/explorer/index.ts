@@ -572,6 +572,7 @@ export const explorer: AppManifest = {
     /* ---------- opening ---------- */
     const openItem = (it: Item) => {
       if (it.dir) return navigate(it.path);
+      if (/^(jpe?g|png|webp)$/.test(extOf(it.name))) return os.launch('photos', { path: it.path });
       if (isImage(it.name)) return showPreview(it);
       if (/^(mp3|ogg|oga|wav|m4a|flac)$/.test(extOf(it.name))) return os.launch('mediaplayer', { path: it.path });
       if (isText(it.name) || !extOf(it.name)) return os.launch('notepad', { path: it.path });

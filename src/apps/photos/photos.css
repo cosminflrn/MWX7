@@ -1,0 +1,61 @@
+/* Photo Viewer: neutral canvas, glass control bar. Everything is scoped under .ph. */
+.ph { display: flex; flex-direction: column; background: #e9eef5; color: #1c2b3f; font: 12px/1.3 var(--font-ui); user-select: none; }
+.ph-stage {
+  position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: default;
+  background: radial-gradient(ellipse at 50% 40%, #fbfcfe 0, #e6ecf4 70%, #d4dce8 100%);
+}
+.ph-stage.pan { cursor: grab; }
+.ph-stage.panning { cursor: grabbing; }
+.ph-img {
+  position: absolute; left: 50%; top: 50%; max-width: none; transform-origin: 50% 50%; opacity: 0;
+  transition: opacity 220ms ease; will-change: transform, opacity; pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(20, 40, 70, 0.25), 0 6px 22px rgba(20, 40, 70, 0.28);
+}
+.ph-img.in { opacity: 1; }
+.ph-img.tx { transition: opacity 220ms ease, transform 240ms cubic-bezier(.2, .8, .2, 1); }
+.ph-empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; color: #5d7088; font-size: 14px; gap: 4px; }
+.ph-empty small { font-size: 12px; opacity: 0.8; }
+.ph-name {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); max-width: 70%; padding: 3px 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(20, 50, 90, 0.18); color: #243a57; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; opacity: 0; transition: opacity 200ms; pointer-events: none;
+}
+.ph-stage:hover .ph-name { opacity: 1; }
+
+.ph-bar {
+  position: relative; flex: none; height: 64px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(180deg, rgba(246, 250, 255, 0.95), rgba(205, 222, 242, 0.95) 50%, rgba(184, 207, 233, 0.95) 51%, rgba(213, 228, 245, 0.95));
+  border-top: 1px solid #9db4d1; box-shadow: inset 0 1px 0 #fff;
+}
+.ph-count { position: absolute; left: 14px; color: #3f5878; font-size: 11px; }
+.ph-sep { width: 1px; height: 28px; background: linear-gradient(180deg, transparent, rgba(40, 70, 110, 0.3), transparent); margin: 0 2px; }
+.ph-b {
+  position: relative; flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center; color: #27476f;
+  border: 1px solid #7f9bbd; background: radial-gradient(circle at 50% 12%, #fff 0, #e6f0fb 38%, #b9d0ea 62%, #d6e6f6 100%);
+  box-shadow: 0 1px 2px rgba(10, 35, 70, 0.35), inset 0 1px 0 #fff, inset 0 -2px 3px rgba(60, 110, 170, 0.28);
+  transition: filter 120ms, box-shadow 120ms, transform 90ms;
+}
+.ph-b:hover:not(:disabled) { filter: brightness(1.05) saturate(1.2); box-shadow: 0 0 0 2px rgba(90, 170, 245, 0.55), 0 1px 3px rgba(10, 35, 70, 0.35), inset 0 1px 0 #fff; }
+.ph-b:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.94); }
+.ph-b:disabled { opacity: 0.45; cursor: default; }
+.ph-b svg { width: 18px; height: 18px; display: block; }
+.ph-b.big { width: 50px; height: 50px; color: #fff; border-color: #14548f;
+  background: radial-gradient(circle at 50% 8%, #c7ecff 0, #5db6f2 36%, #1b73cf 62%, #3c9be8 100%);
+  box-shadow: 0 1px 3px rgba(5, 30, 70, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -3px 5px rgba(0, 50, 120, 0.4); }
+.ph-b.big svg { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0, 40, 90, 0.5)); }
+.ph-b.del { color: #a5261d; }
+
+.ph-show { position: absolute; inset: 0; z-index: 5; background: #000; opacity: 0; transition: opacity 320ms ease; overflow: hidden; }
+.ph-show.on { opacity: 1; }
+.ph-show-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 1100ms ease; will-change: opacity, transform; }
+.ph-show-img.in { opacity: 1; animation: ph-drift 9s ease-out forwards; }
+@keyframes ph-drift { from { transform: scale(1); } to { transform: scale(1.045); } }
+.ph-show-x {
+  position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.4); cursor: pointer;
+  background: rgba(20, 28, 40, 0.6); color: #fff; display: grid; place-items: center; opacity: 0; transition: opacity 250ms; z-index: 2; padding: 0;
+}
+.ph-show-x svg { width: 16px; height: 16px; }
+.ph-show.hot .ph-show-x { opacity: 1; }
+.ph-show { cursor: none; }
+.ph-show.hot { cursor: default; }
+@media (prefers-reduced-motion: reduce) { .ph-show-img.in { animation: none; } .ph-img.tx { transition: opacity 220ms; } }

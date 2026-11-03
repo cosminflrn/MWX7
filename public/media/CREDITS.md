@@ -87,3 +87,18 @@ License: Creative Commons Attribution-ShareAlike 4.0 (`fonts/vga/LICENSE-CC-BY-S
 ## UI click (`sounds/click.ogg`, `sounds/click.mp3`)
 
 `mouseclick1.wav` from "UI SFX Set" by Kenney Vleugels (Kenney.nl), https://kenney.nl (mirror: https://github.com/Calinou/kenney-ui-audio). License: CC0 1.0 (public domain). A real mouse button press/release recording; here converted to mono, high-passed at 80 Hz, loudness-normalised and trimmed to 77 ms, then encoded to Ogg Vorbis and MP3.
+
+## Sample pictures (`pictures/`)
+
+Landscape photographs seeded into `/Pictures` for Photo Viewer. Pexels License (https://www.pexels.com/license/): free use and redistribution, no attribution required. Pexels contributor names could not be retrieved automatically; the photo id identifies the work. Processing: resized to 1600 px wide, metadata stripped, progressive JPEG quality 80 (all under 300 KB).
+
+| File | Pexels photo id |
+|---|---|
+| `cliffs-and-bay.jpg` | 462162 |
+| `alpine-lake.jpg` | 2662116 |
+| `snowy-peaks-moon.jpg` | 1287145 |
+| `aurora-over-snow.jpg` | 3408744 |
+| `coastal-ridge.jpg` | 2559941 |
+| `white-sand-beach.jpg` | 1450353 |
+
+Source URL pattern: `https://www.pexels.com/photo/<id>/`.
