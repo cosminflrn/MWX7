@@ -164,10 +164,11 @@ export function mountDock(dock: HTMLElement): void {
 
   const onClick = (appId: string, btn: HTMLElement) => {
     const wins = windowsOf(appId);
+    // Every click bounces the icon, running or not.
+    btn.classList.remove('bounce');
+    void btn.offsetWidth;
+    btn.classList.add('bounce');
     if (!wins.length) {
-      btn.classList.remove('bounce');
-      void btn.offsetWidth;
-      btn.classList.add('bounce');
       launch(appId);
       return;
     }

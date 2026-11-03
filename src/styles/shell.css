@@ -127,7 +127,7 @@
   padding: 5px;
   border-radius: 7px;
   /* The same Aero glass as window frames (streaks, sheen, Window Color tint), lightly frosted for the text */
-  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.32));
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.58));
   backdrop-filter: blur(10px) saturate(140%);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
   border: 0;
@@ -337,11 +337,7 @@
   padding: 6px;
   background: #fff;
 }
-.sm-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: -4px; padding-right: 2px; scrollbar-width: thin; scrollbar-color: #b9c4d3 transparent; }
-.sm-list::-webkit-scrollbar { width: 9px; }
-.sm-list::-webkit-scrollbar-track { background: transparent; }
-.sm-list::-webkit-scrollbar-thumb { background: linear-gradient(90deg, #e9eef5, #c5d0de); border: 1px solid #98a6ba; border-radius: 5px; }
-.sm-list::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #dfeaf8, #a9c4e8); border-color: #5a8fd6; }
+.sm-list { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; margin-right: -4px; padding-right: 2px; }
 .sm-left .sm-search { flex: none; margin-top: 6px; }
 
 .sm-right {
@@ -446,7 +442,7 @@
   border-radius: 12px;
   overflow: hidden;
   /* Same glass as .menu-pop */
-  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.32));
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.58));
   backdrop-filter: blur(10px) saturate(140%);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
   border: 0;
@@ -514,8 +510,8 @@
   position: fixed;
   z-index: 250000;
   top: calc(var(--menubar-h) + 10px);
-  /* Left of the gadget column, so a toast never covers the clock gadget */
-  right: 180px;
+  /* From the top-right edge, above everything (gadgets included) */
+  right: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -527,12 +523,14 @@
   display: flex;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(246, 248, 252, 0.8);
-  backdrop-filter: blur(34px) saturate(190%);
-  -webkit-backdrop-filter: blur(34px) saturate(190%);
-  border: 0.5px solid rgba(0, 0, 0, 0.18);
-  box-shadow: 0 10px 30px rgba(0, 10, 30, 0.25);
+  border-radius: 10px;
+  /* The same glass as context menus */
+  background: var(--glass-streaks), var(--glass-sheen), var(--glass-tint), linear-gradient(rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.58));
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 0;
+  box-shadow: var(--glass-ring), 0 10px 30px rgba(0, 10, 30, 0.3);
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
   pointer-events: auto;
   cursor: default;
 }
@@ -1148,3 +1146,15 @@ body.overview #desktop-icons { opacity: 0.25; transition: opacity 0.3s; }
 #menubar.fs-inactive .mb-wc .wc { background: radial-gradient(circle at 50% 25%, #f1f3f6, #c9d0d8 75%); }
 #menubar.fs-inactive .mb-wc .wc::after { opacity: 0.45; filter: grayscale(1); }
 .pc .seg { opacity: 0.22; transition: opacity 0.1s; }
+
+/* Win7 caption glow plate: a soft white cloud behind dark text, so it stays legible on any wallpaper. */
+.mb-item { position: relative; isolation: isolate; }
+.mb-item::before {
+  content: '';
+  position: absolute;
+  inset: -1px -2px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.45) 60%, rgba(255, 255, 255, 0));
+  pointer-events: none;
+}

@@ -93,6 +93,16 @@
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.75), 0 0 18px rgba(255, 255, 255, 0.5);
 }
 
+.win-title-text { isolation: isolate; }
+.win-title-text::before {
+  content: '';
+  position: absolute;
+  inset: -3px 0;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5) 60%, rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
 .win:not(.active) .win-title { color: rgba(0, 0, 0, 0.62); }
 .win:not(.active) .win-title-text { text-shadow: 0 0 8px rgba(255, 255, 255, 0.7), 0 0 14px rgba(255, 255, 255, 0.4); }
 .win-icon svg, .win-icon img { width: 16px; height: 16px; flex: none; }
@@ -168,8 +178,8 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  /* Above the dock: seen through the dock's clear glass, a window sliding *behind* it showed as a white blob. */
-  z-index: 99100;
+  /* Beneath the dock (99000); runGenie clips it at the shelf's top edge. */
+  z-index: 98900;
   pointer-events: none;
   overflow: hidden;
 }
