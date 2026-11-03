@@ -1,6 +1,7 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { basename, fs } from '../core/fs';
+import { settings } from '../core/settings';
 import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import { MENUBAR_H } from '../core/wm';
@@ -33,6 +34,11 @@ type Cell = { col: number; row: number };
 const textExt = /\.(txt|md|log|json|csv)$/i;
 
 export function mountDeskIcons(layer: HTMLElement): void {
+  const applyVisible = () => {
+    layer.style.display = settings.get().showDesktopIcons ? '' : 'none';
+  };
+  applyVisible();
+  bus.on('settings:change', applyVisible);
   const positions = new Map<string, Cell>();
   const elements = new Map<string, HTMLElement>();
 

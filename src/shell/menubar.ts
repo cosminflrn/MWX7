@@ -1,5 +1,6 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
+import { settings } from '../core/settings';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
 import { activeWindow, centerWindow, closeWindow, minimizeWindow, prepareMinimize, showDesktop, toggleMaximize } from '../core/wm';
@@ -186,12 +187,28 @@ export function mountMenubar(bar: HTMLElement): void {
   const tick = () => {
     const d = new Date();
     const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-    const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const st = settings.get();
+    const time = d.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: st.clockSeconds ? '2-digit' : undefined,
+      hour12: st.clock24 ? false : undefined,
+    });
     clock.textContent = `${day}  ${time}`;
     clock.title = d.toLocaleDateString(undefined, { dateStyle: 'full' });
   };
   tick();
-  window.setInterval(tick, 10_000);
+  // Seconds need a 1s beat; otherwise a slow one is enough.
+  let beat = 0;
+  const schedule = () => {
+    window.clearInterval(beat);
+    beat = window.setInterval(tick, settings.get().clockSeconds ? 1000 : 10_000);
+  };
+  schedule();
+  bus.on('settings:change', () => {
+    tick();
+    schedule();
+  });
 
   render();
   bus.on('window:focus', render);

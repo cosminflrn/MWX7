@@ -105,6 +105,7 @@ export const icons = {
   pictures: png('folder-pictures'),
   music: png('folder-music'),
   explorer: png('explorer'),
+  desktop: png('desktop'),
   trash: png('trash-empty'),
   trashFull: png('trash-full'),
   binoculars: png('search'),

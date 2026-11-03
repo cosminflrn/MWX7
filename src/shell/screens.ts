@@ -35,6 +35,28 @@ const POWER_SAVER_BADGE = `
     font-size="13" letter-spacing="5">ENERGY STAR</text>
 </svg>`;
 
+/** Low-res canvas (150x75) of the badge with hard alpha, shown at 3x with pixelated scaling: blocky like VGA, crisp at integer scale. */
+function pixelBadge(): HTMLCanvasElement {
+  const cv = document.createElement('canvas');
+  cv.width = 150;
+  cv.height = 75;
+  cv.className = 'bios-badge-px';
+  const img = new Image();
+  img.onload = () => {
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, 150, 75);
+    const d = ctx.getImageData(0, 0, 150, 75);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const on = d.data[i + 3]! > 70;
+      d.data[i] = 244; d.data[i + 1] = 208; d.data[i + 2] = 0; d.data[i + 3] = on ? 255 : 0;
+    }
+    ctx.putImageData(d, 0, 0);
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(POWER_SAVER_BADGE);
+  return cv;
+}
+
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 
 function fadeOut(el: HTMLElement, ms = 450): Promise<void> {
@@ -99,7 +121,7 @@ async function bios(): Promise<void> {
   const screen = h(
     'div',
     { class: 'screen bios' },
-    h('div', { class: 'bios-badge', html: POWER_SAVER_BADGE }),
+    h('div', { class: 'bios-badge' }, pixelBadge()),
     text,
     h('pre', { class: 'bios-foot' }, 'Press DEL to run Setup, F12 for Boot Menu, ESC to skip\n10/28/2026-MWX7-7.03-BIOS'),
   );
