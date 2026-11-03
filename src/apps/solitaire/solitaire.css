@@ -1,0 +1,68 @@
+/* Klondike. Everything scoped under .sol. */
+.sol { display: flex; flex-direction: column; font-family: var(--font-ui); user-select: none; background: #14502b; }
+.sol-view {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.012) 0 2px, rgba(0, 0, 0, 0.012) 2px 4px),
+    radial-gradient(ellipse at 50% 28%, #3f9f5c 0%, #2a7d44 45%, #14502b 100%);
+  box-shadow: inset 0 0 60px rgba(0, 25, 10, 0.55);
+}
+.sol-stage { position: absolute; left: 0; top: 0; width: 602px; height: 560px; transform-origin: 0 0; }
+.sol-slot {
+  position: absolute; width: 70px; height: 98px; box-sizing: border-box; border-radius: 7px;
+  border: 1.5px solid rgba(255, 255, 255, 0.2); background: rgba(0, 30, 10, 0.18);
+  box-shadow: inset 0 1px 3px rgba(0, 20, 8, 0.45);
+  display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.3);
+}
+.sol-slot.stock { cursor: pointer; }
+.sol-slot svg { width: 28px; height: 28px; }
+.sol-slot .sol-a { font: 600 26px Georgia, serif; }
+
+.sol-card {
+  position: absolute; left: 0; top: 0; width: 70px; height: 98px; border-radius: 7px; will-change: transform;
+  box-shadow: 0 1px 2px rgba(0, 20, 8, 0.55), 0 0 0 0.75px rgba(20, 40, 60, 0.55); background: #fff;
+}
+.sol-anim .sol-card { transition: transform 0.2s cubic-bezier(.2, .8, .2, 1); }
+.sol-card.drag { transition: none !important; box-shadow: 0 8px 18px rgba(0, 20, 8, 0.5), 0 0 0 0.75px rgba(20, 40, 60, 0.6); }
+.sol-card.fly { transition: none !important; }
+.sol-front, .sol-back { position: absolute; inset: 0; border-radius: 7px; overflow: hidden; display: none; }
+.sol-card.up .sol-front { display: block; }
+.sol-card:not(.up) .sol-back { display: block; }
+.sol-front { background: linear-gradient(180deg, #ffffff 0%, #eef2f8 100%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9); }
+.sol-card.red { color: #c0261c; }
+.sol-card.blk { color: #1d2430; }
+.sol-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 6px),
+    linear-gradient(160deg, #2e6fcf, #0f3b8c);
+  box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 4px rgba(15, 50, 120, 0.6);
+}
+.sol-back::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%) rotate(45deg);
+  border-radius: 5px; background: linear-gradient(135deg, #8fd0ff, #1f6fd6); box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(15, 50, 120, 0.6), inset 0 0 6px rgba(255, 255, 255, 0.6);
+}
+.sol-corner { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1; width: 12px; }
+.sol-corner b { font: 700 14px/14px var(--font-ui); letter-spacing: -0.5px; }
+.sol-corner svg { width: 10px; height: 10px; margin-top: 1px; fill: currentColor; }
+.sol-corner.tl { left: 3px; top: 4px; }
+.sol-corner.br { right: 3px; bottom: 4px; transform: rotate(180deg); }
+.sol-pip { position: absolute; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; fill: currentColor; }
+.sol-pip.inv { transform: rotate(180deg); }
+.sol-court { position: absolute; left: 14px; right: 14px; top: 7px; bottom: 7px; border-radius: 4px; border: 1px solid currentColor;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0), rgba(120, 150, 190, 0.18)); display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.sol-court::before { content: ''; position: absolute; inset: 3px; border-radius: 2px; border: 0.5px solid currentColor; opacity: 0.45; }
+.sol-court b { font: italic 700 34px/1 Georgia, 'Times New Roman', serif; }
+.sol-court svg { width: 17px; height: 17px; fill: currentColor; margin: 2px 0; }
+
+.sol-status { flex: none; display: flex; gap: 18px; padding: 0 12px; height: 24px; align-items: center; font-size: 12px; color: #1c2530;
+  background: linear-gradient(180deg, #eef3fa, #d3deec); border-top: 1px solid #9fb1c7; box-shadow: inset 0 1px 0 #fff; }
+.sol-status span { font-variant-numeric: tabular-nums; }
+.sol-win { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; z-index: 5000; pointer-events: none; }
+.sol-win.show { display: flex; }
+.sol-win h2 { margin: 0; font: 300 44px var(--font-ui); color: #fff; text-shadow: 0 2px 10px rgba(0, 20, 8, 0.7); }
+.sol-win button { pointer-events: auto; padding: 6px 22px; font: 13px var(--font-ui); color: #12304f; border-radius: 4px; border: 1px solid #5d7794;
+  background: linear-gradient(#fbfdff, #dbe6f4 49%, #c6d6ea 50%, #dce8f6); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8); cursor: pointer; }
+.sol-win button:hover { background: linear-gradient(#f3faff, #bfe3fb 49%, #96d1f5 50%, #b4e0fa); border-color: #3c7fb1; }
