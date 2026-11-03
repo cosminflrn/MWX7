@@ -378,17 +378,18 @@ export const solitaire: AppManifest = {
         { label: 'Music', checked: music.enabled, action: () => { music.setEnabled(!music.enabled); buildMenus(); } },
         { separator: true },
         { label: 'Exit', action: () => win.close() },
-      ] }]);
+      ] }, { label: 'Help', items: [{ label: 'How to play', action: () => howTo() }] }]);
     buildMenus();
     // Music starts on open; if the browser still blocks audio, the first click in the window starts it.
     music.start();
     win.body.addEventListener('pointerdown', () => music.start(), true);
-    showTutorial(win.body, 'sol', 'How to play Solitaire', [
+    const howTo = () => showTutorial(win.body, 'sol', 'How to play Solitaire', [
       'Build four suit piles from Ace up to King.',
       'On the table, stack cards in descending order, alternating red and black.',
       'Click the stock to deal; drag cards between piles, or double-click to send one to a pile.',
       'Only a King can fill an empty column.',
     ]);
+    howTo();
 
     newGame();
     return () => {

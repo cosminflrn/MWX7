@@ -61,3 +61,14 @@
 .ph-show { cursor: none; }
 .ph-show.hot { cursor: default; }
 @media (prefers-reduced-motion: reduce) { .ph-show-img.in { animation: none; } .ph-img.tx { transition: opacity 220ms; } }
+
+/* Full screen keeps the glass: the generic maximized frame is opaque white, which would hide the see-through stage. */
+.win[data-app="photos"].maximized { background: rgba(10, 18, 30, 0.35); }
+
+/* Play button: a clean Win7 glow instead of the generic toolbar hover outline. */
+.ph-b.big:hover:not(:disabled) {
+  filter: none; border-color: #14548f;
+  background: radial-gradient(circle at 50% 8%, #e4f6ff 0, #86cdf8 36%, #2f89de 62%, #58b2f2 100%);
+  box-shadow: 0 0 0 1px rgba(160, 220, 255, 0.55), 0 0 12px 3px rgba(110, 200, 255, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -3px 5px rgba(0, 50, 120, 0.35);
+}
+.ph-b.big:active:not(:disabled) { transform: none; filter: brightness(0.94); }

@@ -71,6 +71,13 @@ from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 wi
 
 Unmodified copies of the Ogg Vorbis files published by the project.
 
+| File | Title | Performer | Source | License |
+|---|---|---|---|---|
+| `solitaire-goldberg-variatio-3.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 3 (Canone all'Unisuono) | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
+| `mines-goldberg-variatio-12.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 12 (Canone alla Quarta) | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
+
+Game-music loops (Solitaire, Mines): the last 4 s of the recording are cross-faded into the first 4 s and the piece is re-encoded (Ogg Vorbis, quality 2.5-3), so the file loops without a gap. Played with a looping `<audio>`.
+
 ## VGA bitmap font (`../fonts/vga/`)
 
 "Web437 IBM VGA 8x16" (`WebPlus_IBM_VGA_8x16.woff`, a.k.a. Px437 IBM VGA 8x16) from The Ultimate Oldschool PC Font Pack v2.2 by VileR, (c) 2016-2020. Source: https://int10h.org/oldschool-pc-fonts/ (WOFF taken from the npm package `@monowind/themes` 0.3.5, unmodified).

@@ -89,10 +89,9 @@ export const pinball: AppManifest = {
       h(
         'div',
         { class: 'pb-keys' },
-        h('span', {}, h('kbd', {}, '\u2190'), h('kbd', {}, '\u2192'), ' flippers'),
-        h('span', {}, h('kbd', {}, '\u2191'), ' hold to launch'),
-        h('span', {}, h('kbd', {}, 'M'), ' mute'),
-        h('span', {}, h('kbd', {}, 'F2'), ' new game')
+        h('span', {}, h('kbd', {}, 'Z'), h('kbd', {}, '\u2190'), ' left flipper'),
+        h('span', {}, h('kbd', {}, '/'), h('kbd', {}, '\u2192'), ' right flipper'),
+        h('span', {}, h('kbd', {}, 'Space'), ' hold to launch')
       )
     );
     win.body.classList.add('pb');
@@ -144,11 +143,6 @@ export const pinball: AppManifest = {
       wake();
       if (e.code in flipKeys || isPlunger(e.code)) e.preventDefault();
       if (e.repeat) return;
-      if (e.code === 'F2') {
-        e.preventDefault();
-        return newGame();
-      }
-      if (e.code === 'KeyM') return toggleMute();
       if (e.code in flipKeys) {
         held.add(e.code);
         refreshFlippers();
@@ -207,8 +201,10 @@ export const pinball: AppManifest = {
           ],
         },
       ];
+      menus.push({ label: 'Help', items: [{ label: 'How to play', action: () => helpHook() }] });
       win.setMenus(menus);
     }
+    let helpHook: () => void = () => undefined;
     buildMenus();
 
     // ---- layout: the window is sized to the content; scale table and panel uniformly, the panel absorbs rounding slack ----
@@ -268,7 +264,7 @@ export const pinball: AppManifest = {
       saveEl.classList.toggle('on', game.saveT > 0);
       set('save', saveEl, game.saveT > 0 ? `BALL SAVE ${Math.ceil(game.saveT)}s` : game.phase === 'ready' ? `SAVE ${BALL_SAVE_SECONDS}s` : 'BALL SAVE');
       set('ticker', ticker, game.ticker);
-      const ov = game.phase === 'over' ? ['GAME OVER', `Final score ${fmt(game.score)} - press Up or F2`] : null;
+      const ov = game.phase === 'over' ? ['GAME OVER', `Final score ${fmt(game.score)} - press Space or Up`] : null;
       const key = ov ? ov.join('|') : '';
       if (cache.ov !== key) {
         cache.ov = key;
@@ -299,12 +295,14 @@ export const pinball: AppManifest = {
     };
     raf = requestAnimationFrame(frame);
     setTimeout(() => win.body.focus(), 50);
-    showTutorial(win.body, 'pb', 'How to play Space Pinball', [
-      'Hold Z / Left Arrow for the left flipper, / or Right Arrow for the right.',
+    const howTo = () => showTutorial(win.body, 'pb', 'How to play Space Pinball', [
+      'Hold Z or Left Arrow for the left flipper, / or Right Arrow for the right.',
       'Hold Space or Down Arrow to pull the plunger, release to launch.',
       'Hit targets and bumpers to score; keep the ball in play.',
-      'F2 starts a new game, M mutes sound.',
+      'Use the Game menu for a new game, music and sound.',
     ], () => win.body.focus());
+    howTo();
+    helpHook = howTo;
 
     win.onBeforeClose(() => {
       game.persistHigh();
