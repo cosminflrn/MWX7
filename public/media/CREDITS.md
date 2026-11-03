@@ -14,7 +14,7 @@ fetching), so the author is listed as "Pexels contributor"; the page URL identif
 | `meadow.mp4`, `meadow.jpg`, `meadow-thumb.jpg` | "Scenery of Relaxing Farm Field During Daytime" (Pexels video 4471213) | Pexels contributor | https://www.pexels.com/video/scenery-of-relaxing-farm-field-during-daytime-4471213/ | Pexels License |
 | `sierra.mp4`, `sierra.jpg`, `sierra-thumb.jpg` | "Clouds Moving over Mountains" (Pexels video 14372030) | Pexels contributor | https://www.pexels.com/video/clouds-moving-over-mountains-14372030/ | Pexels License |
 
-Processing: a 22 s window was cut from the 1080p source (meadow: from 8 s at 1.25x speed; sierra: from 14 s at real
+Processing: a 22 s window was cut from the 1080p source (meadow: 2560x1440 from 8 s at 1.25x speed, CRF 19; sierra: from 14 s at real
 speed), scaled/cropped to 1920x1080, 24 fps, H.264 High yuv420p, no audio, two-pass about 2.3 Mbit/s, `+faststart`.
 The final 2 s are cross-faded into the first 2 s so the 20 s clip loops with no visible seam (the last frame is the
 frame immediately before frame 0 in the source). The `.jpg` posters are frame 0 (quality 85); thumbnails are 320x180.
