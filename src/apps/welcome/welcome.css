@@ -7,29 +7,29 @@
 .welcome .wl-hero {
   display: flex;
   align-items: center;
-  gap: 22px;
-  padding: 24px 32px;
+  gap: 18px;
+  padding: 16px 26px;
   background: radial-gradient(ellipse at 20% 0%, #cfe8ff, transparent 70%), linear-gradient(#e3f1ff, #f4f9ff);
   border-bottom: 1px solid #c9dbef;
 }
-.welcome .wl-orb svg { width: 84px; height: 84px; display: block; filter: drop-shadow(0 5px 10px rgba(10, 60, 140, 0.4)); }
-.welcome .wl-hero h1 { margin: 0 0 6px; font-size: 30px; font-weight: 300; color: #123a6e; letter-spacing: 0.01em; }
+.welcome .wl-orb svg { width: 62px; height: 62px; display: block; filter: drop-shadow(0 5px 10px rgba(10, 60, 140, 0.4)); }
+.welcome .wl-hero h1 { margin: 0 0 4px; font-size: 26px; font-weight: 300; color: #123a6e; letter-spacing: 0.01em; }
 .welcome .wl-hero h1 span { color: #1f74d8; font-weight: 600; }
-.welcome .wl-hero p { margin: 0; max-width: 520px; font-size: 13.5px; line-height: 1.5; color: #3f5470; }
-.welcome .wl-head { padding: 16px 32px 6px; font-size: 15px; color: #1a4f9c; }
+.welcome .wl-hero p { margin: 0; max-width: 440px; font-size: 12.5px; line-height: 1.45; color: #3f5470; }
+.welcome .wl-head { padding: 10px 26px 2px; font-size: 14px; color: #1a4f9c; }
 .welcome .wl-grid {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px 14px;
-  padding: 4px 28px 12px;
+  gap: 4px 10px;
+  padding: 2px 20px 8px;
   align-content: start;
 }
 .welcome .wl-tile {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 7px 12px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -46,20 +46,35 @@
 .welcome .wl-tile:active { background: linear-gradient(#d3e6f9, #e6f1fc); }
 .welcome .wl-info { cursor: default; }
 .welcome .wl-info:hover { border-color: transparent; background: transparent; box-shadow: none; }
-.welcome .wl-ico { flex: none; width: 48px; height: 48px; }
-.welcome .wl-ico svg, .welcome .wl-ico img { width: 48px; height: 48px; display: block; filter: drop-shadow(0 2px 3px rgba(0, 40, 100, 0.25)); }
+.welcome .wl-ico { flex: none; width: 40px; height: 40px; }
+.welcome .wl-ico svg, .welcome .wl-ico img { width: 40px; height: 40px; display: block; filter: drop-shadow(0 2px 3px rgba(0, 40, 100, 0.25)); }
 .welcome .wl-txt { display: flex; flex-direction: column; gap: 2px; }
-.welcome .wl-txt b { font-size: 14px; font-weight: 600; color: #0f4fa8; }
-.welcome .wl-txt small { font-size: 12px; line-height: 1.4; color: #5a6b80; }
+.welcome .wl-txt b { font-size: 13px; font-weight: 600; color: #0f4fa8; }
+.welcome .wl-txt small { font-size: 11.5px; line-height: 1.4; color: #5a6b80; }
 .welcome .wl-foot {
+  position: relative;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 24px;
+  padding: 10px 20px 24px;
   border-top: 1px solid #d3e0ee;
-  background: #eef3f9;
-  font-size: 12px;
-  color: #6b7b90;
+  background: linear-gradient(#f2f6fb, #e4ecf6);
 }
-.welcome .wl-close { border: 0; background: none; font: inherit; color: #1662c4; cursor: pointer; padding: 2px 6px; }
-.welcome .wl-close:hover { text-decoration: underline; }
+.welcome .wl-ver { position: absolute; right: 10px; bottom: 5px; font-size: 11px; color: #6b7b90; user-select: none; }
+/* Primary Win7 button: glossy blue with a split highlight */
+.welcome .wl-begin {
+  min-width: 92px;
+  height: 28px;
+  padding: 0 18px;
+  border: 1px solid #1c4e8f;
+  border-radius: 4px;
+  font: 600 13px var(--font-ui);
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 30, 80, 0.55);
+  background: linear-gradient(#7db6ee 0%, #4a8fd9 48%, #2a6fc4 52%, #3d8ae0 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 30, 80, 0.3);
+  cursor: default;
+}
+.welcome .wl-begin:hover { background: linear-gradient(#a2d0f8 0%, #6aa9ec 48%, #3d84dc 52%, #62adf2 100%); border-color: #14437f; }
+.welcome .wl-begin:active { background: linear-gradient(#2a6fc4, #3d8ae0); box-shadow: inset 0 1px 3px rgba(0, 20, 60, 0.5); }
+.welcome .wl-begin:focus-visible { outline: 1px dotted #fff; outline-offset: -4px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55), 0 0 0 2px #7ab4ee; }

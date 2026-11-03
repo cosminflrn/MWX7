@@ -25,7 +25,9 @@ export type SoundName =
   | 'rclick'
   | 'menuOpen'
   | 'menuClose'
-  | 'empty';
+  | 'empty'
+  | 'switch'
+  | 'spinup';
 
 let ac: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -94,43 +96,85 @@ function loadSamples(ctx: AudioContext): Promise<void> {
 /** Call from a user gesture (click / key press) before the first sound. */
 export function unlockAudio(): void {
   const ctx = engine();
-  if (ctx) void loadSamples(ctx);
+  if (ctx) {
+    void loadSamples(ctx);
+    void loadSfx(ctx, 'click');
+    void loadSfx(ctx, 'switch');
+  }
 }
 
 bus.on('settings:change', (s) => {
   if (master) master.gain.value = s.volume;
 });
 
-/* ---------- the real mouse click (CC0 recording, see public/media/CREDITS.md) ---------- */
+/* ---------- recorded mechanical cues (CC0 Kenney UI Audio, see public/media/CREDITS.md) ---------- */
 
-let clickBuf: AudioBuffer | null = null;
-let clickLoading = false;
+type Sfx = 'click' | 'switch';
+const sfx = new Map<Sfx, AudioBuffer>();
+const sfxLoading = new Map<Sfx, Promise<void>>();
 
-/** Decoded once; until it arrives (or if decoding fails) the synthesized tick below is the fallback. */
-function loadClick(ctx: AudioContext): void {
-  if (clickLoading) return;
-  clickLoading = true;
-  const url = `${import.meta.env.BASE_URL}media/sounds/click`;
-  const ext = new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? 'ogg' : 'mp3';
-  fetch(`${url}.${ext}`)
-    .then((r) => r.arrayBuffer())
-    .then((b) => ctx.decodeAudioData(b))
-    .then((buf) => {
-      clickBuf = buf;
-    })
-    .catch((err) => console.warn('[sound] click sample unavailable, using synthesized tick', err));
+/** Decoded once; until a sample arrives (or if decoding fails) the synthesized tick below is the fallback. */
+function loadSfx(ctx: AudioContext, name: Sfx): Promise<void> {
+  let p = sfxLoading.get(name);
+  if (!p) {
+    const url = `${import.meta.env.BASE_URL}media/sounds/${name}`;
+    const ext = new Audio().canPlayType('audio/ogg; codecs="vorbis"') ? 'ogg' : 'mp3';
+    p = fetch(`${url}.${ext}`)
+      .then((r) => r.arrayBuffer())
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => void sfx.set(name, buf))
+      .catch((err) => console.warn(`[sound] ${name} sample unavailable`, err));
+    sfxLoading.set(name, p);
+  }
+  return p;
 }
 
-function realClick(ctx: AudioContext, t: number, rate: number): boolean {
-  if (!clickBuf) return false;
+function playSfx(ctx: AudioContext, name: Sfx, t: number, rate: number, gain: number): boolean {
+  const buf = sfx.get(name);
+  if (!buf) return false;
   const src = ctx.createBufferSource();
-  src.buffer = clickBuf;
+  src.buffer = buf;
   src.playbackRate.value = rate;
   const amp = ctx.createGain();
-  amp.gain.value = 0.55;
+  amp.gain.value = gain;
   src.connect(amp).connect(master!);
   src.start(t);
   return true;
+}
+
+/** The PC's start-up hum: fan noise swelling in, a hard-disk motor spooling up, a few head seeks, then a fade-out into the BIOS. */
+function spinUp(ctx: AudioContext, t: number): void {
+  const dur = 3.0;
+  const fan = noise(ctx, dur);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(260, t);
+  lp.frequency.exponentialRampToValueAtTime(900, t + 1.2);
+  const fa = ctx.createGain();
+  fa.gain.setValueAtTime(0.0001, t);
+  fa.gain.linearRampToValueAtTime(0.07, t + 0.7);
+  fa.gain.setValueAtTime(0.07, t + 1.9);
+  fa.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  fan.connect(lp).connect(fa).connect(master!);
+  fan.start(t);
+
+  // Motor: two soft sines gliding up as the platters reach speed, then holding.
+  for (const [mul, vol] of [[1, 0.022], [2, 0.008]] as const) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(40 * mul, t + 0.1);
+    osc.frequency.exponentialRampToValueAtTime(118 * mul, t + 1.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.6);
+    g.gain.setValueAtTime(vol, t + 1.9);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(master!);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+  // Head seeks while the HDD LED flickers.
+  [1.25, 1.42, 1.55, 1.9, 2.05, 2.34].forEach((d) => tock(ctx, t + d, 520 + Math.random() * 200, 0.016));
 }
 
 /* ---------- building blocks ---------- */
@@ -214,8 +258,8 @@ function tock(ctx: AudioContext, t: number, body: number, vol: number): void {
   const src = noise(ctx, 0.01);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass';
-  bp.frequency.value = 3000;
-  bp.Q.value = 0.9;
+  bp.frequency.value = 2200;
+  bp.Q.value = 0.8;
   const a = ctx.createGain();
   a.gain.setValueAtTime(vol, t);
   a.gain.exponentialRampToValueAtTime(0.0001, t + 0.006);
@@ -247,8 +291,14 @@ export function play(name: SoundName): void {
     void loadSamples(ctx).then(() => playMusical(ctx, name));
     return;
   }
+  if (name === 'switch') {
+    void loadSfx(ctx, 'switch').then(() => {
+      if (!playSfx(ctx, 'switch', ctx.currentTime + 0.005, 0.92, 0.8)) tock(ctx, ctx.currentTime + 0.005, 180, 0.12);
+    });
+    return;
+  }
+  if (!sfx.has('click')) void loadSfx(ctx, 'click');
   const t = ctx.currentTime + 0.005;
-  if (name === 'click' || name === 'rclick') loadClick(ctx);
   switch (name) {
     case 'post': {
       // PC-speaker POST beep: a raw square wave, no reverb.
@@ -257,23 +307,26 @@ export function play(name: SoundName): void {
       osc.frequency.value = 1000;
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
-      lp.frequency.value = 5000;
+      lp.frequency.value = 3200;
       const amp = ctx.createGain();
       amp.gain.setValueAtTime(0.0001, t);
-      amp.gain.linearRampToValueAtTime(0.08, t + 0.004);
-      amp.gain.setValueAtTime(0.08, t + 0.17);
+      amp.gain.linearRampToValueAtTime(0.055, t + 0.004);
+      amp.gain.setValueAtTime(0.055, t + 0.17);
       amp.gain.linearRampToValueAtTime(0.0001, t + 0.18);
       osc.connect(lp).connect(amp).connect(master!);
       osc.start(t);
       osc.stop(t + 0.2);
       break;
     }
+    case 'spinup':
+      spinUp(ctx, t);
+      break;
     case 'click':
-      if (!realClick(ctx, t, 1)) tock(ctx, t, 1200, 0.035);
+      if (!playSfx(ctx, 'click', t, 1, 0.55)) tock(ctx, t, 1200, 0.035);
       break;
     case 'rclick':
       // Same switch, a touch lower: the right button feels slightly heavier.
-      if (!realClick(ctx, t, 0.92)) tock(ctx, t, 950, 0.035);
+      if (!playSfx(ctx, 'click', t, 0.92, 0.55)) tock(ctx, t, 950, 0.035);
       break;
     case 'menuOpen':
       swoosh(ctx, t, 600, 2600, 0.2, 0.03);
@@ -297,10 +350,10 @@ export function play(name: SoundName): void {
         const src = noise(ctx, 0.03);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
-        bp.frequency.value = 1200 + Math.random() * 4200;
+        bp.frequency.value = 800 + Math.random() * 2400;
         bp.Q.value = 2;
         const a = ctx.createGain();
-        a.gain.setValueAtTime(0.05 + Math.random() * 0.05, at);
+        a.gain.setValueAtTime(0.03 + Math.random() * 0.03, at);
         a.gain.exponentialRampToValueAtTime(0.0001, at + 0.025 + Math.random() * 0.03);
         src.connect(bp).connect(a).connect(master!);
         src.start(at);
@@ -349,8 +402,8 @@ function playMusical(ctx: AudioContext, name: SoundName): void {
       sample(ctx, 'vibraphone-E6', t + 0.11, 0.2, 0.5, 0.7);
       break;
     case 'error':
-      sample(ctx, 'vibraphone-Eb4', t, 0.3, 0.4, 0.5);
-      sample(ctx, 'vibraphone-A3', t + 0.01, 0.24, 0.4, 0.5);
+      sample(ctx, 'vibraphone-Eb4', t, 0.24, 0.4, 0.5);
+      sample(ctx, 'vibraphone-A3', t + 0.01, 0.18, 0.4, 0.5);
       break;
     default:
       break;

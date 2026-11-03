@@ -12,9 +12,6 @@ import { createWallpaperLayer } from './wallpapers';
  * plus log off and shut down. Everything is an overlay above the desktop.
  */
 
-const POWER_GLYPH =
-  '<svg viewBox="0 0 64 64"><path d="M22.5 21.5a15 15 0 1 0 19 0" fill="none" stroke="#cfd6df" stroke-width="4.5" stroke-linecap="round"/><path d="M32 13v18" stroke="#cfd6df" stroke-width="4.5" stroke-linecap="round"/></svg>';
-
 /** Original cursive "energy" wordmark + five-point star with a sweeping arc, in classic BIOS yellow (hand-drawn paths). */
 const POWER_SAVER_BADGE = `
 <svg viewBox="0 0 240 120" xmlns="http://www.w3.org/2000/svg" aria-label="Energy Star">
@@ -35,28 +32,6 @@ const POWER_SAVER_BADGE = `
     font-size="13" letter-spacing="5">ENERGY STAR</text>
 </svg>`;
 
-/** Low-res canvas (150x75) of the badge with hard alpha, shown at 3x with pixelated scaling: blocky like VGA, crisp at integer scale. */
-function pixelBadge(): HTMLCanvasElement {
-  const cv = document.createElement('canvas');
-  cv.width = 150;
-  cv.height = 75;
-  cv.className = 'bios-badge-px';
-  const img = new Image();
-  img.onload = () => {
-    const ctx = cv.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0, 150, 75);
-    const d = ctx.getImageData(0, 0, 150, 75);
-    for (let i = 0; i < d.data.length; i += 4) {
-      const on = d.data[i + 3]! > 70;
-      d.data[i] = 244; d.data[i + 1] = 208; d.data[i + 2] = 0; d.data[i + 3] = on ? 255 : 0;
-    }
-    ctx.putImageData(d, 0, 0);
-  };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(POWER_SAVER_BADGE);
-  return cv;
-}
-
 const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
 
 function fadeOut(el: HTMLElement, ms = 450): Promise<void> {
@@ -65,19 +40,6 @@ function fadeOut(el: HTMLElement, ms = 450): Promise<void> {
       el.remove();
       resolve();
     };
-  });
-}
-
-/** Resolves on the first click / key press on (or while showing) `el`. */
-function anyInput(el: HTMLElement): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => {
-      el.removeEventListener('pointerdown', done);
-      window.removeEventListener('keydown', done);
-      resolve();
-    };
-    el.addEventListener('pointerdown', done);
-    window.addEventListener('keydown', done);
   });
 }
 
@@ -99,17 +61,90 @@ function skippable(el: HTMLElement): { skipped: () => boolean; dispose: () => vo
   };
 }
 
-/* ---------- 1. power button ---------- */
+/* ---------- 1. power switch ---------- */
+
+/** Original front of a beige 90s tower: drive bays, LEDs, turbo button and the big push POWER switch (drawn here, no third-party art). */
+const PC_FRONT = `
+<svg class="pc-svg" viewBox="0 0 360 470" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <linearGradient id="pcBeige" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e4dcc6"/><stop offset=".5" stop-color="#dad2bb"/><stop offset="1" stop-color="#c6bea6"/></linearGradient>
+    <linearGradient id="pcBay" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfc7af"/><stop offset="1" stop-color="#ddd5be"/></linearGradient>
+    <linearGradient id="pcCap" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ece5d1"/><stop offset=".55" stop-color="#d8d0b9"/><stop offset="1" stop-color="#c3bba3"/></linearGradient>
+    <radialGradient id="ledG" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#d9ffd0"/><stop offset=".5" stop-color="#3fe03f"/><stop offset="1" stop-color="#16a416"/></radialGradient>
+    <radialGradient id="ledA" cx=".4" cy=".35" r=".7"><stop offset="0" stop-color="#fff0c4"/><stop offset=".5" stop-color="#ffb81f"/><stop offset="1" stop-color="#d27a00"/></radialGradient>
+  </defs>
+  <!-- case -->
+  <rect x="14" y="8" width="332" height="446" rx="12" fill="#a79f88"/>
+  <rect x="14" y="4" width="332" height="446" rx="12" fill="url(#pcBeige)"/>
+  <rect x="15" y="5" width="330" height="444" rx="11" fill="none" stroke="#fff8e6" stroke-opacity=".7" stroke-width="1"/>
+  <rect x="30" y="20" width="300" height="414" rx="6" fill="none" stroke="#b3ab93" stroke-width="1"/>
+  <!-- 5.25" CD-ROM bay -->
+  <rect x="42" y="34" width="276" height="50" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
+  <rect x="54" y="46" width="206" height="14" rx="2" fill="#2a2a2a"/>
+  <rect x="54" y="46" width="206" height="3" fill="#000" opacity=".5"/>
+  <rect x="274" y="48" width="30" height="12" rx="2" fill="#cfc7af" stroke="#9a927c"/>
+  <circle cx="289" cy="72" r="2.4" fill="#4b4b3f"/>
+  <text x="54" y="76" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" letter-spacing="1.4" fill="#6f6a58">CD-ROM  16X</text>
+  <!-- 3.5" floppy bay -->
+  <rect x="42" y="98" width="170" height="40" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
+  <rect x="58" y="112" width="104" height="6" rx="1" fill="#1d1d1d"/>
+  <rect x="58" y="112" width="104" height="2" fill="#000" opacity=".6"/>
+  <rect x="172" y="108" width="28" height="14" rx="2" fill="#cfc7af" stroke="#9a927c"/>
+  <circle cx="186" cy="128" r="2" fill="#4b4b3f"/>
+  <text x="58" y="131" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing="1.2" fill="#6f6a58">3.5"  1.44MB</text>
+  <!-- LED panel -->
+  <rect x="226" y="98" width="92" height="40" rx="3" fill="#2b2b27" stroke="#8d866f"/>
+  <circle class="led led-pwr" cx="248" cy="113" r="5.2" fill="#143d14"/>
+  <circle class="led led-hdd" cx="296" cy="113" r="5.2" fill="#4a3208"/>
+  <text x="248" y="131" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing=".8" fill="#cfc7af">POWER</text>
+  <text x="296" y="131" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing=".8" fill="#cfc7af">HDD</text>
+  <!-- turbo -->
+  <rect x="42" y="154" width="276" height="42" rx="3" fill="url(#pcBay)" stroke="#a69e86"/>
+  <rect x="54" y="163" width="52" height="24" rx="3" fill="#b7af97"/>
+  <rect x="54" y="162" width="52" height="23" rx="3" fill="url(#pcCap)" stroke="#8f876f"/>
+  <text x="80" y="177" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="8.5" font-weight="700" letter-spacing="1" fill="#5c5748">TURBO</text>
+  <rect x="236" y="163" width="68" height="24" rx="2" fill="#120a0a" stroke="#8d866f"/>
+  <text x="270" y="182" text-anchor="middle" font-family="'Courier New',monospace" font-size="19" font-weight="700" fill="#ff3b2a" class="seg">66</text>
+  <text x="124" y="179" font-family="Arial,Helvetica,sans-serif" font-size="7" font-weight="700" letter-spacing="1.2" fill="#6f6a58">MHz</text>
+  <!-- power switch housing -->
+  <rect x="56" y="214" width="248" height="142" rx="8" fill="#a79f88"/>
+  <rect x="62" y="220" width="236" height="130" rx="6" fill="#2a2923"/>
+  <rect x="62" y="220" width="236" height="12" rx="6" fill="#000" opacity=".45"/>
+  <g class="cap">
+    <rect x="72" y="234" width="216" height="106" rx="7" fill="#9d957d"/>
+    <rect x="72" y="228" width="216" height="106" rx="7" fill="url(#pcCap)" stroke="#8b836b"/>
+    <rect x="73.5" y="229.5" width="213" height="103" rx="6" fill="none" stroke="#fffdf2" stroke-opacity=".85"/>
+    <rect x="96" y="246" width="168" height="62" rx="5" fill="#cbc3ab" stroke="#aaa28a"/>
+    <text x="180" y="288" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="30" font-weight="900" letter-spacing="5" fill="#fbf7e8">POWER</text>
+    <text x="180" y="286" text-anchor="middle" font-family="Arial Black,Arial,Helvetica,sans-serif" font-size="30" font-weight="900" letter-spacing="5" fill="#6a6554">POWER</text>
+    <circle cx="180" cy="320" r="0" fill="none"/>
+  </g>
+  <!-- vents -->
+  <g stroke="#aaa28a" stroke-width="3" stroke-linecap="round">
+    <path d="M70 376h220M70 388h220M70 400h220M70 412h220"/>
+  </g>
+  <g stroke="#fff8e6" stroke-opacity=".7" stroke-width="1"><path d="M70 378h220M70 390h220M70 402h220M70 414h220"/></g>
+  <text x="300" y="430" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="9" font-weight="700" letter-spacing="2" fill="#6f6a58">MWX 486DX2</text>
+</svg>`;
+
+function powerScreen(hint: string) {
+  const sw = h('button', { class: 'power-btn', 'aria-label': 'Power on' });
+  const pc = h('div', { class: 'pc', html: PC_FRONT }, sw);
+  const screen = h('div', { class: 'screen power' }, pc, h('p', { class: 'power-hint' }, hint));
+  document.body.append(screen);
+  return { screen, pc, pressed: new Promise<void>((r) => sw.addEventListener('click', () => r(), { once: true })) };
+}
 
 async function powerOn(): Promise<void> {
-  const btn = h('button', { class: 'power-btn', 'aria-label': 'Power on', html: POWER_GLYPH });
-  const screen = h('div', { class: 'screen power' }, btn, h('p', { class: 'power-hint' }, 'Press the power button to start'));
-  document.body.append(screen);
-  btn.focus();
-  await anyInput(screen);
+  const { screen, pc, pressed } = powerScreen('Push the power switch to start');
+  await pressed;
   unlockAudio();
-  btn.classList.add('on');
-  await wait(450);
+  play('switch');
+  pc.classList.add('pressed');
+  await wait(110);
+  pc.classList.add('on');
+  play('spinup');
+  await wait(2500);
   screen.remove();
 }
 
@@ -121,7 +156,7 @@ async function bios(): Promise<void> {
   const screen = h(
     'div',
     { class: 'screen bios' },
-    h('div', { class: 'bios-badge' }, pixelBadge()),
+    h('div', { class: 'bios-badge', html: POWER_SAVER_BADGE }),
     text,
     h('pre', { class: 'bios-foot' }, 'Press DEL to run Setup, F12 for Boot Menu, ESC to skip\n10/28/2026-MWX7-7.03-BIOS'),
   );
@@ -378,9 +413,9 @@ export async function shutDown(): Promise<void> {
   await wait(900);
   screen.remove();
   // Powering on again is a real cold boot.
-  const btn = h('button', { class: 'power-btn', 'aria-label': 'Power on', html: POWER_GLYPH });
-  const off = h('div', { class: 'screen power' }, btn, h('p', { class: 'power-hint' }, 'MWX 7 is off. Press the power button to start'));
-  document.body.append(off);
-  await anyInput(off);
+  const off = powerScreen('MWX 7 is off. Push the power switch to start');
+  await off.pressed;
+  off.pc.classList.add('pressed');
+  await wait(220);
   location.reload();
 }
