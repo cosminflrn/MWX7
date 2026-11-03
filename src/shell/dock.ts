@@ -1,5 +1,6 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
+import { settings } from '../core/settings';
 import { launch } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
@@ -18,10 +19,23 @@ import { menuIcon, openMenu } from '../ui/menu';
  * jump list) and the Start orb as its first item.
  */
 const RANGE = 140;
-const BASE = 48;
+const SIZES = { small: 40, medium: 48, large: 60 } as const;
+let BASE: number = SIZES.medium;
 const MAX_SCALE = 1.6;
 
 export function mountDock(dock: HTMLElement): void {
+  let magnify = true;
+  const applySettings = () => {
+    const s = settings.get();
+    BASE = SIZES[s.dockSize];
+    magnify = s.dockMagnify;
+    document.documentElement.style.setProperty('--dock-icon', `${BASE}px`);
+    if (!magnify) {
+      pointerX = null;
+      dock.classList.remove('hover');
+      kick();
+    }
+  };
   const shelf = h('div', { class: 'dock-shelf' });
   dock.append(shelf);
 
@@ -233,7 +247,7 @@ export function mountDock(dock: HTMLElement): void {
     if (!raf) raf = requestAnimationFrame(tick);
   };
   shelf.addEventListener('pointerenter', (e) => {
-    if (e.pointerType !== 'mouse') return;
+    if (e.pointerType !== 'mouse' || !magnify) return;
     if (!shelf.classList.contains('magnify')) measureRest();
     shelf.classList.add('magnify');
     dock.classList.add('hover');
@@ -241,7 +255,7 @@ export function mountDock(dock: HTMLElement): void {
     kick();
   });
   shelf.addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse') return;
+    if (e.pointerType !== 'mouse' || !magnify) return;
     pointerX = e.clientX;
     kick();
   });
@@ -249,6 +263,12 @@ export function mountDock(dock: HTMLElement): void {
     pointerX = null;
     dock.classList.remove('hover');
     kick();
+  });
+
+  applySettings();
+  bus.on('settings:change', () => {
+    applySettings();
+    rest = null; // icon sizes changed: re-measure resting centres
   });
 
   setMinimizeTarget((appId) => itemFor.get(appId)?.getBoundingClientRect() ?? null);

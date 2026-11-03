@@ -177,7 +177,7 @@
   align-items: flex-end;
   gap: 5px;
   justify-content: center;
-  height: 64px;
+  height: calc(var(--dock-icon) + 16px);
   padding: 0 9px 8px;
   /* Flush with the bottom edge: only the top corners are rounded */
   border-radius: 14px 14px 0 0;
@@ -559,41 +559,28 @@
 .power-btn.on { opacity: 1; box-shadow: 0 0 0 2px #0b0c0e, 0 0 0 4px #5fb4ff, 0 0 40px rgba(90, 180, 255, 0.9), inset 0 2px 3px rgba(255, 255, 255, 0.18), inset 0 -3px 6px rgba(0, 0, 0, 0.6); }
 .power-hint { margin: 0; color: #59616c; font-size: 13px; letter-spacing: 0.02em; }
 
-/* BIOS */
+/* BIOS: IBM VGA 8x16 at exactly 2x (32px) so every glyph pixel is a 2x2 block */
 .bios {
   display: block;
-  padding: 26px 34px;
+  padding: 32px 48px;
   background: #000;
   color: #b9b9b9;
-  font: 16px/1.35 'Web437 IBM VGA 8x16', 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
+  font: 32px/32px 'Web437 IBM VGA 8x16', 'Perfect DOS VGA 437', 'Lucida Console', 'Courier New', var(--font-mono);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
 }
 
 .bios-text { margin: 0; font: inherit; white-space: pre-wrap; }
 
 .bios-foot {
   position: absolute;
-  left: 34px;
-  bottom: 22px;
+  left: 48px;
+  bottom: 32px;
   margin: 0;
   font: inherit;
   color: #8a8a8a;
 }
-
-.bios-badge {
-  position: absolute;
-  top: 24px;
-  right: 34px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px 8px 10px;
-  border: 2px solid #3d6fd0;
-  color: #9ec3ff;
-  font: 700 15px/1.05 'Lucida Console', 'Courier New', monospace;
-  letter-spacing: 0.12em;
-}
-
-.bios-badge-mark svg, .bios-badge-mark img { width: 34px; height: 34px; }
 
 /* Boot logo: four lights converge, the orb forms */
 .bootlogo {
@@ -781,18 +768,13 @@
 @media (max-width: 600px) {
   :root { --dock-icon: 40px; }
   .mb-item:not(.mb-logo):not(.mb-app):not(.mb-icon) { display: none; }
-  .bios { font-size: 11px; padding: 14px; }
+  .bios { font-size: 16px; line-height: 16px; padding: 14px; }
   .bios-badge { display: none; }
 }
 
 /* ===== BIOS power-saver badge ===== */
-.bios-badge {
-  padding: 0;
-  border: 0;
-  width: 200px;
-}
-
-.bios-badge svg { width: 100%; height: auto; }
+.bios-badge { position: absolute; top: 32px; right: 48px; }
+.bios-badge-px { display: block; width: 450px; height: 225px; image-rendering: pixelated; }
 
 /* ===== First-run setup (Windows 7 OOBE style) ===== */
 .oobe { background: #062a63; }

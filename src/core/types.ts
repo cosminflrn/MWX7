@@ -119,6 +119,16 @@ export interface Settings {
   glassColor: string;
   /** Aero glass colour intensity 0..100 */
   glassIntensity: number;
+  /** Menu bar clock: 24-hour format */
+  clock24: boolean;
+  /** Menu bar clock: show seconds */
+  clockSeconds: boolean;
+  /** Dock: macOS-style magnification on hover */
+  dockMagnify: boolean;
+  /** Dock icon size */
+  dockSize: 'small' | 'medium' | 'large';
+  /** Show the icons on the desktop */
+  showDesktopIcons: boolean;
 }
 
 export interface OSApi {
