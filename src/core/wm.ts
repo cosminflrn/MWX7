@@ -434,12 +434,12 @@ function freezeScroll(root: HTMLElement): () => void {
 }
 
 /** The window exactly as it looks now — focus, scroll position, frame and shadow — as a canvas. */
-async function snapshot(w: Win, budget = 1500, exact = true): Promise<HTMLCanvasElement | null> {
+async function snapshot(w: Win, budget = 4000, exact = true): Promise<HTMLCanvasElement | null> {
   const toCanvas = await loadRasterizer();
   const r = w.el.getBoundingClientRect();
   const thaw = exact ? freezeScroll(w.el) : () => {};
   const job = toCanvas(w.el, {
-    pixelRatio: 1,
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
     skipFonts: true,
     width: Math.round(r.width) + SNAP_PAD * 2,
     height: Math.round(r.height) + SNAP_PAD * 2,
@@ -451,6 +451,10 @@ async function snapshot(w: Win, budget = 1500, exact = true): Promise<HTMLCanvas
       insetInlineStart: '0',
       insetBlockStart: '0',
       margin: `${SNAP_PAD}px`,
+      // html-to-image sizes the clone to the canvas (which includes the shadow padding); pin the window to its real size.
+      width: `${Math.round(r.width)}px`,
+      height: `${Math.round(r.height)}px`,
+      boxSizing: 'border-box',
       transform: 'none',
       opacity: '1',
       // Backdrop blur can't be captured; the glass keeps its tint and stays see-through.

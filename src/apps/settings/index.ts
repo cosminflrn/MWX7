@@ -6,9 +6,9 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.7.2';
+const VERSION = '0.8.0';
 
-type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'sound' | 'system';
+type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'desktop' | 'dock' | 'datetime' | 'sound' | 'system';
 
 interface Section {
   id: SectionId;
@@ -20,6 +20,9 @@ const SECTIONS: Section[] = [
   { id: 'wallpapers', title: 'Wallpapers', icon: icons.pictures },
   { id: 'accounts', title: 'User account', icon: icons.avatar },
   { id: 'wincolor', title: 'Window Color', icon: icons.settings },
+  { id: 'desktop', title: 'Desktop', icon: icons.desktop },
+  { id: 'dock', title: 'Dock', icon: icons.orb },
+  { id: 'datetime', title: 'Date & time', icon: icons.about },
   { id: 'sound', title: 'Sound', icon: icons.music },
   { id: 'system', title: 'System', icon: icons.computer },
 ];
@@ -169,6 +172,35 @@ export const settingsApp: AppManifest = {
       );
     };
 
+    // ---- Desktop / Dock / Date & time (every control applies live) ----
+    let uid = 0;
+    const toggle = (label: string, key: 'showDesktopIcons' | 'dockMagnify' | 'clock24' | 'clockSeconds') => {
+      const id = `set-t${uid++}`;
+      const box = h('input', { type: 'checkbox', id, checked: os.settings.get()[key] });
+      box.addEventListener('change', () => os.settings.set({ [key]: box.checked }));
+      return h('label', { class: 'set-check', for: id }, box, h('span', {}, label));
+    };
+    const desktopSec = () =>
+      section('desktop', heading('Customize your desktop'), lead('Choose what appears on the desktop.'), toggle('Show desktop icons', 'showDesktopIcons'));
+    const dockSec = () => {
+      const seg = h('div', { class: 'set-seg', role: 'radiogroup', 'aria-label': 'Icon size' });
+      const draw = () => {
+        const cur = os.settings.get().dockSize;
+        seg.replaceChildren(
+          ...(['small', 'medium', 'large'] as const).map((k) =>
+            h('button', { class: `set-segbtn${cur === k ? ' sel' : ''}`, type: 'button', role: 'radio', 'aria-checked': String(cur === k),
+              onclick: () => { os.settings.set({ dockSize: k }); draw(); } }, k[0].toUpperCase() + k.slice(1)),
+          ),
+        );
+      };
+      draw();
+      return section('dock', heading('Change how the dock behaves'), lead('Icons grow under the pointer when magnification is on.'),
+        toggle('Magnification', 'dockMagnify'), sub('Icon size'), seg);
+    };
+    const dateSec = () =>
+      section('datetime', heading('Set the date and time format'), lead('Changes the clock in the menu bar.'),
+        toggle('Use 24-hour clock', 'clock24'), toggle('Show seconds', 'clockSeconds'));
+
     // ---- Sound -----------------------------------------------------------
     const sound = () => {
       const box = h('input', { type: 'checkbox', id: 'set-sounds', checked: os.settings.get().sounds });
@@ -209,7 +241,7 @@ export const settingsApp: AppManifest = {
       );
     };
 
-    const builders: Record<SectionId, () => HTMLElement> = { wallpapers: wallpapersSection, accounts, wincolor: windowColor, sound, system };
+    const builders: Record<SectionId, () => HTMLElement> = { wallpapers: wallpapersSection, accounts, wincolor: windowColor, desktop: desktopSec, dock: dockSec, datetime: dateSec, sound, system };
     const sections = SECTIONS.map((x) => builders[x.id]());
     content.append(...sections);
 

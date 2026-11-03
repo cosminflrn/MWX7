@@ -137,7 +137,7 @@
 
 /* ---- Window color ---- */
 .set-swatches { display: flex; flex-wrap: nowrap; gap: 6px; }
-.set-swatch { position: relative; flex: 1 1 0; min-width: 0; max-width: 44px; aspect-ratio: 1; width: auto; height: auto; padding: 0; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 8px; cursor: default; outline: none; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3); }
+.set-swatch { position: relative; flex: 1 1 0; min-width: 0; height: 40px; padding: 0; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 8px; cursor: default; outline: none; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3); }
 /* glossy top highlight */
 .set-swatch::after { content: ''; position: absolute; inset: 0 0 48% 0; border-radius: 7px 7px 50% 50% / 7px 7px 14px 14px; background: linear-gradient(rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.12)); pointer-events: none; }
 .set-swatch:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7), 0 0 0 2px #b8d6fb; }
@@ -152,3 +152,9 @@
 .set-mixer[hidden] { display: none; }
 .set-mixer-row { display: flex; align-items: center; gap: 10px; }
 .set-colorinput { width: 48px; height: 24px; padding: 0; border: 1px solid #8e8f8f; background: none; }
+
+.set-section .set-check { display: flex; margin: 6px 0; }
+.set-seg { display: inline-flex; }
+.set-segbtn { padding: 4px 16px; border: 1px solid #8e8f8f; background: linear-gradient(#f6f6f6, #dedede); cursor: default; }
+.set-segbtn + .set-segbtn { margin-left: -1px; }
+.set-segbtn.sel { background: linear-gradient(#cfe4f8, #a9d0f2); border-color: #2c628b; position: relative; }

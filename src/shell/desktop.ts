@@ -2,10 +2,12 @@ import { blurWindows, showDesktop } from '../core/wm';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { settings } from '../core/settings';
+import { h } from '../ui/dom';
 import { menuIcon, openMenu } from '../ui/menu';
 import { openOverview } from './overview';
 import { mountAmbience } from './ambience';
 import { mountDeskIcons } from './deskicons';
+import { VERSION } from '../apps/about';
 import { fs } from '../core/fs';
 import { createWallpaperLayer, resolveWallpaperId, wallpapers } from './wallpapers';
 
@@ -40,6 +42,9 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
     window.setTimeout(() => old.destroy(), 650);
   });
   mountAmbience();
+
+  // Like Windows 7's build watermark: sits above the wallpaper, below windows.
+  wall.el.after(h('div', { class: 'desk-version' }, h('span', {}, 'MWX 7'), h('span', {}, `Version ${VERSION}`)));
 
   mountDeskIcons(iconLayer);
 

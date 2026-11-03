@@ -14,6 +14,11 @@ const defaults: Settings = {
   volume: 0.8,
   glassColor: '#1e64dc',
   glassIntensity: 0,
+  clock24: false,
+  clockSeconds: false,
+  dockMagnify: true,
+  dockSize: 'medium',
+  showDesktopIcons: true,
 };
 
 let current: Settings = { ...defaults };
