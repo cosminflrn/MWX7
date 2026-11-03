@@ -76,7 +76,7 @@ export function imageUrl(it: Item): string {
   const key = `${it.path}|${it.modified}`;
   let url = urlCache.get(key);
   if (!url) {
-    url = it.content.startsWith('data:') ? it.content : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(it.content)}`;
+    url = it.content.startsWith('mwx-media:') ? import.meta.env.BASE_URL + it.content.slice(10) : it.content.startsWith('data:') ? it.content : `data:image/svg+xml;charset=utf-8,${encodeURIComponent(it.content)}`;
     if (urlCache.size > 200) urlCache.clear();
     urlCache.set(key, url);
   }
