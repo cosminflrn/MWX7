@@ -85,11 +85,11 @@
   background: var(--glass-streaks), linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.08)), var(--glass-tint);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 -1px 0 rgba(0, 25, 80, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 8px rgba(0, 20, 50, 0.18);
-  /* White text with a dark halo (Win7 taskbar) stays readable at any tint */
-  color: #fff;
-  /* Win7-style drop shadow keeps white text legible on clear glass */
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65), 0 0 8px rgba(0, 12, 35, 0.55);
+  /* No outline, just a soft shadow below */
+  box-shadow: 0 1px 10px rgba(0, 20, 50, 0.22);
+  /* Black text on a soft white glow, like Win7 caption text: legible on clear or tinted glass */
+  color: #000;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.95), 0 0 10px rgba(255, 255, 255, 0.8), 0 0 16px rgba(255, 255, 255, 0.5);
 }
 
 .mb-left,

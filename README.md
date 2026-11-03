@@ -4,7 +4,7 @@
 
 **The dream desktop.**
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.7 “Crystal”
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.8
 
 ![MWX 7 desktop](docs/screenshot.jpg)
 

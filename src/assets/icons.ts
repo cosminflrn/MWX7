@@ -112,7 +112,6 @@ export const icons = {
   paint: png('paint'),
   pinball: png('pinball'),
   drive: png('drive'),
-  desktop: png('desktop'),
   image: png('image'),
 } as const;
 

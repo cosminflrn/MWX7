@@ -6,7 +6,7 @@ import { h } from '../../ui/dom';
 import './settings.css';
 
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
-const VERSION = '0.7.2';
+const VERSION = '0.8.0';
 
 type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'desktop' | 'dock' | 'datetime' | 'sound' | 'system';
 

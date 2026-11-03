@@ -5,7 +5,7 @@ import { h } from '../../ui/dom';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '0.7.2';
+const VERSION = '0.8.0';
 
 interface Tile {
   icon: string;
