@@ -544,3 +544,7 @@
   .xp-ex .ex-chead,
   .xp-ex .ex-crow { grid-template-columns: minmax(120px, 1fr) 100px 80px 80px; }
 }
+
+.xp-ex .ex-btn-ico { width: 16px; height: 16px; display: block; }
+.xp-ex .ex-quick { padding: 0 5px; }
+.xp-ex .ex-quick:disabled .ex-btn-ico { opacity: 0.4; filter: grayscale(1); }

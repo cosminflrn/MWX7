@@ -320,7 +320,7 @@ export const explorer: AppManifest = {
       };
       nav.append(
         h('div', { class: 'ex-nav-head' }, h('span', { html: G.star }), 'Favorites'),
-        ...NAV_FAVORITES.map((f) => entry(f.name, f.path, f.path === '/Desktop' ? icons.folder : folderIcon(f.path))),
+        ...NAV_FAVORITES.map((f) => entry(f.name, f.path, f.path === '/Desktop' ? icons.folder : folderIcon(f.path), 'nested')),
         entry('My Computer', COMPUTER, icons.computer, 'group'),
         entry(DRIVE_NAME, '/', driveIcon, 'nested'),
         entry('Trash', TRASH, trashCount ? icons.trashFull : icons.trash, 'group'),
@@ -329,10 +329,12 @@ export const explorer: AppManifest = {
 
     const renderCommands = () => {
       const chosen = selected();
-      const btn = (label: string, onclick: (e: MouseEvent) => void, opts: { disabled?: boolean; caret?: boolean } = {}) =>
+      const ico = (name: string) => h('img', { class: 'ex-btn-ico', src: menuIcon(name), alt: '', draggable: false });
+      const btn = (label: string, onclick: (e: MouseEvent) => void, opts: { disabled?: boolean; caret?: boolean; icon?: string } = {}) =>
         h(
           'button',
           { class: 'ex-btn', disabled: opts.disabled, onclick },
+          opts.icon ? ico(opts.icon) : null,
           label,
           opts.caret ? h('span', { class: 'ex-caret', html: G.caret }) : null,
         );
@@ -342,8 +344,11 @@ export const explorer: AppManifest = {
           const r = organize.getBoundingClientRect();
           openMenu(organizeMenu(), { x: r.left, y: r.bottom + 1 }, { anchor: organize });
         },
-        { caret: true },
+        { caret: true, icon: 'settings' },
       );
+      // Icon-only quick commands keep the bar compact; the tooltip carries the name.
+      const quick = (label: string, icon: string, onclick: () => void, disabled: boolean) =>
+        h('button', { class: 'ex-btn ex-quick', disabled, title: label, 'aria-label': label, onclick }, ico(icon));
       const seg = (v: View, label: string, glyph: string) =>
         h('button', {
           class: `ex-seg${view === v ? ' on' : ''}`,
@@ -356,7 +361,17 @@ export const explorer: AppManifest = {
 
       const parts: Node[] = [organize];
       if (chosen.length) parts.push(btn('Open', () => void openSelection()));
-      parts.push(h('span', { class: 'ex-cmd-sep' }), btn('New folder', () => void newFolder(), { disabled: !isReal() || inTrash(loc) }));
+      parts.push(h('span', { class: 'ex-cmd-sep' }), btn('New folder', () => void newFolder(), { disabled: !isReal() || inTrash(loc), icon: 'new-folder' }));
+      const has = chosen.length > 0;
+      parts.push(
+        h('span', { class: 'ex-cmd-sep' }),
+        quick('Cut', 'cut', () => setClipboard(true), !has),
+        quick('Copy', 'copy', () => setClipboard(false), !has),
+        quick('Paste', 'paste', () => paste(), !clipboard || !isReal()),
+        quick('Delete', 'delete', () => deleteSelection(), !has),
+        quick('Rename', 'rename', () => startRename(), sel.size !== 1),
+        quick('Properties', 'properties', () => void showProperties(), !isReal() && !has),
+      );
       if (loc === TRASH) parts.push(btn('Restore', () => void restore(), { disabled: !chosen.length }), btn('Empty Trash', emptyTrash, { disabled: !trashCount }));
       cmdBar.replaceChildren(
         ...parts,

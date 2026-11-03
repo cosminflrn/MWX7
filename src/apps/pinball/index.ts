@@ -2,6 +2,7 @@ import type { AppManifest, MenuDef } from '../../core/types';
 import { h } from '../../ui/dom';
 import { Sfx } from './audio';
 import { Music } from './music';
+import { showTutorial } from './tutorial';
 import { BALL_SAVE_SECONDS, Game, RANKS } from './game';
 import { pinballIcon } from './icon';
 import './pinball.css';
@@ -130,7 +131,15 @@ export const pinball: AppManifest = {
     };
     const isPlunger = (c: string) => c === 'ArrowUp' || c === 'Space' || c === 'ArrowDown';
 
-    win.body.addEventListener('keydown', (e) => {
+    // Listen on window, not win.body: clicking the title bar or dock moves focus off the body, which silently killed the keys.
+    // Instead the game reacts whenever its own window is the active one (and the user isn't typing in a field).
+    const isActive = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return false;
+      return !!win.body.closest('.window.active, .active');
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isActive(e)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       wake();
       if (e.code in flipKeys || isPlunger(e.code)) e.preventDefault();
@@ -147,13 +156,16 @@ export const pinball: AppManifest = {
         if (game.phase === 'over') newGame();
         else game.setPlunger(true);
       }
-    });
-    win.body.addEventListener('keyup', (e) => {
+    };
+    window.addEventListener('keydown', onKeyDown);
+    // keyup is never gated: a key released after focus moved away must still let go of the flipper.
+    const onKeyUp = (e: KeyboardEvent) => {
       if (e.code in flipKeys) {
         held.delete(e.code);
         refreshFlippers();
       } else if (isPlunger(e.code)) game.setPlunger(false);
-    });
+    };
+    window.addEventListener('keyup', onKeyUp);
     // Desktop only, keyboard only: there is deliberately no mouse / touch handling for gameplay.
     // Audio fallback: if the browser still holds the context suspended at mount, the first click or key in the window starts it.
     const wake = () => {
@@ -162,7 +174,6 @@ export const pinball: AppManifest = {
       music.start();
     };
     win.body.addEventListener('pointerdown', wake, true);
-    win.body.addEventListener('keydown', wake, true);
 
     // Losing focus never pauses the game, but a key released elsewhere must not stay "held".
     const onBlur = () => releaseAll();
@@ -288,6 +299,12 @@ export const pinball: AppManifest = {
     };
     raf = requestAnimationFrame(frame);
     setTimeout(() => win.body.focus(), 50);
+    showTutorial(win.body, 'pb', 'How to play Space Pinball', [
+      'Hold Z / Left Arrow for the left flipper, / or Right Arrow for the right.',
+      'Hold Space or Down Arrow to pull the plunger, release to launch.',
+      'Hit targets and bumpers to score; keep the ball in play.',
+      'F2 starts a new game, M mutes sound.',
+    ], () => win.body.focus());
 
     win.onBeforeClose(() => {
       game.persistHigh();
@@ -298,6 +315,8 @@ export const pinball: AppManifest = {
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener('blur', onBlur);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       game.persistHigh();
       music.dispose();
       sfx.setMuted(true);
