@@ -185,8 +185,8 @@ function photoLayer(id: string): Layer {
     });
   };
 
-  // The 1440p clip only on screens that can show it; 1080p elsewhere (less than half the decode work).
-  const hd = id === 'meadow' && window.screen.width * (window.devicePixelRatio || 1) > 2200;
+  // Highest quality the screen can show: 1440p on anything above 1080p, 1080p otherwise (identical there).
+  const hd = id === 'meadow' && Math.max(window.screen.width, window.screen.height) * (window.devicePixelRatio || 1) > 1920;
   video.src = media(hd ? `${id}-hd.mp4` : `${id}.mp4`);
   tryPlay();
 
@@ -310,8 +310,7 @@ function auroraRenderer(scale = 0.6, maxW = 1280, live = false): Renderer {
   return {
     canvas,
     overlay: live ? glow : undefined,
-    // 30 fps is indistinguishable for this slow ribbon and halves the work.
-    frameMs: 1000 / 30,
+    frameMs: 1000 / 60,
     resize(cssW, cssH) {
       const k = Math.min(scale, maxW / Math.max(1, cssW));
       W = Math.max(2, Math.round(cssW * k));

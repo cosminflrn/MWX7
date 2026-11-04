@@ -420,14 +420,27 @@ const scrolls = new WeakMap<Win, ScrollMap>();
  * One live copy of the window — exactly as it looks right now: focus, scroll, typed text, canvas
  * pixels, frame and shadow. Real DOM, so text stays crisp, and nothing has to be rasterized first.
  */
+/** Animated elements of a copy, paired with their originals (to freeze them at the same frame). */
+const animPairs = new WeakMap<HTMLElement, Array<[Element, Element]>>();
+
 function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
   const c = w.el.cloneNode(true) as HTMLElement;
+  const src = w.el.querySelectorAll('*');
+  const dst = c.querySelectorAll('*');
+  const pairs: Array<[Element, Element]> = [];
+  src.forEach((n, i) => {
+    if (n.getAnimations().length && dst[i]) pairs.push([n, dst[i]]);
+  });
+  animPairs.set(c, pairs);
   c.querySelectorAll('.rz').forEach((n) => n.remove());
   // An iframe copy would reload its page; a blank page stands in for the few frames it is visible.
   c.querySelectorAll('iframe').forEach((f) => f.replaceWith(Object.assign(document.createElement('div'), { style: 'background:#fff;width:100%;height:100%' })));
+  // Typed text is written into the markup, so further clones of this copy carry it for free.
   const srcF = w.el.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea');
   c.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea').forEach((f, i) => {
-    if (srcF[i]) f.value = srcF[i].value;
+    if (!srcF[i]) return;
+    if (f instanceof HTMLTextAreaElement) f.textContent = srcF[i].value;
+    else f.setAttribute('value', srcF[i].value);
   });
   const srcC = w.el.querySelectorAll('canvas');
   c.querySelectorAll('canvas').forEach((cv, i) => {
@@ -451,6 +464,29 @@ function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
     left: `${PAD}px`, top: '0px', display: '', visibility: 'visible', opacity: '1', transform: 'none', zIndex: '0', transition: 'none',
   });
   c.dataset.scroll = JSON.stringify(scroll);
+  return c;
+}
+
+/**
+ * Every further strip clones the finished first copy (one fast native clone) instead of rebuilding it from
+ * the live window — the expensive part (style lookups over every element) now happens once, not 20 times.
+ */
+function cloneCopy(w: Win, tpl: HTMLElement): HTMLElement {
+  const c = tpl.cloneNode(true) as HTMLElement;
+  const srcC = w.el.querySelectorAll('canvas');
+  c.querySelectorAll('canvas').forEach((cv, i) => {
+    try {
+      cv.getContext('2d')?.drawImage(srcC[i], 0, 0);
+    } catch {
+      /* nothing drawn yet */
+    }
+  });
+  const tAll = [...tpl.querySelectorAll('*')];
+  const cAll = c.querySelectorAll('*');
+  animPairs.set(
+    c,
+    (animPairs.get(tpl) ?? []).map(([o, d]) => [o, cAll[tAll.indexOf(d)]] as [Element, Element]).filter(([, d]) => !!d),
+  );
   return c;
 }
 
@@ -586,7 +622,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   t = new DOMRect(t.left + t.width * 0.18, shelfTop - t.height * 0.25, t.width * 0.64, t.height * 0.6);
   const layer = document.createElement('div');
   layer.className = 'genie-layer';
-  const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
+  // Enough strips for a smooth curve; each one is a full window copy to lay out, so not more than needed.
+  const n = Math.max(12, Math.min(20, Math.round(r.h / 34)));
   // Whole-pixel strip boundaries: every copy sits at an integer offset, so nothing shifts by a sub-pixel.
   // The whole title bar (and the shadow above it) is one strip, so no seam ever crosses the traffic lights
   // or the caption; the body below is split evenly.
@@ -600,6 +637,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const HS = B.slice(0, -1).map((b, i) => B[i + 1] - b + (i < n - 1 && B[i + 1] > bodyTop && B[i + 1] < bodyBottom ? 1 : 0));
   const strips: HTMLElement[] = [];
   const copies: HTMLElement[] = [];
+  let tpl: HTMLElement | null = null;
   const maximized = w.el.classList.contains('maximized');
   const clipper = document.createElement('div');
   clipper.className = 'genie-clip';
@@ -616,7 +654,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       const e = HS[i] - 1;
       s.style.clipPath = `polygon(0 0, 100% 0, 100% ${e}px, ${b}px ${e}px, ${b}px 100%, ${a}px 100%, ${a}px ${e}px, 0 ${e}px)`;
     }
-    const c = copyOf(w, scroll);
+    const c = i === 0 ? (tpl = copyOf(w, scroll)) : cloneCopy(w, tpl!);
     // The soft shadow is drawn once around the funnel's outline (canvas below); copies keep only the 1px rings.
     c.style.boxShadow = maximized ? 'none' : 'var(--glass-ring)';
     copies.push(c);
@@ -773,6 +811,28 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   void decoded.then(() => {
     document.body.append(layer);
     for (const s of strips) applyScroll(s.firstElementChild!, scroll);
+    // Copies would restart every CSS animation (entrance pops, floating icons) — twenty times over, which
+    // is what made animated windows like Welcome lag. Each copy is frozen at the original's current frame.
+    // One style flush for the whole layer (asking element by element cost ~130 ms on animated windows).
+    const origOf = new Map<Element, Element>();
+    for (const c of copies) for (const [o, d] of animPairs.get(c) ?? []) origOf.set(d, o);
+    const times = new Map<Element, Map<string, CSSNumberish | null>>();
+    for (const a of layer.getAnimations({ subtree: true })) {
+      const target = (a.effect as KeyframeEffect | null)?.target;
+      const o = target && origOf.get(target);
+      const name = (a as CSSAnimation).animationName ?? '';
+      if (o) {
+        let t = times.get(o);
+        if (!t) {
+          t = new Map();
+          for (const oa of o.getAnimations()) t.set((oa as CSSAnimation).animationName ?? '', oa.currentTime);
+          times.set(o, t);
+        }
+        const ct = t.get(name);
+        if (ct != null) a.currentTime = ct;
+      }
+      a.pause();
+    }
     layer.style.visibility = '';
     onShown();
     start = performance.now();
