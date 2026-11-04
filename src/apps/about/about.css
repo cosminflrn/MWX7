@@ -27,3 +27,7 @@
 .about-specs dt { color: #6b7b90; text-align: right; }
 .about-specs dd { margin: 0; color: #1d2b3c; }
 .about-link { font-size: 12px; color: #1662c4; }
+
+.about-new { margin: 0 0 10px; font-size: 12px; color: #1d2b3c; text-align: left; max-width: 100%; }
+.about-new summary { cursor: pointer; color: #1662c4; text-align: center; }
+.about-new ul { margin: 6px 0 0; padding-left: 18px; }
