@@ -141,6 +141,8 @@ export interface OSApi {
   focusWindow(id: string): void;
   /** Closes a window; `force` skips the app's before-close veto. */
   closeWindow(id: string, force?: boolean): void;
+  /** Extra items (e.g. mini player controls) the dock shows at the top of this app's right-click menu. Pass null to remove. */
+  setJumpList(appId: string, provider: (() => MenuItem[]) | null): void;
   settings: {
     get(): Settings;
     set(patch: Partial<Settings>): void;

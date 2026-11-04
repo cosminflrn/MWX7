@@ -83,7 +83,7 @@ const NOTES: Record<string, string> = {
 
 // Pointer files for the bundled media (same format Photo Viewer / Media Player seed themselves; apps can't import each other).
 const PICS = ['Cliffs and Bay:cliffs-and-bay', 'Alpine Lake:alpine-lake', 'Snowy Peaks and Moon:snowy-peaks-moon', 'Aurora over Snow:aurora-over-snow', 'Coastal Ridge:coastal-ridge', 'White Sand Beach:white-sand-beach'];
-const TRACKS = ['Variatio 1:1', 'Variatio 4:4', 'Variatio 5:5'];
+const TRACKS = ['Variatio 1:1', 'Variatio 2:2', 'Variatio 4:4', 'Variatio 5:5', 'Variatio 6:6', 'Variatio 8:8', 'Variatio 10:10', 'Variatio 18:18'];
 
 async function seedMedia(fs: VFS): Promise<void> {
   const has = async (dir: string, re: RegExp) => (await fs.list(dir)).some((f) => f.type !== 'dir' && re.test(f.name));

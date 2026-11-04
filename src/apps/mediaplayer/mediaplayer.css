@@ -86,3 +86,6 @@
 }
 .mp-play:hover { filter: brightness(1.12); }
 .mp-play:active { filter: brightness(0.9); }
+
+.mp .mp-art { width: 36px; height: 36px; flex: none; border-radius: 6px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); object-fit: cover; }
+.mp .mp-item { align-items: center; }
