@@ -472,7 +472,17 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
   return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${c},${f},0,1)`;
 }
 
-function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onShown: () => void = () => {}): Promise<void> {
+interface GenieRun {
+  /** Resolves true when it played to the end, false when another animation took over. */
+  done: Promise<boolean>;
+  /** Current progress (0 = window in place, 1 = inside the dock). */
+  P(): number;
+  /** Stop here; the layer stays on screen until the replacing animation shows its own (no blank frame). */
+  interrupt(): () => void;
+}
+const genies = new Map<Win, GenieRun>();
+
+function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: number, onShown: () => void = () => {}): GenieRun {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
   // Funnel into the icon's width right at the dock's edge, so the window is already narrow when it slides
@@ -502,9 +512,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
     // where strips meet and flickered as they stretched. The crisp frame rings stay on the copies.
     c.style.boxShadow = w.el.classList.contains('maximized') ? 'none' : 'var(--glass-ring)';
     copies.push(c);
-    // Only the strips showing the title bar need the live blur (the rest is the opaque body plus an 8px
-    // border): two backdrop passes instead of dozens keeps every frame cheap.
-    if (B[i] > PAD + 44) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
+    // Only the title-bar strip keeps the live blur (the rest is the opaque body plus an 8px border).
+    if (i > 0) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
     c.style.top = `${PAD - B[i]}px`;
     s.append(c);
     clipper.append(s);
@@ -547,6 +556,9 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
     const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
     shade.style.opacity = String(1 - smooth(clamp01(P / 0.3)));
+    // The title-bar strip moves as an affine parallelogram: backdrop blur on a perspective (matrix3d) layer
+    // re-samples differently every frame and shimmered. The next strip starts exactly on its bottom edge.
+    let carry: [number, number, number] | null = null;
     for (let i = 0; i < n; i++) {
       const y0 = Y(B[i] / r.h, P);
       // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
@@ -555,27 +567,62 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
       const [lb, rb] = edge((B[i] + HS[i]) / r.h, P);
       // Continuous (not pixel-snapped) corners: snapping made strips stretch in 1px steps, which made the
       // lights and shadows flicker. Content offsets are whole pixels, so the first frame is exact.
+      if (i === 0) {
+        const dx = (lb + rb - lt - rt) / 2;
+        const sx = (rt - lt) / r.w;
+        const sy = (y1 - y0) / HS[0];
+        strips[0].style.transform = `matrix(${sx}, 0, ${dx / HS[0]}, ${sy}, ${lt}, ${y0})`;
+        // where the next strip must begin (its top edge = this strip's bottom edge, minus the 1px overlap)
+        const k = (HS[0] - 1) / HS[0];
+        carry = [lt + dx * k, rt + dx * k, y0 + (y1 - y0) * k];
+        continue;
+      }
+      if (carry) {
+        const [cl, cr, cy] = carry;
+        carry = null;
+        strips[i].style.transform = quad(r.w, HS[i], cl, cy, cr, cy, rb, y1, lb, y1);
+        continue;
+      }
       strips[i].style.transform = quad(r.w, HS[i], lt, y0, rt, y0, rb, y1, lb, y1);
     }
   };
-  place(reverse ? 1 : 0);
-
-  return decoded.then(() => new Promise<void>((resolve) => {
+  let cur = from;
+  let raf = 0;
+  let stopped = false;
+  let finish: (ok: boolean) => void = () => {};
+  place(cur);
+  // A click mid-animation turns it around from wherever it is, at the same speed.
+  const ms = Math.max(140, GENIE_MS * Math.abs(to - from));
+  const done = new Promise<boolean>((resolve) => (finish = resolve));
+  void decoded.then(() => {
+    if (stopped) return;
     layer.style.visibility = '';
     onShown();
     const start = performance.now();
     const frame = (now: number) => {
-      const p = Math.min(1, (now - start) / GENIE_MS);
+      if (stopped) return;
+      const p = Math.min(1, (now - start) / ms);
       const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-      place(reverse ? 1 - e : e);
-      if (p < 1) requestAnimationFrame(frame);
+      cur = from + (to - from) * e;
+      place(cur);
+      if (p < 1) raf = requestAnimationFrame(frame);
       else {
         layer.remove();
-        resolve();
+        finish(true);
       }
     };
-    requestAnimationFrame(frame);
-  }));
+    raf = requestAnimationFrame(frame);
+  });
+  return {
+    done,
+    P: () => cur,
+    interrupt() {
+      stopped = true;
+      cancelAnimationFrame(raf);
+      finish(false);
+      return () => layer.remove();
+    },
+  };
 }
 
 function fade(w: Win, reverse: boolean): Promise<void> {
@@ -597,18 +644,29 @@ export function minimizeWindow(id: string): void {
   if (!w || w.minimized) return;
   w.minimized = true;
   const target = minimizeTarget(w.appId);
-  const scroll = readScroll(w.el);
+  // Interrupting a restore: turn around from where it is (its window copies are already on screen).
+  const prev = genies.get(w);
+  const from = prev ? prev.P() : 0;
+  const dispose = prev?.interrupt();
+  const scroll = prev ? scrolls.get(w) ?? [] : readScroll(w.el);
   scrolls.set(w, scroll);
   play('minimize');
   void (async () => {
-    // The copies take over in the same frame the window hides; it keeps its focus until the end.
     if (target && !reducedMotion()) {
-      // The real window hides in the very frame the copies appear.
-      // visibility (not display) hides it: the copies' SVG icons take their gradients from the original's
-      // <defs> (same ids), and display:none would switch those off and paint the icons white.
-      await runGenie(w, scroll, target, false, () => (w.el.style.visibility = 'hidden'));
+      // visibility (not display) hides the real window: the copies' SVG icons take their gradients from
+      // the original's <defs> (same ids), and display:none would paint those icons white.
+      const g = runGenie(w, scroll, target, from, 1, () => {
+        w.el.style.visibility = 'hidden';
+        dispose?.();
+      });
+      genies.set(w, g);
+      if (!(await g.done)) return; // a restore took over
+      genies.delete(w);
       w.el.style.visibility = '';
-    } else await fade(w, false);
+    } else {
+      dispose?.();
+      await fade(w, false);
+    }
     // Only now does the rest of the shell hear about it: the top bar keeps its full-screen look and the
     // window its focus for the whole animation.
     bus.emit('window:minimize', w);
@@ -629,6 +687,7 @@ function restore(w: Win): void {
   const target = minimizeTarget(w.appId);
   const scroll = scrolls.get(w) ?? [];
   bus.emit('window:restore', w);
+  const prev = genies.get(w);
   const show = () => {
     w.el.style.display = '';
     w.el.style.visibility = '';
@@ -636,29 +695,33 @@ function restore(w: Win): void {
     applyScroll(w.el, scroll);
   };
   if (!target || reducedMotion()) {
+    prev?.interrupt()();
+    genies.delete(w);
     show();
     void fade(w, true);
     return;
   }
   // Focused from the first frame: the copies wear the active look the window will have.
   w.el.classList.add('active');
-  // Restoring from an Aero Peek thumbnail: Peek is already showing the window in place, so (like Win7)
-  // it simply stays — cancelling Peek's fade-out keeps it perfectly still, no vanish-and-regrow.
-  const peeked = w.el.style.display !== 'none';
   w.el.getAnimations().forEach((a) => a.cancel());
-  if (peeked) {
+  // Restoring from an Aero Peek thumbnail: Peek is already showing the window in place, so (like Win7)
+  // it simply stays.
+  if (!prev && w.el.style.display !== 'none') {
     w.el.style.visibility = '';
     return;
   }
+  // Interrupting a minimize: turn around from where it is.
+  const from = prev ? prev.P() : 1;
+  const dispose = prev?.interrupt();
   w.el.style.display = '';
   w.el.style.visibility = 'hidden';
   applyScroll(w.el, scroll);
-  void runGenie(w, scroll, target, true).then(() => {
-    if (!w.minimized) show();
-    else {
-      w.el.style.display = 'none';
-      w.el.style.visibility = '';
-    }
+  const g = runGenie(w, scroll, target, from, 0, () => dispose?.());
+  genies.set(w, g);
+  void g.done.then((ok) => {
+    if (!ok) return; // a minimize took over
+    genies.delete(w);
+    show();
   });
 }
 
