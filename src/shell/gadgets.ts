@@ -73,14 +73,25 @@ function buildClock() {
      <text x="50" y="33" text-anchor="middle" font-size="5.4" letter-spacing="1.2" fill="#5b6c82" font-family="Selawik,Segoe UI,sans-serif">MWX 7</text>
      <g class="gdg-h" data-h><path d="M48.2 56 L49 29 Q50 26 51 29 L51.8 56Z" fill="#1d2a3c"/></g>
      <g class="gdg-h" data-m><path d="M48.6 58 L49.3 17 Q50 14 50.7 17 L51.4 58Z" fill="#1d2a3c"/></g>
-     <g class="gdg-h" data-s><line x1="50" y1="60" x2="50" y2="13" stroke="#d6341f" stroke-width="1"/><circle cx="50" cy="50" r="2.6" fill="#d6341f"/></g>
-     <circle cx="50" cy="50" r="1.1" fill="#f6d2cb"/>
      <path d="M12 38C16 18 32 8 50 8S84 18 88 38C74 29 64 27 50 27S26 29 12 38Z" fill="url(#gdg-shine)" opacity=".55"/>`,
     'gdg-clock-art',
   );
-  const el = card('Clock', 'gdg-clock', [art]);
+  // The second hand is its own layer, swept by a CSS animation on the compositor: no JavaScript or repaint
+  // per frame (it used to rewrite an SVG transform 60 times a second).
+  const sec = svg(
+    '0 0 100 100',
+    `<line x1="50" y1="60" x2="50" y2="13" stroke="#d6341f" stroke-width="1"/><circle cx="50" cy="50" r="2.6" fill="#d6341f"/><circle cx="50" cy="50" r="1.1" fill="#f6d2cb"/>`,
+    'gdg-sec',
+  );
+  const face = h('div', { class: 'gdg-face' }, art, sec);
+  const el = card('Clock', 'gdg-clock', [face]);
   const hand = (k: string) => el.querySelector<SVGGElement>(`[data-${k}]`)!;
-  const hH = hand('h'), hM = hand('m'), hS = hand('s');
+  const hH = hand('h'), hM = hand('m');
+  const sync = () => {
+    const d = new Date();
+    sec.style.animationDelay = `-${d.getSeconds() + d.getMilliseconds() / 1000}s`;
+  };
+  sync();
   return {
     el,
     /** Hour + minute hands (cheap; called once a second). */
@@ -89,11 +100,8 @@ function buildClock() {
       hM.style.transform = `rotate(${m * 6}deg)`;
       hH.style.transform = `rotate(${((d.getHours() % 12) + m / 60) * 30}deg)`;
     },
-    /** Sweeping second hand: one transform write per frame. */
-    sweep(now: number) {
-      const d = new Date(now);
-      hS.style.transform = `rotate(${(d.getSeconds() + d.getMilliseconds() / 1000) * 6}deg)`;
-    },
+    /** Re-align the sweeping hand (after the clock was hidden, or the tab slept). */
+    sync,
   };
 }
 
@@ -344,16 +352,9 @@ export function mountGadgets(desktop: HTMLElement): void {
     });
   }
 
-  // One loop: sweeping second hand + frame-timing sampling. Idle (no frames) when hidden.
-  let raf = 0;
-  let last = 0;
+  // No per-frame loop at all: the CPU meter reads main-thread long tasks, the clock sweeps on the compositor.
   let jank = 0;
-  const frame = (t: number) => {
-    if (last) jank += Math.max(0, t - last - 17);
-    last = t;
-    clock.sweep(Date.now());
-    raf = requestAnimationFrame(frame);
-  };
+  let po: PerformanceObserver | null = null;
   const tick = () => {
     const d = new Date();
     clock.slow(d);
@@ -364,15 +365,21 @@ export function mountGadgets(desktop: HTMLElement): void {
   let timer = 0;
   wake = () => {
     const run = shown && live && !document.hidden;
-    if (run && !raf) {
-      last = 0;
-      raf = requestAnimationFrame(frame);
+    if (run && !timer) {
+      clock.sync();
       tick();
       timer = window.setInterval(tick, 1000);
-    } else if (!run && raf) {
-      cancelAnimationFrame(raf);
-      raf = 0;
+      try {
+        po = new PerformanceObserver((l) => l.getEntries().forEach((e) => (jank += e.duration)));
+        po.observe({ type: 'longtask', buffered: false });
+      } catch {
+        /* not supported: the meter shows the idle baseline */
+      }
+    } else if (!run && timer) {
       clearInterval(timer);
+      timer = 0;
+      po?.disconnect();
+      po = null;
     }
   };
   document.addEventListener('visibilitychange', wake);
