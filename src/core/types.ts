@@ -141,6 +141,8 @@ export interface OSApi {
   focusWindow(id: string): void;
   /** Closes a window; `force` skips the app's before-close veto. */
   closeWindow(id: string, force?: boolean): void;
+  /** Remember a file this app opened (session-only, max 8) for the dock "Recent" list. */
+  addRecent(path: string): void;
   settings: {
     get(): Settings;
     set(patch: Partial<Settings>): void;

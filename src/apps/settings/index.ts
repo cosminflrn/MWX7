@@ -8,7 +8,7 @@ import './settings.css';
 // Apps may not import each other, so this mirrors the About app's VERSION. Keep them in step on release.
 const VERSION = '0.9.29';
 
-type SectionId = 'wallpapers' | 'accounts' | 'wincolor' | 'desktop' | 'dock' | 'datetime' | 'sound' | 'system';
+type SectionId = 'themes' | 'wallpapers' | 'accounts' | 'wincolor' | 'desktop' | 'dock' | 'datetime' | 'sound' | 'system';
 
 interface Section {
   id: SectionId;
@@ -17,6 +17,7 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
+  { id: 'themes', title: 'Themes', icon: icons.desktop },
   { id: 'wallpapers', title: 'Wallpapers', icon: icons.pictures },
   { id: 'accounts', title: 'User account', icon: icons.avatar },
   { id: 'wincolor', title: 'Window Color', icon: icons.settings },
@@ -48,6 +49,45 @@ export const settingsApp: AppManifest = {
     const lead = (text: string) => h('p', { class: 'set-lead' }, text);
     const sub = (text: string) => h('h2', { class: 'set-h2' }, text);
     const section = (id: SectionId, ...kids: (HTMLElement | string)[]) => h('section', { class: 'set-section', id: `set-${id}`, 'data-sec': id }, ...kids);
+
+    // ---- Themes: wallpaper + window colour in one click ----
+    const THEMES = [
+      { id: 'mwx7', name: 'MWX 7', wallpaper: 'meadow', glassColor: '#1e64dc', glassIntensity: 0 },
+      { id: 'aurora', name: 'Aurora', wallpaper: 'aurora', glassColor: '#1b3f9e', glassIntensity: 60 },
+      { id: 'sierra', name: 'Sierra', wallpaper: 'sierra', glassColor: '#5f6b78', glassIntensity: 45 },
+      { id: 'dusk', name: 'Dusk', wallpaper: 'dusk', glassColor: '#7d4cc4', glassIntensity: 55 },
+    ];
+    const themesSection = () => {
+      const grid = h('div', { class: 'set-walls set-themes', role: 'listbox' });
+      const draw = () => {
+        const cur = os.settings.get();
+        grid.replaceChildren(
+          ...THEMES.map((t) => {
+            const on = cur.wallpaper === t.wallpaper && cur.glassColor.toLowerCase() === t.glassColor && cur.glassIntensity === t.glassIntensity;
+            return h(
+              'button',
+              {
+                class: `set-wall set-theme${on ? ' sel' : ''}`,
+                role: 'option',
+                'data-theme': t.id,
+                'aria-selected': String(on),
+                title: t.name,
+                onclick: () => {
+                  os.settings.set({ wallpaper: t.wallpaper, glassColor: t.glassColor, glassIntensity: t.glassIntensity });
+                  draw();
+                },
+              },
+              h('span', { class: 'set-wall-thumb', style: `background:${wallpaperThumb(t.wallpaper)}` }, h('span', { class: 'set-theme-glass', style: `background:${t.glassColor}` })),
+              h('span', { class: 'set-wall-name' }, t.name),
+            );
+          }),
+        );
+      };
+      draw();
+      // Other categories change the wallpaper/colour too; keep the ring honest.
+      content.addEventListener('click', () => setTimeout(draw));
+      return section('themes', heading('Change the visuals and sounds on your computer'), lead('Click a theme to set the desktop background and window color together.'), grid);
+    };
 
     // ---- Personalization -------------------------------------------------
     const wallpapersSection = () => {
@@ -241,7 +281,7 @@ export const settingsApp: AppManifest = {
       );
     };
 
-    const builders: Record<SectionId, () => HTMLElement> = { wallpapers: wallpapersSection, accounts, wincolor: windowColor, desktop: desktopSec, dock: dockSec, datetime: dateSec, sound, system };
+    const builders: Record<SectionId, () => HTMLElement> = { themes: themesSection, wallpapers: wallpapersSection, accounts, wincolor: windowColor, desktop: desktopSec, dock: dockSec, datetime: dateSec, sound, system };
     const sections = SECTIONS.map((x) => builders[x.id]());
     content.append(...sections);
 
@@ -285,7 +325,7 @@ export const settingsApp: AppManifest = {
 
     win.setTitle('Settings');
     win.body.append(side, content);
-    mark('wallpapers');
+    mark('themes');
 
     let raf = 0;
     const onScroll = () => {

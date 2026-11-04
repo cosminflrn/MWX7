@@ -51,6 +51,7 @@ export const notepad: AppManifest = {
         return;
       }
       path = p;
+      os.addRecent(p);
       text.value = content;
       setDirty(false);
       updateTitle();

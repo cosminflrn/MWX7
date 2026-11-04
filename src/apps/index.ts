@@ -9,6 +9,7 @@ import { notepad } from './notepad';
 import { paint } from './paint';
 import { photos } from './photos';
 import { pinball } from './pinball';
+import { snip } from './snip';
 import { solitaire } from './solitaire';
 import { settingsApp } from './settings';
 import { stickynotes } from './stickynotes';
@@ -20,5 +21,5 @@ import { welcome } from './welcome';
  * AppManifest, then add ONE line here. Order = Start menu / dock order.
  */
 export function registerAll(): void {
-  [explorer, browser, mediaplayer, notepad, paint, calculator, photos, stickynotes, taskmgr, pinball, solitaire, mines, minesIntermediate, minesExpert, settingsApp, about, welcome].forEach(registerApp);
+  [explorer, browser, mediaplayer, notepad, paint, calculator, photos, snip, stickynotes, taskmgr, pinball, solitaire, mines, minesIntermediate, minesExpert, settingsApp, about, welcome].forEach(registerApp);
 }
