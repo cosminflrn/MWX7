@@ -52,7 +52,16 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 // One listener for all layers; each layer pauses itself rather than relying on browser throttling,
 // which still decodes video in some engines.
 const visibilityHooks = new Set<(hidden: boolean) => void>();
-document.addEventListener('visibilitychange', () => visibilityHooks.forEach((f) => f(document.hidden)));
+// Also paused while a full-screen window covers the whole wallpaper: no decoding or redrawing (and no
+// re-blurring of glass over it) for pixels nobody can see.
+let covered = false;
+const paused = () => document.hidden || covered;
+document.addEventListener('visibilitychange', () => visibilityHooks.forEach((f) => f(paused())));
+export function setWallpaperCovered(on: boolean): void {
+  if (on === covered) return;
+  covered = on;
+  visibilityHooks.forEach((f) => f(paused()));
+}
 
 /* ------------------------------------------------------------------ shared bits */
 
@@ -176,7 +185,9 @@ function photoLayer(id: string): Layer {
     });
   };
 
-  video.src = media(`${id}.mp4`);
+  // The 1440p clip only on screens that can show it; 1080p elsewhere (less than half the decode work).
+  const hd = id === 'meadow' && window.screen.width * (window.devicePixelRatio || 1) > 2200;
+  video.src = media(hd ? `${id}-hd.mp4` : `${id}.mp4`);
   tryPlay();
 
   const onVis = (hidden: boolean) => {
@@ -299,7 +310,8 @@ function auroraRenderer(scale = 0.6, maxW = 1280, live = false): Renderer {
   return {
     canvas,
     overlay: live ? glow : undefined,
-    frameMs: 1000 / 60,
+    // 30 fps is indistinguishable for this slow ribbon and halves the work.
+    frameMs: 1000 / 30,
     resize(cssW, cssH) {
       const k = Math.min(scale, maxW / Math.max(1, cssW));
       W = Math.max(2, Math.round(cssW * k));

@@ -38,7 +38,11 @@
 .gdg-art { pointer-events: none; }
 
 .gdg-clock { height: 148px; padding: 8px; }
-.gdg-clock svg { filter: drop-shadow(0 2px 3px rgba(0, 10, 30, 0.45)); }
+.gdg-clock .gdg-clock-art { filter: drop-shadow(0 2px 3px rgba(0, 10, 30, 0.45)); }
+.gdg-face { position: relative; width: 100%; height: 100%; }
+.gdg-face > svg { width: 100%; height: 100%; display: block; }
+.gdg-sec { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; animation: gdg-sweep 60s linear infinite; }
+@keyframes gdg-sweep { to { transform: rotate(360deg); } }
 .gdg .gdg-h { transform-origin: 50px 50px; }
 
 .gdg-cal { height: 112px; padding: 0; }
