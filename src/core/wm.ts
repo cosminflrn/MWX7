@@ -436,6 +436,12 @@ function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
       /* nothing drawn yet */
     }
   });
+  // Keep the hover look of whatever the pointer is on (the minimize button, when it was clicked): a copy
+  // has no :hover, so the button's glyph used to dim the instant the animation took over.
+  const srcAll = w.el.querySelectorAll('*');
+  c.querySelectorAll('*').forEach((n, i) => {
+    if (srcAll[i]?.matches(':hover')) n.classList.add('is-hover');
+  });
   c.removeAttribute('id');
   c.classList.remove('anim', 'peek-target');
   // Copies keep the real backdrop blur, so the glass looks exactly like the window's. Their strips add up
@@ -545,7 +551,7 @@ function bakeGlass(w: Win): Promise<string | null> {
   const bf = getComputedStyle(w.el).backdropFilter;
   o.filter = bf && bf !== 'none' ? bf.replace(/blur\(([\d.]+)px\)/, (_, v) => `blur(${Number(v) * dpr}px)`) : 'none';
   o.drawImage(tmp, -cw, -ch);
-  return new Promise((res) => out.toBlob((b) => res(b ? URL.createObjectURL(b) : null)));
+  return new Promise((res) => out.toBlob((b) => res(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.95));
 }
 
 interface GenieRun {
@@ -646,9 +652,11 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     }
     bakedUrl = url;
   });
-  const decoded = Promise.race([
-    Promise.all([glass, ...imgs.map((im) => im.decode().catch(() => undefined))]),
-    new Promise((res) => window.setTimeout(res, 300)),
+  // The frozen glass must be in place before the first frame — showing live glass first and swapping
+  // it in later was the flicker at the click. Images get a short grace period.
+  const decoded = Promise.all([
+    glass,
+    Promise.race([Promise.all(imgs.map((im) => im.decode().catch(() => undefined))), new Promise((res) => window.setTimeout(res, 300))]),
   ]);
 
   const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
