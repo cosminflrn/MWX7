@@ -88,6 +88,26 @@ test('genie: window stays as it is, hides only when the animation shows, turns a
   expect(errors).toEqual([]);
 });
 
+test('traffic lights work right after leaving full screen (resize edge must not cover them)', async ({ page }) => {
+  await boot(page);
+  await closeAll(page);
+  await page.locator('.dock-item[data-label="My Computer"]').click();
+  const w = page.locator('#windows > .win[data-app=explorer]');
+  await page.waitForTimeout(700);
+  await w.locator('.wc-max').click({ force: true });
+  await page.waitForTimeout(700);
+  await page.locator('#menubar .mb-wc .wc-max').click({ force: true });
+  // Sample the edge where the lights sit for the whole restore animation: a resize handle must never be on top.
+  for (let t = 0; t < 6; t++) {
+    await page.waitForTimeout(50);
+    const r = (await w.locator('.wc-min').boundingBox())!;
+    const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className ?? '', [r.x + r.width / 2, r.y + r.height / 2]);
+    expect(hit).not.toContain('rz');
+  }
+  await w.locator('.wc-min').click();
+  await expect(w).toBeHidden({ timeout: 5000 });
+});
+
 test('dragging moves the window with a transform and commits it on release', async ({ page }) => {
   await boot(page);
   await closeAll(page);
