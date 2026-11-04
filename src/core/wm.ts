@@ -475,7 +475,10 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
 function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onShown: () => void = () => {}): Promise<void> {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
-  t = new DOMRect(t.left + t.width * 0.2, t.top + t.height * 0.15, t.width * 0.6, t.height * 0.6);
+  // Funnel into the icon's width right at the dock's edge, so the window is already narrow when it slides
+  // under the shelf (no wide, straight cut), and is fully faded by the time it is gone.
+  const shelfTop = document.querySelector('#dock .dock-shelf')?.getBoundingClientRect().top ?? t.top;
+  t = new DOMRect(t.left + t.width * 0.18, shelfTop - t.height * 0.25, t.width * 0.64, t.height * 0.6);
   const layer = document.createElement('div');
   layer.className = 'genie-layer';
   const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
@@ -524,7 +527,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   };
   const H = sh + 0.5;
   const place = (P: number) => {
-    const op = String(1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55)));
+    const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
     for (let i = 0; i < n; i++) {
       const y0 = Y(i / n, P);
