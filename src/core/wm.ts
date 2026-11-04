@@ -482,7 +482,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   const layer = document.createElement('div');
   layer.className = 'genie-layer';
   const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
-  const sh = r.h / n;
+  // Whole-pixel strip boundaries: every copy sits at an integer offset, so nothing shifts by a sub-pixel.
+  const B = Array.from({ length: n + 1 }, (_, i) => Math.round((i * r.h) / n));
   const strips: HTMLElement[] = [];
   const copies: HTMLElement[] = [];
   const clipper = document.createElement('div');
@@ -490,13 +491,13 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
     s.className = 'genie-strip';
-    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${sh + 0.5}px` });
+    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${B[i + 1] - B[i]}px` });
     const c = copyOf(w, scroll);
     copies.push(c);
     // Only the strips showing the title bar need the live blur (the rest is the opaque body plus an 8px
     // border): two backdrop passes instead of dozens keeps every frame cheap.
-    if (i * sh > PAD + 44) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
-    c.style.top = `${PAD - i * sh}px`;
+    if (B[i] > PAD + 44) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
+    c.style.top = `${PAD - B[i]}px`;
     s.append(c);
     clipper.append(s);
     strips.push(s);
@@ -525,17 +526,19 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
     const q = Q(v, P);
     return [lerp(r.x, t.left, q), lerp(r.x + r.w, t.right, q)];
   };
-  const H = sh + 0.5;
   const place = (P: number) => {
     const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
     for (let i = 0; i < n; i++) {
-      const y0 = Y(i / n, P);
-      // Half-pixel overlap: no seams, and no visible double glass where strips meet.
-      const y1 = Y((i + H / sh) / n, P);
-      const [lt, rt] = edge(i / n, P);
-      const [lb, rb] = edge((i + H / sh) / n, P);
-      strips[i].style.transform = quad(r.w, H, lt, y0, rt, y0, rb, y1, lb, y1);
+      const y0 = Y(B[i] / r.h, P);
+      // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
+      const y1 = Y(B[i + 1] / r.h, P);
+      const [lt, rt] = edge(B[i] / r.h, P);
+      const [lb, rb] = edge(B[i + 1] / r.h, P);
+      // Whole-pixel corners: neighbouring strips never drift apart by fractions of a pixel, so text that
+      // crosses a strip edge stays aligned and crisp (it shimmered at the start of the animation).
+      const R = Math.round;
+      strips[i].style.transform = quad(r.w, B[i + 1] - B[i], R(lt), R(y0), R(rt), R(y0), R(rb), R(y1), R(lb), R(y1));
     }
   };
   place(reverse ? 1 : 0);
@@ -579,7 +582,6 @@ export function minimizeWindow(id: string): void {
   const target = minimizeTarget(w.appId);
   const scroll = readScroll(w.el);
   scrolls.set(w, scroll);
-  bus.emit('window:minimize', w);
   play('minimize');
   void (async () => {
     // The copies take over in the same frame the window hides; it keeps its focus until the end.
@@ -590,6 +592,9 @@ export function minimizeWindow(id: string): void {
       await runGenie(w, scroll, target, false, () => (w.el.style.visibility = 'hidden'));
       w.el.style.visibility = '';
     } else await fade(w, false);
+    // Only now does the rest of the shell hear about it: the top bar keeps its full-screen look and the
+    // window its focus for the whole animation.
+    bus.emit('window:minimize', w);
     if (w.minimized) {
       w.el.style.display = 'none';
       w.el.classList.remove('active');
