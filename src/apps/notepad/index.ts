@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../ui/dialog';
 import { icons } from '../../assets/icons';
 import { basename } from '../../core/fs';
 import type { AppManifest } from '../../core/types';
@@ -219,7 +220,26 @@ export const notepad: AppManifest = {
     });
     text.addEventListener('keyup', updateStatus);
     text.addEventListener('click', updateStatus);
-    win.onBeforeClose(() => !dirty || confirm('You have unsaved changes. Close anyway?'));
+    // Win7-style "Do you want to save changes?" in the OS's own dialog (a browser confirm() looked foreign
+    // and blocked the whole page).
+    let closing = false;
+    win.onBeforeClose(() => {
+      if (!dirty || closing) return true;
+      void confirmDialog({
+        title: 'Notepad',
+        message: `Do you want to save changes to ${path ? basename(path) : 'Untitled'}?`,
+        okLabel: 'Save',
+        cancelLabel: "Don't Save",
+      }).then(async (yes) => {
+        if (yes) {
+          await save();
+          if (dirty) return; // Save As was cancelled: keep the window
+        }
+        closing = true;
+        win.close();
+      });
+      return false;
+    });
 
     buildMenus();
     updateTitle();
