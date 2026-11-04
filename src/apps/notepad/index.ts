@@ -42,6 +42,7 @@ export const impl: Pick<AppManifest, 'mount'> = {
         return;
       }
       path = p;
+      os.addRecent(p);
       text.value = content;
       setDirty(false);
       updateTitle();

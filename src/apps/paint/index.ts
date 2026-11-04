@@ -1329,6 +1329,7 @@ export const impl: Pick<AppManifest, 'mount'> = {
         os.notify('Paint', `${basename(p)} could not be opened as a picture.`, icons.paint);
         return;
       }
+      os.addRecent(p);
       commitText();
       sel = null;
       octx.clearRect(0, 0, over.width, over.height);
