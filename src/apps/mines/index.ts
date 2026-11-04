@@ -2,7 +2,6 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import { GameMusic } from './music';
 import { showTutorial } from './tutorial';
-import { minesIcon } from './icon';
 import './mines.css';
 
 /**
@@ -10,25 +9,7 @@ import './mines.css';
  * (Intermediate / Expert are hidden from Start). Changing level opens the right-sized window and closes the old one.
  */
 
-type Level = 'beginner' | 'intermediate' | 'expert';
-const LEVELS: Record<Level, { cols: number; rows: number; mines: number; name: string }> = {
-  beginner: { cols: 9, rows: 9, mines: 10, name: 'Beginner' },
-  intermediate: { cols: 16, rows: 16, mines: 40, name: 'Intermediate' },
-  expert: { cols: 30, rows: 16, mines: 99, name: 'Expert' },
-};
-const PAD = 10;
-const HEAD = 40;
-const GAPY = 8;
-const FRAME_X = 18;
-const FRAME_Y = 40;
-
-function cellSize(l: Level): number {
-  const { cols, rows } = LEVELS[l];
-  const w = typeof window === 'undefined' ? 1600 : window.innerWidth;
-  const hh = typeof window === 'undefined' ? 900 : window.innerHeight;
-  return Math.max(16, Math.min(26, Math.floor((w - 80 - FRAME_X - PAD * 2) / cols), Math.floor((hh - 200 - FRAME_Y - PAD * 2 - HEAD - GAPY) / rows)));
-}
-
+import { cellSize, LEVELS, type Level } from './layout';
 const MINE = `<svg viewBox="0 0 20 20"><g stroke="#10151f" stroke-width="1.7" stroke-linecap="round"><path d="M10 2.5V17.5M2.5 10H17.5M4.7 4.7L15.3 15.3M15.3 4.7L4.7 15.3"/></g><circle cx="10" cy="10" r="5.6" fill="#232b3a" stroke="#05070c" stroke-width=".5"/><ellipse cx="8.1" cy="7.7" rx="1.8" ry="1.1" fill="#fff" opacity=".85" transform="rotate(-30 8.1 7.7)"/></svg>`;
 const FLAG = `<svg viewBox="0 0 20 20"><path d="M6 17.5H14" stroke="#2c3440" stroke-width="1.8" stroke-linecap="round"/><path d="M10 4V17" stroke="#2c3440" stroke-width="1.5" stroke-linecap="round"/><path d="M10.4 3.6L16.6 6.6L10.4 9.8Z" fill="#e0402a" stroke="#8c1d0e" stroke-width=".6" stroke-linejoin="round"/></svg>`;
 const faces = {
@@ -37,20 +18,8 @@ const faces = {
   won: `<svg viewBox="0 0 32 32"><rect x="6.5" y="10.5" width="8" height="5" rx="2" fill="#10223f"/><rect x="17.5" y="10.5" width="8" height="5" rx="2" fill="#10223f"/><path d="M14.5 12H17.5" stroke="#10223f" stroke-width="1.4"/><path d="M10 19.5Q16 25 22 19.5" fill="none" stroke="#10223f" stroke-width="1.8" stroke-linecap="round"/></svg>`,
 };
 
-function make(level: Level): AppManifest {
-  const l = LEVELS[level];
-  const c = cellSize(level);
+export function impl(level: Level): Pick<AppManifest, 'mount'> {
   return {
-  id: level === 'beginner' ? 'mines' : `mines-${level}`,
-  name: 'Mines',
-  icon: minesIcon,
-  description: 'Clear the field without hitting a mine',
-  keywords: ['game', 'minesweeper', 'bombs', 'puzzle'],
-  pinned: false,
-  hidden: level !== 'beginner',
-  singleInstance: false,
-  window: { width: l.cols * c + PAD * 2 + FRAME_X, height: l.rows * c + PAD * 2 + HEAD + GAPY + FRAME_Y, resizable: false },
-
   mount({ win, os }) {
     const { cols, rows, mines: total, name } = LEVELS[level];
     const size = cellSize(level);
@@ -258,9 +227,5 @@ function make(level: Level): AppManifest {
       stop();
     };
   },
-};
+  };
 }
-
-export const mines = make('beginner');
-export const minesIntermediate = make('intermediate');
-export const minesExpert = make('expert');

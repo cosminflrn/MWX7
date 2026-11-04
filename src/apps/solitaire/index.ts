@@ -2,7 +2,7 @@ import type { AppManifest } from '../../core/types';
 import { GameMusic } from './music';
 import { showTutorial } from './tutorial';
 import { h } from '../../ui/dom';
-import { solitaireIcon } from './icon';
+import { SW, SH, VW, VH, SCALE } from './layout';
 import './solitaire.css';
 
 /** Klondike, draw-1. Cards are DOM nodes moved with transforms only; the stage scales uniformly on small screens. */
@@ -11,22 +11,9 @@ const CW = 70;
 const CH = 98;
 const GAP = 14;
 const M = 14;
-const SW = 602;
-const SH = 560;
 const TAB_Y = 132;
-const FRAME_X = 18;
-const FRAME_Y = 40;
-const STATUS_H = 24;
 const colX = (i: number) => M + i * (CW + GAP);
 
-function fit(): number {
-  const availH = (typeof window === 'undefined' ? 900 : window.innerHeight) - 30 - 70 - 24;
-  const availW = (typeof window === 'undefined' ? 1600 : window.innerWidth) - 40;
-  return Math.min(1, (availH - FRAME_Y - STATUS_H) / SH, (availW - FRAME_X) / SW);
-}
-const SCALE = fit();
-const VW = Math.floor(SW * SCALE);
-const VH = Math.floor(SH * SCALE);
 
 const SUITS = ['spade', 'heart', 'diamond', 'club'] as const;
 const RANK = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
@@ -80,16 +67,7 @@ function faceHtml(suit: number, rank: number): string {
   return `<div class="sol-front">${corner('tl')}${corner('br')}${mid}</div><div class="sol-back"></div>`;
 }
 
-export const solitaire: AppManifest = {
-  id: 'solitaire',
-  name: 'Solitaire',
-  icon: solitaireIcon,
-  description: 'Klondike card game',
-  keywords: ['game', 'cards', 'klondike', 'patience'],
-  pinned: false,
-  singleInstance: true,
-  window: { width: VW + FRAME_X, height: VH + STATUS_H + FRAME_Y, resizable: false },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win }) {
     win.setTitle('Solitaire');
     win.body.classList.add('sol');

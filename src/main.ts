@@ -4,6 +4,7 @@ import './styles/window.css';
 import './styles/shell.css';
 
 import { registerAll } from './apps';
+import { preloadApps } from './apps/lazy';
 import { ICON_DEFS, icons } from './assets/icons';
 import { seedFS } from './core/fs';
 import { forgetPersistedData, settings } from './core/settings';
@@ -75,6 +76,7 @@ async function start(): Promise<void> {
 
   launch('welcome');
   notify(`Welcome, ${settings.get().userName}`, 'Click the orb to start, or the magnifier to search.', icons.orb);
+  preloadApps();
 }
 
 void start();

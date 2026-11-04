@@ -1,6 +1,5 @@
 import type { AppManifest, VFS } from '../../core/types';
 import { h } from '../../ui/dom';
-import { mediaPlayerIcon } from './icon';
 import './mediaplayer.css';
 
 const MUSIC = '/Music';
@@ -52,16 +51,7 @@ async function loadTracks(fs: VFS): Promise<Track[]> {
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export const mediaplayer: AppManifest = {
-  id: 'mediaplayer',
-  name: 'Media Player',
-  icon: mediaPlayerIcon,
-  description: 'Play music from your Music folder',
-  keywords: ['music', 'audio', 'player', 'mp3', 'ogg', 'wav', 'song'],
-  pinned: true,
-  desktop: false,
-  window: { width: 860, height: 540, minWidth: 560, minHeight: 380 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, fs }) {
     win.body.classList.add('mp');
     let tracks: Track[] = [];

@@ -107,16 +107,7 @@ type Drag =
   | { t: 'scale'; dir: string; px: number; py: number; o: { x: number; y: number; w: number; h: number } }
   | { t: 'grow'; dx: boolean; dy: boolean };
 
-export const paint: AppManifest = {
-  id: 'paint',
-  name: 'Paint',
-  icon: icons.paint,
-  description: 'Draw, paint and edit pictures',
-  keywords: ['draw', 'image', 'picture', 'bitmap', 'brush', 'png', 'canvas', 'edit'],
-  pinned: false,
-  desktop: false,
-  window: { width: 1120, height: 700, minWidth: 420, minHeight: 360 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, fs, os }) {
     /* ============================== state ============================== */
     let tool: ToolId = 'pencil';

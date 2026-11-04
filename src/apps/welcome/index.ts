@@ -2,7 +2,6 @@ import { icons } from '../../assets/icons';
 import { getApp } from '../../core/registry';
 import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
-import { welcomeIcon } from './icon';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
@@ -82,15 +81,7 @@ const buildSlides = (): Slide[] => [
   },
 ];
 
-export const welcome: AppManifest = {
-  id: 'welcome',
-  name: 'Welcome to MWX 7',
-  icon: welcomeIcon,
-  description: 'A quick tour of what you can do',
-  keywords: ['getting started', 'tour', 'intro', 'help'],
-  singleInstance: true,
-  window: { width: 680, height: 500, resizable: false },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, os }) {
     win.body.classList.add('welcome');
     const SLIDES = buildSlides();

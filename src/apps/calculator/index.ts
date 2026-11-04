@@ -45,17 +45,7 @@ const LAYOUT: Key[] = [
   { id: '+', label: '+', kind: 'op', title: 'Add' },
 ];
 
-export const calculator: AppManifest = {
-  id: 'calculator',
-  name: 'Calculator',
-  icon: icons.calculator,
-  description: 'Quick math',
-  keywords: ['calc', 'math', 'numbers'],
-  pinned: true,
-  desktop: true,
-  singleInstance: true,
-  window: { width: 248, height: 352, resizable: false },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, os }) {
     let display = '0'; // raw entry / result, always parseable by Number()
     let acc: number | null = null;
