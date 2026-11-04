@@ -483,7 +483,12 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   layer.className = 'genie-layer';
   const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
   // Whole-pixel strip boundaries: every copy sits at an integer offset, so nothing shifts by a sub-pixel.
-  const B = Array.from({ length: n + 1 }, (_, i) => Math.round((i * r.h) / n));
+  // The whole title bar (and the shadow above it) is one strip, so no seam ever crosses the traffic lights
+  // or the caption; the body below is split evenly.
+  const top = PAD + 36;
+  const B = [0, ...Array.from({ length: n }, (_, i) => Math.round(top + ((i + 1) * (r.h - top)) / n))];
+  // Body strips reach 1px into the next one (identical pixels), so no hairline seam can open between them.
+  const HS = B.slice(0, -1).map((b, i) => B[i + 1] - b + (i < n - 1 ? 1 : 0));
   const strips: HTMLElement[] = [];
   const copies: HTMLElement[] = [];
   const clipper = document.createElement('div');
@@ -491,7 +496,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
     s.className = 'genie-strip';
-    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${B[i + 1] - B[i]}px` });
+    Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${HS[i]}px` });
     const c = copyOf(w, scroll);
     copies.push(c);
     // Only the strips showing the title bar need the live blur (the rest is the opaque body plus an 8px
@@ -532,13 +537,12 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
     for (let i = 0; i < n; i++) {
       const y0 = Y(B[i] / r.h, P);
       // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
-      const y1 = Y(B[i + 1] / r.h, P);
+      const y1 = Y((B[i] + HS[i]) / r.h, P);
       const [lt, rt] = edge(B[i] / r.h, P);
-      const [lb, rb] = edge(B[i + 1] / r.h, P);
-      // Whole-pixel corners: neighbouring strips never drift apart by fractions of a pixel, so text that
-      // crosses a strip edge stays aligned and crisp (it shimmered at the start of the animation).
-      const R = Math.round;
-      strips[i].style.transform = quad(r.w, B[i + 1] - B[i], R(lt), R(y0), R(rt), R(y0), R(rb), R(y1), R(lb), R(y1));
+      const [lb, rb] = edge((B[i] + HS[i]) / r.h, P);
+      // Continuous (not pixel-snapped) corners: snapping made strips stretch in 1px steps, which made the
+      // lights and shadows flicker. Content offsets are whole pixels, so the first frame is exact.
+      strips[i].style.transform = quad(r.w, HS[i], lt, y0, rt, y0, rb, y1, lb, y1);
     }
   };
   place(reverse ? 1 : 0);
