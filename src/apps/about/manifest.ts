@@ -10,7 +10,7 @@ export const about: AppManifest = {
   keywords: ['version', 'info', 'credits', 'system'],
   desktop: true,
   singleInstance: true,
-  window: { width: 420, height: 430, resizable: false },
+  window: { width: 420, height: 470, resizable: false },
 
   mount: lazyMount(() => import('./index')),
 };

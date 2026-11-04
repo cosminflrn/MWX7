@@ -6,6 +6,14 @@ import './about.css';
 
 export const VERSION = '0.9.29';
 
+/** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
+const WHATS_NEW = [
+  'Genie minimize is smoother: interruptible, one shadow, no flicker',
+  'Lighter on the CPU: no idle animation loops, faster window dragging',
+  'New apps and games: Photo Viewer, Task Manager, Sticky Notes, Mines, Solitaire',
+  'Notepad asks Save / Don\u2019t Save in the OS dialog',
+];
+
 export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args }) {
     const app = typeof args.app === 'string' ? getApp(args.app) : undefined;
@@ -37,6 +45,12 @@ export const impl: Pick<AppManifest, 'mount'> = {
         h('dd', {}, 'Cosmin & Claude'),
       ),
       h('a', { class: 'about-link', href: 'https://github.com/cosminflrn/MWX7', target: '_blank', rel: 'noopener' }, 'github.com/cosminflrn/MWX7'),
+      h(
+        'details',
+        { class: 'about-new' },
+        h('summary', {}, `What\u2019s new in ${VERSION}`),
+        h('ul', {}, ...WHATS_NEW.map((t) => h('li', {}, t))),
+      ),
       h(
         'p',
         { class: 'about-small' },
