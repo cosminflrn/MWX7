@@ -621,7 +621,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     c.style.boxShadow = maximized ? 'none' : 'var(--glass-ring)';
     copies.push(c);
     // Only the title-bar strip keeps the live blur (the rest is the opaque body plus an 8px border).
-    if (i > 0) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
+    // No live blur on any copy, ever: the glass comes from the frozen backdrop image.
+    Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
     c.style.top = `${PAD - B[i]}px`;
     s.append(c);
 
@@ -647,8 +648,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const shadows = maximized ? [] : parseShadows(getComputedStyle(w.el).getPropertyValue('--shadow-win') || '0 0 22px rgba(0,0,0,.5), 0 14px 40px rgba(0,10,30,.35)');
   clipper.prepend(shadowCv);
   layer.append(clipper);
-  document.body.append(layer);
-  for (const s of strips) applyScroll(s.firstElementChild!, scroll);
+  // Built off-screen: nothing is added to the page until it is complete — even an invisible layer above the
+  // window made Chrome re-composite it, and its glass changed tone while we waited for the frozen glass.
   const imgs = [...layer.querySelectorAll('img')];
   imgs.forEach((im) => (im.loading = 'eager'));
   let bakedUrl = '';
@@ -770,6 +771,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   place(cur);
   let done = leg(from, to);
   void decoded.then(() => {
+    document.body.append(layer);
+    for (const s of strips) applyScroll(s.firstElementChild!, scroll);
     layer.style.visibility = '';
     onShown();
     start = performance.now();
