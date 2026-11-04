@@ -524,16 +524,14 @@ function bakeGlass(w: Win): Promise<string | null> {
 }
 
 interface GenieRun {
-  /** Resolves true when it played to the end, false when another animation took over. */
+  /** Resolves true when it played to the end, false when it was turned around. */
   done: Promise<boolean>;
-  /** Current progress (0 = window in place, 1 = inside the dock). */
-  P(): number;
-  /** Stop here; the layer stays on screen until the replacing animation shows its own (no blank frame). */
-  interrupt(): () => void;
+  /** Turn around towards `to` from exactly where it is, in the same frame, with the same copies. */
+  turn(to: number): Promise<boolean>;
 }
 const genies = new Map<Win, GenieRun>();
 
-function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: number, onShown: () => void = () => {}, prevDispose?: () => void): GenieRun {
+function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: number, onShown: () => void = () => {}): GenieRun {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
   // Funnel into the icon's width right at the dock's edge, so the window is already narrow when it slides
@@ -549,7 +547,11 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const top = PAD + 36;
   const B = [0, ...Array.from({ length: n }, (_, i) => Math.round(top + ((i + 1) * (r.h - top)) / n))];
   // Body strips reach 1px into the next one (identical pixels), so no hairline seam can open between them.
-  const HS = B.slice(0, -1).map((b, i) => B[i + 1] - b + (i < n - 1 ? 1 : 0));
+  // ...but only where that row is inside the opaque body: above/below it lie shadow and glass, which would
+  // be drawn twice (a visible extra shadow line).
+  const bodyTop = PAD + 36;
+  const bodyBottom = PAD + w.rect.h - 10;
+  const HS = B.slice(0, -1).map((b, i) => B[i + 1] - b + (i < n - 1 && B[i + 1] > bodyTop && B[i + 1] < bodyBottom ? 1 : 0));
   const strips: HTMLElement[] = [];
   const copies: HTMLElement[] = [];
   const clipper = document.createElement('div');
@@ -590,6 +592,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
   const imgs = [...layer.querySelectorAll('img')];
   imgs.forEach((im) => (im.loading = 'eager'));
+  let bakedUrl = '';
   const glass = bakeGlass(w).then((url) => {
     if (!url) return;
     const cs0 = getComputedStyle(w.el);
@@ -603,11 +606,11 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
         backgroundRepeat: `${cs0.backgroundRepeat}, no-repeat`,
       });
     }
-    void done.then(() => URL.revokeObjectURL(url));
+    bakedUrl = url;
   });
   const decoded = Promise.race([
     Promise.all([glass, ...imgs.map((im) => im.decode().catch(() => undefined))]),
-    new Promise((res) => window.setTimeout(res, 160)),
+    new Promise((res) => window.setTimeout(res, 300)),
   ]);
 
   const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
@@ -650,49 +653,47 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     }
   };
   let cur = from;
-  let raf = 0;
-  let stopped = false;
-  let shown = false;
+  let start = 0;
+  let ms = 0;
   let finish: (ok: boolean) => void = () => {};
+  const leg = (f: number, t2: number) => {
+    from = f;
+    to = t2;
+    ms = Math.max(140, GENIE_MS * Math.abs(to - from));
+    start = performance.now();
+    return new Promise<boolean>((resolve) => (finish = resolve));
+  };
   place(cur);
-  // A click mid-animation turns it around from wherever it is, at the same speed.
-  const ms = Math.max(140, GENIE_MS * Math.abs(to - from));
-  const done = new Promise<boolean>((resolve) => (finish = resolve));
+  let done = leg(from, to);
   void decoded.then(() => {
-    if (stopped) return;
     layer.style.visibility = '';
-    shown = true;
-    prevDispose?.();
     onShown();
-    const start = performance.now();
+    start = performance.now();
     const frame = (now: number) => {
-      if (stopped) return;
       const p = Math.min(1, (now - start) / ms);
       const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
       cur = from + (to - from) * e;
       place(cur);
-      if (p < 1) raf = requestAnimationFrame(frame);
+      if (p < 1) requestAnimationFrame(frame);
       else {
         layer.remove();
+        if (bakedUrl) URL.revokeObjectURL(bakedUrl);
         finish(true);
       }
     };
-    raf = requestAnimationFrame(frame);
+    requestAnimationFrame(frame);
   });
-  return {
-    done,
-    P: () => cur,
-    interrupt() {
-      stopped = true;
-      cancelAnimationFrame(raf);
+  const run: GenieRun = {
+    get done() {
+      return done;
+    },
+    turn(t2: number) {
       finish(false);
-      // Not on screen yet: whatever it was going to replace is still showing and must go with it.
-      return () => {
-        if (!shown) prevDispose?.();
-        layer.remove();
-      };
+      done = leg(cur, t2);
+      return done;
     },
   };
+  return run;
 }
 
 function fade(w: Win, reverse: boolean): Promise<void> {
@@ -714,10 +715,8 @@ export function minimizeWindow(id: string): void {
   if (!w || w.minimized) return;
   w.minimized = true;
   const target = minimizeTarget(w.appId);
-  // Interrupting a restore: turn around from where it is (its window copies are already on screen).
+  // Clicked again mid-restore: the same animation simply turns around, in place, in the same frame.
   const prev = genies.get(w);
-  const from = prev ? prev.P() : 0;
-  const dispose = prev?.interrupt();
   const scroll = prev ? scrolls.get(w) ?? [] : readScroll(w.el);
   scrolls.set(w, scroll);
   play('minimize');
@@ -725,15 +724,17 @@ export function minimizeWindow(id: string): void {
     if (target && !reducedMotion()) {
       // visibility (not display) hides the real window: the copies' SVG icons take their gradients from
       // the original's <defs> (same ids), and display:none would paint those icons white.
-      const g = runGenie(w, scroll, target, from, 1, () => (w.el.style.visibility = 'hidden'), dispose);
-      genies.set(w, g);
-      if (!(await g.done)) return; // a restore took over
+      let ok: boolean;
+      if (prev) ok = await prev.turn(1);
+      else {
+        const g = runGenie(w, scroll, target, 0, 1, () => (w.el.style.visibility = 'hidden'));
+        genies.set(w, g);
+        ok = await g.done;
+      }
+      if (!ok) return; // turned around again
       genies.delete(w);
       w.el.style.visibility = '';
-    } else {
-      dispose?.();
-      await fade(w, false);
-    }
+    } else await fade(w, false);
     // Only now does the rest of the shell hear about it: the top bar keeps its full-screen look and the
     // window its focus for the whole animation.
     bus.emit('window:minimize', w);
@@ -762,8 +763,6 @@ function restore(w: Win): void {
     applyScroll(w.el, scroll);
   };
   if (!target || reducedMotion()) {
-    prev?.interrupt()();
-    genies.delete(w);
     show();
     void fade(w, true);
     return;
@@ -777,16 +776,19 @@ function restore(w: Win): void {
     w.el.style.visibility = '';
     return;
   }
-  // Interrupting a minimize: turn around from where it is.
-  const from = prev ? prev.P() : 1;
-  const dispose = prev?.interrupt();
   w.el.style.display = '';
   w.el.style.visibility = 'hidden';
   applyScroll(w.el, scroll);
-  const g = runGenie(w, scroll, target, from, 0, () => {}, dispose);
-  genies.set(w, g);
-  void g.done.then((ok) => {
-    if (!ok) return; // a minimize took over
+  // Clicked again mid-minimize: the same animation turns around in place.
+  let done: Promise<boolean>;
+  if (prev) done = prev.turn(0);
+  else {
+    const g = runGenie(w, scroll, target, 1, 0);
+    genies.set(w, g);
+    done = g.done;
+  }
+  void done.then((ok) => {
+    if (!ok) return; // turned around again
     genies.delete(w);
     show();
   });
