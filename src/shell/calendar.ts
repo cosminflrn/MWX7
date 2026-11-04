@@ -1,4 +1,5 @@
 import { launch } from '../core/os';
+import { settings } from '../core/settings';
 import { play } from '../core/sound';
 import '../styles/calendar.css';
 import { h } from '../ui/dom';
@@ -96,7 +97,14 @@ function openCalendar(anchor: HTMLElement): void {
   const updateClock = () => {
     const now = new Date();
     // 24-hour locales read "17:42:08"; 12-hour ones "5:42:08 PM" (Win7 drops the leading zero there).
-    timeEl.textContent = now.toLocaleTimeString(undefined, { hour: hour12 ? 'numeric' : '2-digit', minute: '2-digit', second: '2-digit' });
+    // Follows Settings → Date & time, like the top-bar clock.
+    const use24 = settings.get().clock24 || !hour12;
+    timeEl.textContent = now.toLocaleTimeString(undefined, {
+      hour: use24 ? '2-digit' : 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: use24 ? false : undefined,
+    });
     dateEl.textContent = cap(now.toLocaleDateString(undefined, { dateStyle: 'full' }));
     if (!sameDay(now, today)) {
       today = now;
