@@ -571,7 +571,10 @@ export function minimizeWindow(id: string): void {
     // The copies take over in the same frame the window hides; it keeps its focus until the end.
     if (target && !reducedMotion()) {
       // The real window hides in the very frame the copies appear.
-      await runGenie(w, scroll, target, false, () => (w.el.style.display = 'none'));
+      // visibility (not display) hides it: the copies' SVG icons take their gradients from the original's
+      // <defs> (same ids), and display:none would switch those off and paint the icons white.
+      await runGenie(w, scroll, target, false, () => (w.el.style.visibility = 'hidden'));
+      w.el.style.visibility = '';
     } else await fade(w, false);
     if (w.minimized) {
       w.el.style.display = 'none';
@@ -592,6 +595,7 @@ function restore(w: Win): void {
   bus.emit('window:restore', w);
   const show = () => {
     w.el.style.display = '';
+    w.el.style.visibility = '';
     // display:none drops scroll offsets; put them back.
     applyScroll(w.el, scroll);
   };
@@ -605,9 +609,15 @@ function restore(w: Win): void {
   // Aero Peek may be showing the minimized window in place right now (restoring from its thumbnail):
   // hide it so the genie always rises out of the dock instead of the window just popping in.
   w.el.getAnimations().forEach((a) => a.cancel());
-  w.el.style.display = 'none';
+  w.el.style.display = '';
+  w.el.style.visibility = 'hidden';
+  applyScroll(w.el, scroll);
   void runGenie(w, scroll, target, true).then(() => {
     if (!w.minimized) show();
+    else {
+      w.el.style.display = 'none';
+      w.el.style.visibility = '';
+    }
   });
 }
 
