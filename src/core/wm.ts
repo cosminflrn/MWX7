@@ -629,9 +629,14 @@ function restore(w: Win): void {
   }
   // Focused from the first frame: the copies wear the active look the window will have.
   w.el.classList.add('active');
-  // Aero Peek may be showing the minimized window in place right now (restoring from its thumbnail):
-  // hide it so the genie always rises out of the dock instead of the window just popping in.
+  // Restoring from an Aero Peek thumbnail: Peek is already showing the window in place, so (like Win7)
+  // it simply stays — cancelling Peek's fade-out keeps it perfectly still, no vanish-and-regrow.
+  const peeked = w.el.style.display !== 'none';
   w.el.getAnimations().forEach((a) => a.cancel());
+  if (peeked) {
+    w.el.style.visibility = '';
+    return;
+  }
   w.el.style.display = '';
   w.el.style.visibility = 'hidden';
   applyScroll(w.el, scroll);
