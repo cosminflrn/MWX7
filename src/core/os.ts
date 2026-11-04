@@ -2,7 +2,7 @@ import { bus } from './events';
 import { fs } from './fs';
 import { getApp, listApps } from './registry';
 import { settings } from './settings';
-import type { OSApi } from './types';
+import type { MenuItem, OSApi } from './types';
 import { allWindows, closeWindow, focusWindow, openWindow, windowsOf } from './wm';
 
 export function notify(title: string, body?: string, icon?: string): void {
@@ -38,7 +38,12 @@ export function launch(appId: string, args: Record<string, unknown> = {}): void 
   openWindow(app, (win) => app.mount({ win, args, fs, os: { ...os, addRecent: (p: string) => addRecent(appId, p) } }));
 }
 
+const jumpLists = new Map<string, () => MenuItem[]>();
+/** Dock reads this when building an app's right-click menu. */
+export const getJumpList = (appId: string): MenuItem[] => jumpLists.get(appId)?.() ?? [];
+
 export const os: OSApi = {
+  setJumpList: (appId, provider) => void (provider ? jumpLists.set(appId, provider) : jumpLists.delete(appId)),
   launch,
   notify,
   apps: () => listApps(),

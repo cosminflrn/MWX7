@@ -4,7 +4,7 @@
 
 **The dream desktop.** A complete desktop OS that runs in your browser.
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.9.29 · [Changelog](CHANGELOG.md)
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v1.0.0 · [Changelog](CHANGELOG.md)
 
 ![MWX 7 desktop](docs/media/hero.jpg)
 

@@ -4,14 +4,14 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.9.29';
+export const VERSION = '1.0.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
-  'Genie minimize is smoother: interruptible, one shadow, no flicker',
-  'Lighter on the CPU: no idle animation loops, faster window dragging',
-  'New apps and games: Photo Viewer, Task Manager, Sticky Notes, Mines, Solitaire',
-  'Notepad asks Save / Don\u2019t Save in the OS dialog',
+  'Apps load on demand, so MWX 7 starts faster',
+  'Snipping Tool, Themes and recent files in dock menus',
+  'Deeper My Computer, Internet and Media Player (mini player in the dock menu)',
+  'Traffic lights never miss a click after full screen',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {

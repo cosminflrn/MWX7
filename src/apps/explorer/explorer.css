@@ -523,8 +523,21 @@
 .xp-ex .ex-col.ex-c-total,
 .xp-ex .ex-col.ex-c-free { justify-content: flex-end; }
 /* drag ghost (kept inside the window so the rules stay scoped) */
-.xp-ex .ex-ghost { position: absolute; left: -200px; top: -200px; width: 48px; height: 48px; opacity: 0.85; }
-.xp-ex .ex-ghost .ex-ico { width: 48px; height: 48px; }
+.xp-ex .ex-ghost { position: absolute; left: -300px; top: -200px; display: flex; align-items: center; gap: 6px; max-width: 180px; padding: 3px 9px 3px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 4px; background: linear-gradient(rgba(255, 255, 255, 0.85), rgba(196, 222, 247, 0.8));
+  box-shadow: 0 0 0 1px rgba(60, 100, 150, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3); color: #1b2b40; font-size: 12px; }
+.xp-ex .ex-ghost .ex-ico { width: 28px; height: 28px; flex: none; }
+.xp-ex .ex-ghost-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-ex .ex-dragtip { position: absolute; z-index: 50; pointer-events: none; padding: 2px 8px; border: 1px solid #9db4cf; border-radius: 3px;
+  background: linear-gradient(#fff, #e6eef9); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); font-size: 12px; color: #1b2b40; white-space: nowrap; }
+.xp-ex .ex-pdlg-backdrop { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(20, 35, 55, 0.22); }
+.xp-ex .ex-pdlg { width: 340px; max-width: 90%; padding: 0 16px 14px; border: 1px solid rgba(255, 255, 255, 0.7); border-radius: 8px; overflow: hidden;
+  background: linear-gradient(rgba(240, 247, 255, 0.82), rgba(205, 225, 247, 0.78)); backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 0 0 1px rgba(30, 60, 100, 0.55), 0 12px 32px rgba(0, 0, 0, 0.4); font-size: 12px; color: #1b2b40; }
+.xp-ex .ex-pdlg-title { margin: 0 -16px 10px; padding: 6px 12px; background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(170, 205, 240, 0.5)); border-bottom: 1px solid rgba(60, 100, 150, 0.35); }
+.xp-ex .ex-pdlg-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.xp-ex .ex-pdlg-ok { min-width: 74px; padding: 3px 12px; border: 1px solid #6b84a3; border-radius: 3px; background: linear-gradient(#f6f9fd, #d7e3f2); cursor: pointer; }
+.xp-ex .ex-pdlg-ok:hover { border-color: #3c9bd8; background: linear-gradient(#eaf6fd, #bfe0fb); }
 .xp-ex .ex-ghost b { position: absolute; right: -4px; top: -4px; min-width: 18px; padding: 1px 5px; border-radius: 9px; background: #2f7fd6; color: #fff; font-size: 11px; text-align: center; }
 
 /* ---------- narrow windows ---------- */

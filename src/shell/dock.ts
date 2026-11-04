@@ -1,7 +1,7 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { settings } from '../core/settings';
-import { launch, recentOf } from '../core/os';
+import { getJumpList, launch, recentOf } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
 import { activeWindow, closeWindow, focusWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
@@ -194,7 +194,9 @@ export function mountDock(dock: HTMLElement): void {
       icon: app.icon,
       action: () => launch(appId, { path }),
     }));
-    const items: MenuItem[] = recent.length ? [{ label: 'Recent', disabled: true }, ...recent, { separator: true }] : [];
+    const extra = wins.length ? getJumpList(appId) : [];
+    const items: MenuItem[] = extra.length ? [...extra, { separator: true }] : [];
+    if (recent.length) items.push({ label: 'Recent', disabled: true }, ...recent, { separator: true });
     items.push(...wins.map((w) => ({ label: w.title, icon: app.icon, checked: activeWindow()?.id === w.id, action: () => focusWindow(w.id) })));
     if (wins.length) items.push({ separator: true });
     if (!app.singleInstance || !wins.length)
