@@ -679,16 +679,21 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       L.push([a + (b - a) * fx, y]);
       R2.push([b - (b - a) * fx, y]);
     }
-    const rr = 8;
+    // The exact rounded outline (10px top / 8px bottom corners, like .win), as ONE shape: drawing a fill and
+    // a stroke each cast a shadow, which made it ~20% too dark the instant the animation began.
     const path = new Path2D();
-    path.moveTo(L[0][0] + rr, L[0][1] + rr);
-    for (const [x, y] of R2) path.lineTo(x - rr, y + (y === R2[0][1] ? rr : y === R2[K][1] ? -rr : 0));
-    for (let k = K; k >= 0; k--) path.lineTo(L[k][0] + rr, L[k][1] + (k === 0 ? rr : k === K ? -rr : 0));
+    const rt = 10;
+    const rb = 8;
+    path.moveTo(L[0][0] + rt, L[0][1]);
+    path.arcTo(R2[0][0], R2[0][1], R2[1][0], R2[1][1], rt);
+    for (let k = 1; k < K; k++) path.lineTo(R2[k][0], R2[k][1]);
+    path.arcTo(R2[K][0], R2[K][1], L[K][0], L[K][1], rb);
+    path.arcTo(L[K][0], L[K][1], L[K - 1][0], L[K - 1][1], rb);
+    for (let k = K - 1; k > 0; k--) path.lineTo(L[k][0], L[k][1]);
+    path.arcTo(L[0][0], L[0][1], R2[0][0], R2[0][1], rt);
     path.closePath();
     const OFF = 10000; // draw the shape far off-canvas; only its shadow lands here
     sg.setTransform(sdpr, 0, 0, sdpr, 0, 0);
-    sg.lineJoin = 'round';
-    sg.lineWidth = rr * 2;
     sg.globalAlpha = op;
     for (const sh of shadows) {
       sg.shadowColor = sh.color;
@@ -698,7 +703,6 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       sg.save();
       sg.translate(-OFF, 0);
       sg.fill(path);
-      sg.stroke(path);
       sg.restore();
     }
     sg.shadowColor = 'transparent';
@@ -706,7 +710,6 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     // Like a CSS box-shadow, nothing is painted *under* the window (its glass frame is see-through).
     sg.globalCompositeOperation = 'destination-out';
     sg.fill(path);
-    sg.stroke(path);
     sg.globalCompositeOperation = 'source-over';
   };
   const place = (P: number) => {
