@@ -4,7 +4,7 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.9.25';
+export const VERSION = '0.9.26';
 
 export const about: AppManifest = {
   id: 'about',

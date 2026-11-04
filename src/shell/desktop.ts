@@ -1,4 +1,4 @@
-import { blurWindows, maximizedWindow, showDesktop } from '../core/wm';
+import { blurWindows, showDesktop } from '../core/wm';
 import { bus } from '../core/events';
 import { launch } from '../core/os';
 import { settings } from '../core/settings';
@@ -8,7 +8,7 @@ import { mountAmbience } from './ambience';
 import { mountDeskIcons } from './deskicons';
 import { gadgetsShown, toggleGadgets } from './gadgets';
 import { fs } from '../core/fs';
-import { createWallpaperLayer, resolveWallpaperId, setWallpaperCovered, wallpapers } from './wallpapers';
+import { createWallpaperLayer, resolveWallpaperId, wallpapers } from './wallpapers';
 
 /** Creates "New folder", "New folder (2)", … on the desktop, like Windows. */
 async function createOnDesktop(base: string, folder: boolean): Promise<void> {
@@ -44,11 +44,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
 
   mountDeskIcons(iconLayer);
 
-  // Pause the live wallpaper while a full-screen window hides it (Overview shows it again).
-  const cover = () => setWallpaperCovered(!!maximizedWindow() && !document.body.classList.contains('overview'));
-  for (const ev of ['window:state', 'window:minimize', 'window:restore', 'window:close', 'window:open'] as const)
-    bus.on(ev, () => window.setTimeout(cover, 0));
-  new MutationObserver(cover).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
 
   // A click on the wallpaper or an icon takes focus away from the windows.
   for (const el of [desktop, iconLayer])
