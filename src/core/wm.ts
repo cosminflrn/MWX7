@@ -630,9 +630,13 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     for (const c of copies) c.style.opacity = op;
     // The glass is frozen, so every strip — the title bar too — can taper exactly with the funnel.
     for (let i = 0; i < n; i++) {
-      const y0 = Y(B[i] / r.h, P);
+      let y0 = Y(B[i] / r.h, P);
       // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
-      const y1 = Y((B[i] + HS[i]) / r.h, P);
+      let y1 = Y((B[i] + HS[i]) / r.h, P);
+      // The first and last strips hold the shadow above and below the window: never stretch them taller than
+      // they are (the lower rows lead, so they would), or the shadow visibly grows while minimizing.
+      if (i === 0 && y1 - y0 > HS[0]) y0 = y1 - HS[0];
+      if (i === n - 1 && y1 - y0 > HS[i]) y1 = y0 + HS[i];
       const [lt, rt] = edge(B[i] / r.h, P);
       const [lb, rb] = edge((B[i] + HS[i]) / r.h, P);
       // Continuous (not pixel-snapped) corners: snapping made strips stretch in 1px steps, which made the
