@@ -472,6 +472,18 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
   return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${c},${f},0,1)`;
 }
 
+/** Parses a CSS box-shadow list (offsets, blur, colour) for the canvas shadow. */
+function parseShadows(v: string): Array<{ x: number; y: number; blur: number; color: string }> {
+  return v
+    .split(/,(?![^(]*\))/)
+    .map((p) => {
+      const color = (p.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}/i) || ['rgba(0,0,0,.4)'])[0];
+      const nums = p.replace(color, '').trim().split(/\s+/).map((n) => parseFloat(n) || 0);
+      return { x: nums[0] ?? 0, y: nums[1] ?? 0, blur: nums[2] ?? 0, color };
+    })
+    .filter((s) => s.blur > 0 || s.x || s.y);
+}
+
 /**
  * The window's glass, frozen: what its backdrop blur shows right now (the wallpaper under it), rendered
  * once into an image. The genie animates that like macOS animates its snapshot — a live blur on a moving
@@ -483,14 +495,14 @@ function bakeGlass(w: Win): Promise<string | null> {
   const L = layers[layers.length - 1];
   if (!L) return Promise.resolve(null);
   const { x, y, w: W, h: H } = w.rect;
-  const M = 16; // margin, so the blur doesn't darken the edges
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const tmp = document.createElement('canvas');
-  tmp.width = Math.round((W + M * 2) * dpr);
-  tmp.height = Math.round((H + M * 2) * dpr);
-  const g = tmp.getContext('2d')!;
+  // 1. The backdrop exactly under the window.
+  const crop = document.createElement('canvas');
+  crop.width = Math.round(W * dpr);
+  crop.height = Math.round(H * dpr);
+  const g = crop.getContext('2d')!;
   g.scale(dpr, dpr);
-  g.translate(M - x, M - y);
+  g.translate(-x, -y);
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   try {
@@ -513,13 +525,26 @@ function bakeGlass(w: Win): Promise<string | null> {
   } catch {
     return Promise.resolve(null);
   }
+  // 2. Mirrored on every side, like the browser's backdrop-filter edge mode, so the blur at the window's
+  //    rim matches the live glass exactly.
+  const cw = crop.width;
+  const ch = crop.height;
+  const tmp = document.createElement('canvas');
+  tmp.width = cw * 3;
+  tmp.height = ch * 3;
+  const t = tmp.getContext('2d')!;
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++) {
+      t.setTransform(i ? -1 : 1, 0, 0, j ? -1 : 1, cw * (1 + i) + (i ? cw : 0), ch * (1 + j) + (j ? ch : 0));
+      t.drawImage(crop, 0, 0);
+    }
   const out = document.createElement('canvas');
   out.width = Math.round(W * dpr);
   out.height = Math.round(H * dpr);
   const o = out.getContext('2d')!;
   const bf = getComputedStyle(w.el).backdropFilter;
   o.filter = bf && bf !== 'none' ? bf.replace(/blur\(([\d.]+)px\)/, (_, v) => `blur(${Number(v) * dpr}px)`) : 'none';
-  o.drawImage(tmp, -M * dpr, -M * dpr);
+  o.drawImage(tmp, -cw, -ch);
   return new Promise((res) => out.toBlob((b) => res(b ? URL.createObjectURL(b) : null)));
 }
 
@@ -554,6 +579,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const HS = B.slice(0, -1).map((b, i) => B[i + 1] - b + (i < n - 1 && B[i + 1] > bodyTop && B[i + 1] < bodyBottom ? 1 : 0));
   const strips: HTMLElement[] = [];
   const copies: HTMLElement[] = [];
+  const maximized = w.el.classList.contains('maximized');
   const clipper = document.createElement('div');
   clipper.className = 'genie-clip';
   for (let i = 0; i < n; i++) {
@@ -570,6 +596,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       s.style.clipPath = `polygon(0 0, 100% 0, 100% ${e}px, ${b}px ${e}px, ${b}px 100%, ${a}px 100%, ${a}px ${e}px, 0 ${e}px)`;
     }
     const c = copyOf(w, scroll);
+    // The soft shadow is drawn once around the funnel's outline (canvas below); copies keep only the 1px rings.
+    c.style.boxShadow = maximized ? 'none' : 'var(--glass-ring)';
     copies.push(c);
     // Only the title-bar strip keeps the live blur (the rest is the opaque body plus an 8px border).
     if (i > 0) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
@@ -587,6 +615,16 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   // An overflow box, not clip-path or opacity on the layer: those would make it a backdrop root and the
   // copies' glass would stop blurring what is behind it.
   clipper.style.height = `${shelf ? shelf.top : window.innerHeight}px`;
+  // ONE shadow for the whole window, drawn each frame around the exact outline of the bending window:
+  // it can never double, stretch or grow, and at rest it is the window's own box-shadow.
+  const shadowCv = document.createElement('canvas');
+  shadowCv.className = 'genie-shadow';
+  const sdpr = Math.min(window.devicePixelRatio || 1, 2);
+  shadowCv.width = Math.round(window.innerWidth * sdpr);
+  shadowCv.height = Math.round(window.innerHeight * sdpr);
+  const sg = shadowCv.getContext('2d')!;
+  const shadows = maximized ? [] : parseShadows(getComputedStyle(w.el).getPropertyValue('--shadow-win') || '0 0 22px rgba(0,0,0,.5), 0 14px 40px rgba(0,10,30,.35)');
+  clipper.prepend(shadowCv);
   layer.append(clipper);
   document.body.append(layer);
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
@@ -625,9 +663,57 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     const q = Q(v, P);
     return [lerp(r.x, t.left, q), lerp(r.x + r.w, t.right, q)];
   };
+  const drawShadow = (P: number, op: number) => {
+    sg.setTransform(1, 0, 0, 1, 0, 0);
+    sg.clearRect(0, 0, shadowCv.width, shadowCv.height);
+    if (!shadows.length || op <= 0.001) return;
+    // Outline of the real window (inside the padded strips), sampled down both sides.
+    const fx = PAD / r.w;
+    const K = 40;
+    const L: Array<[number, number]> = [];
+    const R2: Array<[number, number]> = [];
+    for (let k = 0; k <= K; k++) {
+      const v = (PAD + (k / K) * w.rect.h) / r.h;
+      const [a, b] = edge(v, P);
+      const y = Y(v, P);
+      L.push([a + (b - a) * fx, y]);
+      R2.push([b - (b - a) * fx, y]);
+    }
+    const rr = 8;
+    const path = new Path2D();
+    path.moveTo(L[0][0] + rr, L[0][1] + rr);
+    for (const [x, y] of R2) path.lineTo(x - rr, y + (y === R2[0][1] ? rr : y === R2[K][1] ? -rr : 0));
+    for (let k = K; k >= 0; k--) path.lineTo(L[k][0] + rr, L[k][1] + (k === 0 ? rr : k === K ? -rr : 0));
+    path.closePath();
+    const OFF = 10000; // draw the shape far off-canvas; only its shadow lands here
+    sg.setTransform(sdpr, 0, 0, sdpr, 0, 0);
+    sg.lineJoin = 'round';
+    sg.lineWidth = rr * 2;
+    sg.globalAlpha = op;
+    for (const sh of shadows) {
+      sg.shadowColor = sh.color;
+      sg.shadowBlur = sh.blur * sdpr;
+      sg.shadowOffsetX = (OFF + sh.x) * sdpr;
+      sg.shadowOffsetY = sh.y * sdpr;
+      sg.save();
+      sg.translate(-OFF, 0);
+      sg.fill(path);
+      sg.stroke(path);
+      sg.restore();
+    }
+    sg.shadowColor = 'transparent';
+    sg.globalAlpha = 1;
+    // Like a CSS box-shadow, nothing is painted *under* the window (its glass frame is see-through).
+    sg.globalCompositeOperation = 'destination-out';
+    sg.fill(path);
+    sg.stroke(path);
+    sg.globalCompositeOperation = 'source-over';
+  };
   const place = (P: number) => {
-    const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
+    const opN = 1 - smooth(clamp01((P - 0.5) / 0.5));
+    const op = String(opN);
     for (const c of copies) c.style.opacity = op;
+    drawShadow(P, opN);
     // The glass is frozen, so every strip — the title bar too — can taper exactly with the funnel.
     for (let i = 0; i < n; i++) {
       let y0 = Y(B[i] / r.h, P);
