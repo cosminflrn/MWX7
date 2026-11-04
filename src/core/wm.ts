@@ -614,7 +614,13 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   ]);
 
   const Y = (v: number, P: number) => lerp(r.y + v * r.h, t.top + v * t.height, smooth(clamp01(P * 1.6 - (1 - v) * 0.6)));
-  const Q = (v: number, P: number) => smooth(clamp01(P * 2.2 - (1 - v) * 1.2));
+  // Each row narrows at least as fast as it travels down, so the top (which leaves last) is already as narrow
+  // as the funnel when it reaches the dock — no wide, flattened title-bar slab at the end of a minimize or
+  // the start of a restore.
+  const Q = (v: number, P: number) => {
+    const travel = smooth(clamp01(P * 1.6 - (1 - v) * 0.6));
+    return Math.max(smooth(clamp01(P * 2.2 - (1 - v) * 1.2)), smooth(clamp01(travel * 1.35)));
+  };
   const edge = (v: number, P: number) => {
     const q = Q(v, P);
     return [lerp(r.x, t.left, q), lerp(r.x + r.w, t.right, q)];
@@ -622,9 +628,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const place = (P: number) => {
     const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
-    // The title-bar strip moves as an affine parallelogram: backdrop blur on a perspective (matrix3d) layer
-    // re-samples differently every frame and shimmered. The next strip starts exactly on its bottom edge.
-    let carry: [number, number, number] | null = null;
+    // The glass is frozen, so every strip — the title bar too — can taper exactly with the funnel.
     for (let i = 0; i < n; i++) {
       const y0 = Y(B[i] / r.h, P);
       // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
@@ -633,22 +637,6 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       const [lb, rb] = edge((B[i] + HS[i]) / r.h, P);
       // Continuous (not pixel-snapped) corners: snapping made strips stretch in 1px steps, which made the
       // lights and shadows flicker. Content offsets are whole pixels, so the first frame is exact.
-      if (i === 0) {
-        const dx = (lb + rb - lt - rt) / 2;
-        const sx = (rt - lt) / r.w;
-        const sy = (y1 - y0) / HS[0];
-        strips[0].style.transform = `matrix(${sx}, 0, ${dx / HS[0]}, ${sy}, ${lt}, ${y0})`;
-        // where the next strip must begin (its top edge = this strip's bottom edge, minus the 1px overlap)
-        const k = (HS[0] - 1) / HS[0];
-        carry = [lt + dx * k, rt + dx * k, y0 + (y1 - y0) * k];
-        continue;
-      }
-      if (carry) {
-        const [cl, cr, cy] = carry;
-        carry = null;
-        strips[i].style.transform = quad(r.w, HS[i], cl, cy, cr, cy, rb, y1, lb, y1);
-        continue;
-      }
       strips[i].style.transform = quad(r.w, HS[i], lt, y0, rt, y0, rb, y1, lb, y1);
     }
   };
