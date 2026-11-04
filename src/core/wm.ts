@@ -532,21 +532,21 @@ function parseShadows(v: string): Array<{ x: number; y: number; blur: number; co
  * once into an image. The genie animates that like macOS animates its snapshot — a live blur on a moving
  * layer is recomputed every frame and shimmers.
  */
-const prebaked = new Map<Win, { at: number; x: number; y: number; job: Promise<string | null> }>();
+const prebaked = new Map<Win, { at: number; x: number; y: number; job: Promise<HTMLCanvasElement | null> }>();
 /** Pressing the minimize button starts freezing the glass, so the genie can begin the moment it is released. */
 export function prepareMinimize(id: string): void {
   const w = wins.get(id);
   if (!w || w.minimized) return;
   prebaked.set(w, { at: performance.now(), x: w.rect.x, y: w.rect.y, job: bakeGlass(w) });
 }
-function frozenGlass(w: Win): Promise<string | null> {
+function frozenGlass(w: Win): Promise<HTMLCanvasElement | null> {
   const p = prebaked.get(w);
   prebaked.delete(w);
   if (p && performance.now() - p.at < 1500 && p.x === w.rect.x && p.y === w.rect.y) return p.job;
   return bakeGlass(w);
 }
 
-function bakeGlass(w: Win): Promise<string | null> {
+function bakeGlass(w: Win): Promise<HTMLCanvasElement | null> {
   if (w.el.classList.contains('maximized')) return Promise.resolve(null);
   const layers = document.querySelectorAll<HTMLElement>('#desktop > .wp-layer');
   const L = layers[layers.length - 1];
@@ -602,7 +602,8 @@ function bakeGlass(w: Win): Promise<string | null> {
   const bf = getComputedStyle(w.el).backdropFilter;
   o.filter = bf && bf !== 'none' ? bf.replace(/blur\(([\d.]+)px\)/, (_, v) => `blur(${Number(v) * dpr}px)`) : 'none';
   o.drawImage(tmp, -cw, -ch);
-  return new Promise((res) => out.toBlob((b) => res(b ? URL.createObjectURL(b) : null), 'image/jpeg', 0.95));
+  // Used as a canvas directly: encoding it to an image first (toBlob) took up to a second on big windows.
+  return Promise.resolve(out);
 }
 
 interface GenieRun {
@@ -690,21 +691,30 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   // window made Chrome re-composite it, and its glass changed tone while we waited for the frozen glass.
   const imgs = [...layer.querySelectorAll('img')];
   imgs.forEach((im) => (im.loading = 'eager'));
-  let bakedUrl = '';
-  const glass = frozenGlass(w).then((url) => {
-    if (!url) return;
-    const cs0 = getComputedStyle(w.el);
-    for (const c of copies) {
-      Object.assign(c.style, {
-        backdropFilter: 'none',
-        webkitBackdropFilter: 'none',
-        backgroundImage: `${cs0.backgroundImage}, url("${url}")`,
-        backgroundSize: `${cs0.backgroundSize}, ${w.rect.w}px ${w.rect.h}px`,
-        backgroundPosition: `${cs0.backgroundPosition}, 0 0`,
-        backgroundRepeat: `${cs0.backgroundRepeat}, no-repeat`,
+  const glass = frozenGlass(w).then((baked) => {
+    if (!baked) return;
+    // Each strip gets its slice of the frozen backdrop as a canvas right behind its copy, so the copy's own
+    // glass gradients sit on top of it exactly as they sit on the live blur.
+    const k = baked.width / w.rect.w;
+    const WH = w.rect.h;
+    strips.forEach((s, i) => {
+      const y0 = Math.max(0, Math.min(WH, B[i] - PAD));
+      const y1 = Math.max(0, Math.min(WH, B[i] + HS[i] - PAD));
+      if (y1 <= y0) return;
+      const cv = document.createElement('canvas');
+      cv.className = 'genie-glass';
+      cv.width = Math.round(w.rect.w * k);
+      cv.height = Math.max(1, Math.round((y1 - y0) * k));
+      cv.getContext('2d')!.drawImage(baked, 0, Math.round(y0 * k), cv.width, cv.height, 0, 0, cv.width, cv.height);
+      Object.assign(cv.style, {
+        left: `${PAD}px`,
+        top: `${PAD - B[i] + y0}px`,
+        width: `${w.rect.w}px`,
+        height: `${y1 - y0}px`,
+        borderRadius: `${y0 === 0 ? '10px 10px' : '0 0'} ${y1 === WH ? '8px 8px' : '0 0'}`,
       });
-    }
-    bakedUrl = url;
+      s.prepend(cv);
+    });
   });
   // The frozen glass must be in place before the first frame — showing live glass first and swapping
   // it in later was the flicker at the click. Images get a short grace period.
@@ -844,7 +854,6 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       if (p < 1) requestAnimationFrame(frame);
       else {
         layer.remove();
-        if (bakedUrl) URL.revokeObjectURL(bakedUrl);
         finish(true);
       }
     };
