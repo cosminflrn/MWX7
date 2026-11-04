@@ -36,9 +36,13 @@ export function mountStartMenu(): void {
     el.style.bottom = `${Math.round(window.innerHeight - top + 10 + raised)}px`;
   };
 
+  // Placed on events only (open, dock hover in/out, resize) — it used to re-measure layout every frame.
+  const dockObs = new MutationObserver(() => place());
   const loop = () => {
     place();
-    follow = requestAnimationFrame(loop);
+    const d = document.getElementById('dock');
+    if (d) dockObs.observe(d, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', place);
   };
 
   // Opening the menu takes focus from the active window (Win7); closing it without a choice gives it back.
@@ -54,6 +58,8 @@ export function mountStartMenu(): void {
       if (w && !w.minimized) focusWindow(w.id);
     }
     cancelAnimationFrame(follow);
+    dockObs.disconnect();
+    window.removeEventListener('resize', place);
     orb()?.classList.remove('pressed');
     play('menuClose');
     node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(8px) scale(.98)' }], {
