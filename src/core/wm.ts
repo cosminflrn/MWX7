@@ -558,10 +558,16 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     const s = document.createElement('div');
     s.className = 'genie-strip';
     Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${HS[i]}px` });
+    // The 1px overlap row (it hides seams) is cut down to the opaque window body, so the shadow and the
+    // glass border are never drawn twice there. Static, so it costs nothing per frame (the glass is frozen,
+    // so a clip-path no longer interferes with any live blur).
+    if (HS[i] > B[i + 1] - B[i]) {
+      const a = PAD + 8;
+      const b = r.w - PAD - 8;
+      const e = HS[i] - 1;
+      s.style.clipPath = `polygon(0 0, 100% 0, 100% ${e}px, ${b}px ${e}px, ${b}px 100%, ${a}px 100%, ${a}px ${e}px, 0 ${e}px)`;
+    }
     const c = copyOf(w, scroll);
-    // The soft drop shadow is drawn once, by the shadow layer below; per-strip copies of it doubled up
-    // where strips meet and flickered as they stretched. The crisp frame rings stay on the copies.
-    c.style.boxShadow = w.el.classList.contains('maximized') ? 'none' : 'var(--glass-ring)';
     copies.push(c);
     // Only the title-bar strip keeps the live blur (the rest is the opaque body plus an 8px border).
     if (i > 0) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
@@ -579,16 +585,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   // An overflow box, not clip-path or opacity on the layer: those would make it a backdrop root and the
   // copies' glass would stop blurring what is behind it.
   clipper.style.height = `${shelf ? shelf.top : window.innerHeight}px`;
-  // One shadow for the whole window, exactly where the real one is; it fades as the window starts to bend.
-  const shade = document.createElement('div');
-  shade.className = 'genie-shadow';
-  const cs = getComputedStyle(w.el);
-  Object.assign(shade.style, {
-    left: `${w.rect.x}px`, top: `${w.rect.y}px`, width: `${w.rect.w}px`, height: `${w.rect.h}px`,
-    borderRadius: cs.borderRadius,
-    boxShadow: w.el.classList.contains('maximized') ? 'none' : 'var(--shadow-win)',
-  });
-  layer.append(shade, clipper);
+  layer.append(clipper);
   document.body.append(layer);
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
   const imgs = [...layer.querySelectorAll('img')];
@@ -622,7 +619,6 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const place = (P: number) => {
     const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
-    shade.style.opacity = String(1 - smooth(clamp01(P / 0.3)));
     // The title-bar strip moves as an affine parallelogram: backdrop blur on a perspective (matrix3d) layer
     // re-samples differently every frame and shimmered. The next strip starts exactly on its bottom edge.
     let carry: [number, number, number] | null = null;
