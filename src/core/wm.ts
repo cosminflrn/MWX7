@@ -438,10 +438,10 @@ function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
   });
   c.removeAttribute('id');
   c.classList.remove('anim', 'peek-target');
-  // Dozens of backdrop blurs per frame would choke the GPU; the copies get a still, opaque-ish glass instead.
+  // Copies keep the real backdrop blur, so the glass looks exactly like the window's. Their strips add up
+  // to one window's area, so the GPU cost is about that of the window itself.
   Object.assign(c.style, {
     left: `${PAD}px`, top: '0px', display: '', visibility: 'visible', opacity: '1', transform: 'none', zIndex: '0', transition: 'none',
-    backdropFilter: 'none', webkitBackdropFilter: 'none',
   });
   c.dataset.scroll = JSON.stringify(scroll);
   return c;
@@ -481,14 +481,21 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   const n = Math.max(16, Math.min(28, Math.round(r.h / 26)));
   const sh = r.h / n;
   const strips: HTMLElement[] = [];
+  const copies: HTMLElement[] = [];
+  const clipper = document.createElement('div');
+  clipper.className = 'genie-clip';
   for (let i = 0; i < n; i++) {
     const s = document.createElement('div');
     s.className = 'genie-strip';
     Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${sh + 0.5}px` });
     const c = copyOf(w, scroll);
+    copies.push(c);
+    // Only the strips showing the title bar need the live blur (the rest is the opaque body plus an 8px
+    // border): two backdrop passes instead of dozens keeps every frame cheap.
+    if (i * sh > PAD + 44) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
     c.style.top = `${PAD - i * sh}px`;
     s.append(c);
-    layer.append(s);
+    clipper.append(s);
     strips.push(s);
   }
   // Hidden until every copied image has decoded: a copy shown a frame early drew icons as white boxes.
@@ -496,7 +503,10 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   // Under the dock, and cut off at the shelf's top edge: through the dock's clear glass the window
   // would otherwise show as a pale blob. It pours down and vanishes beneath the icon.
   const shelf = document.querySelector('#dock .dock-shelf')?.getBoundingClientRect();
-  if (shelf) layer.style.clipPath = `inset(0 0 ${Math.max(0, window.innerHeight - shelf.top)}px 0)`;
+  // An overflow box, not clip-path or opacity on the layer: those would make it a backdrop root and the
+  // copies' glass would stop blurring what is behind it.
+  clipper.style.height = `${shelf ? shelf.top : window.innerHeight}px`;
+  layer.append(clipper);
   document.body.append(layer);
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
   const imgs = [...layer.querySelectorAll('img')];
@@ -514,7 +524,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   };
   const H = sh + 0.5;
   const place = (P: number) => {
-    layer.style.opacity = String(1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55)));
+    const op = String(1 - 0.92 * smooth(clamp01((P - 0.45) / 0.55)));
+    for (const c of copies) c.style.opacity = op;
     for (let i = 0; i < n; i++) {
       const y0 = Y(i / n, P);
       // Half-pixel overlap: no seams, and no visible double glass where strips meet.
