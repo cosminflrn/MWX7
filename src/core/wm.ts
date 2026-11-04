@@ -472,6 +472,57 @@ function quad(w: number, h: number, x0: number, y0: number, x1: number, y1: numb
   return `matrix3d(${a / w},${d / w},0,${g / w},${b / h},${e / h},0,${k / h},0,0,1,0,${c},${f},0,1)`;
 }
 
+/**
+ * The window's glass, frozen: what its backdrop blur shows right now (the wallpaper under it), rendered
+ * once into an image. The genie animates that like macOS animates its snapshot — a live blur on a moving
+ * layer is recomputed every frame and shimmers.
+ */
+function bakeGlass(w: Win): Promise<string | null> {
+  if (w.el.classList.contains('maximized')) return Promise.resolve(null);
+  const layers = document.querySelectorAll<HTMLElement>('#desktop > .wp-layer');
+  const L = layers[layers.length - 1];
+  if (!L) return Promise.resolve(null);
+  const { x, y, w: W, h: H } = w.rect;
+  const M = 16; // margin, so the blur doesn't darken the edges
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const tmp = document.createElement('canvas');
+  tmp.width = Math.round((W + M * 2) * dpr);
+  tmp.height = Math.round((H + M * 2) * dpr);
+  const g = tmp.getContext('2d')!;
+  g.scale(dpr, dpr);
+  g.translate(M - x, M - y);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  try {
+    const video = L.querySelector<HTMLVideoElement>('video.wp-video.on');
+    const canvas = L.querySelector<HTMLCanvasElement>('canvas.wp-canvas-el');
+    if (video && video.videoWidth) {
+      const k = Math.max(vw / video.videoWidth, vh / video.videoHeight);
+      const dw = video.videoWidth * k;
+      const dh = video.videoHeight * k;
+      g.drawImage(video, (vw - dw) / 2, (vh - dh) / 2, dw, dh);
+    } else if (canvas) {
+      g.drawImage(canvas, 0, 0, vw, vh);
+      const glow = L.querySelector<HTMLCanvasElement>('canvas.wp-glow');
+      if (glow) {
+        g.globalCompositeOperation = 'lighter';
+        g.filter = glow.style.filter || 'none';
+        g.drawImage(glow, 0, 0, vw, vh);
+      }
+    } else return Promise.resolve(null);
+  } catch {
+    return Promise.resolve(null);
+  }
+  const out = document.createElement('canvas');
+  out.width = Math.round(W * dpr);
+  out.height = Math.round(H * dpr);
+  const o = out.getContext('2d')!;
+  const bf = getComputedStyle(w.el).backdropFilter;
+  o.filter = bf && bf !== 'none' ? bf.replace(/blur\(([\d.]+)px\)/, (_, v) => `blur(${Number(v) * dpr}px)`) : 'none';
+  o.drawImage(tmp, -M * dpr, -M * dpr);
+  return new Promise((res) => out.toBlob((b) => res(b ? URL.createObjectURL(b) : null)));
+}
+
 interface GenieRun {
   /** Resolves true when it played to the end, false when another animation took over. */
   done: Promise<boolean>;
@@ -482,7 +533,7 @@ interface GenieRun {
 }
 const genies = new Map<Win, GenieRun>();
 
-function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: number, onShown: () => void = () => {}): GenieRun {
+function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: number, onShown: () => void = () => {}, prevDispose?: () => void): GenieRun {
   const r = { x: w.rect.x - PAD, y: w.rect.y - PAD, w: w.rect.w + PAD * 2, h: w.rect.h + PAD * 2 };
   // End slightly in front of the icon centre, inside its lower half, fading as it slides under.
   // Funnel into the icon's width right at the dock's edge, so the window is already narrow when it slides
@@ -516,6 +567,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
     if (i > 0) Object.assign(c.style, { backdropFilter: 'none', webkitBackdropFilter: 'none' });
     c.style.top = `${PAD - B[i]}px`;
     s.append(c);
+
     clipper.append(s);
     strips.push(s);
   }
@@ -541,8 +593,23 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
   const imgs = [...layer.querySelectorAll('img')];
   imgs.forEach((im) => (im.loading = 'eager'));
+  const glass = bakeGlass(w).then((url) => {
+    if (!url) return;
+    const cs0 = getComputedStyle(w.el);
+    for (const c of copies) {
+      Object.assign(c.style, {
+        backdropFilter: 'none',
+        webkitBackdropFilter: 'none',
+        backgroundImage: `${cs0.backgroundImage}, url("${url}")`,
+        backgroundSize: `${cs0.backgroundSize}, ${w.rect.w}px ${w.rect.h}px`,
+        backgroundPosition: `${cs0.backgroundPosition}, 0 0`,
+        backgroundRepeat: `${cs0.backgroundRepeat}, no-repeat`,
+      });
+    }
+    void done.then(() => URL.revokeObjectURL(url));
+  });
   const decoded = Promise.race([
-    Promise.all(imgs.map((im) => im.decode().catch(() => undefined))),
+    Promise.all([glass, ...imgs.map((im) => im.decode().catch(() => undefined))]),
     new Promise((res) => window.setTimeout(res, 160)),
   ]);
 
@@ -589,6 +656,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   let cur = from;
   let raf = 0;
   let stopped = false;
+  let shown = false;
   let finish: (ok: boolean) => void = () => {};
   place(cur);
   // A click mid-animation turns it around from wherever it is, at the same speed.
@@ -597,6 +665,8 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   void decoded.then(() => {
     if (stopped) return;
     layer.style.visibility = '';
+    shown = true;
+    prevDispose?.();
     onShown();
     const start = performance.now();
     const frame = (now: number) => {
@@ -620,7 +690,11 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
       stopped = true;
       cancelAnimationFrame(raf);
       finish(false);
-      return () => layer.remove();
+      // Not on screen yet: whatever it was going to replace is still showing and must go with it.
+      return () => {
+        if (!shown) prevDispose?.();
+        layer.remove();
+      };
     },
   };
 }
@@ -655,10 +729,7 @@ export function minimizeWindow(id: string): void {
     if (target && !reducedMotion()) {
       // visibility (not display) hides the real window: the copies' SVG icons take their gradients from
       // the original's <defs> (same ids), and display:none would paint those icons white.
-      const g = runGenie(w, scroll, target, from, 1, () => {
-        w.el.style.visibility = 'hidden';
-        dispose?.();
-      });
+      const g = runGenie(w, scroll, target, from, 1, () => (w.el.style.visibility = 'hidden'), dispose);
       genies.set(w, g);
       if (!(await g.done)) return; // a restore took over
       genies.delete(w);
@@ -716,7 +787,7 @@ function restore(w: Win): void {
   w.el.style.display = '';
   w.el.style.visibility = 'hidden';
   applyScroll(w.el, scroll);
-  const g = runGenie(w, scroll, target, from, 0, () => dispose?.());
+  const g = runGenie(w, scroll, target, from, 0, () => {}, dispose);
   genies.set(w, g);
   void g.done.then((ok) => {
     if (!ok) return; // a minimize took over
