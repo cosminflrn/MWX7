@@ -5,13 +5,14 @@ Read `SPEC.md` first. It is the source of truth for design and architecture.
 ## Workflow
 - One GitHub issue → one branch (`feat/<issue#>-short-name`) → one PR that says `Closes #<n>`.
 - Stay inside the files your issue names. If you must touch `src/core/types.ts`, say so loudly in the PR — it is the shared contract.
-- Run `npm run build` before every commit. It must pass with zero errors.
+- Run `npm run build` before every commit and `npm test` before every PR. Both must pass.
 - Keep PRs small and reviewable; put screenshots/GIFs in the PR description for UI changes.
 
 ## Commands
 - `npm install` — once
 - `npm run dev` — local dev server
 - `npm run build` — typecheck + production build (CI runs this)
+- `npm test` — build + end-to-end checks in Chromium (tests/*.spec.ts). Must pass before every PR; deploys are blocked when it fails. Add a test for every bug you fix.
 
 ## Hard rules
 0. **Desktop + mouse only.** No touch handling, and no keyboard shortcuts (they clash with the host OS when MWX 7 runs in a browser). Typing in text fields, game controls and the BIOS/Commander keys are the only keyboard input.
