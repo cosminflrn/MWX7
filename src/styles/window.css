@@ -182,6 +182,7 @@
   z-index: 98900;
   pointer-events: none;
 }
+.genie-shadow { position: absolute; pointer-events: none; will-change: opacity; }
 .genie-clip { position: absolute; left: 0; top: 0; width: 100%; overflow: hidden; }
 .genie-strip { position: absolute; overflow: hidden; transform-origin: 0 0; will-change: transform; }
 .genie-strip > .win { position: absolute; pointer-events: none; }

@@ -498,6 +498,9 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
     s.className = 'genie-strip';
     Object.assign(s.style, { left: '0px', top: '0px', width: `${r.w}px`, height: `${HS[i]}px` });
     const c = copyOf(w, scroll);
+    // The soft drop shadow is drawn once, by the shadow layer below; per-strip copies of it doubled up
+    // where strips meet and flickered as they stretched. The crisp frame rings stay on the copies.
+    c.style.boxShadow = w.el.classList.contains('maximized') ? 'none' : 'var(--glass-ring)';
     copies.push(c);
     // Only the strips showing the title bar need the live blur (the rest is the opaque body plus an 8px
     // border): two backdrop passes instead of dozens keeps every frame cheap.
@@ -515,7 +518,16 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   // An overflow box, not clip-path or opacity on the layer: those would make it a backdrop root and the
   // copies' glass would stop blurring what is behind it.
   clipper.style.height = `${shelf ? shelf.top : window.innerHeight}px`;
-  layer.append(clipper);
+  // One shadow for the whole window, exactly where the real one is; it fades as the window starts to bend.
+  const shade = document.createElement('div');
+  shade.className = 'genie-shadow';
+  const cs = getComputedStyle(w.el);
+  Object.assign(shade.style, {
+    left: `${w.rect.x}px`, top: `${w.rect.y}px`, width: `${w.rect.w}px`, height: `${w.rect.h}px`,
+    borderRadius: cs.borderRadius,
+    boxShadow: w.el.classList.contains('maximized') ? 'none' : 'var(--shadow-win)',
+  });
+  layer.append(shade, clipper);
   document.body.append(layer);
   for (const s of strips) applyScroll(s.firstElementChild!, scroll);
   const imgs = [...layer.querySelectorAll('img')];
@@ -534,6 +546,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, reverse: boolean, onSho
   const place = (P: number) => {
     const op = String(1 - smooth(clamp01((P - 0.5) / 0.5)));
     for (const c of copies) c.style.opacity = op;
+    shade.style.opacity = String(1 - smooth(clamp01(P / 0.3)));
     for (let i = 0; i < n; i++) {
       const y0 = Y(B[i] / r.h, P);
       // Neighbours share the exact same whole-pixel edge: no seam, no overlap, no doubled glass.
