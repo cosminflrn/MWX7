@@ -3,7 +3,7 @@ import { bus } from '../core/events';
 import { settings } from '../core/settings';
 import { launch } from '../core/os';
 import type { MenuDef } from '../core/types';
-import { activeWindow, allWindows, centerWindow, closeWindow, minimizeWindow, showDesktop, toggleMaximize } from '../core/wm';
+import { activeWindow, allWindows, centerWindow, closeWindow, minimizeWindow, prepareMinimize, showDesktop, toggleMaximize } from '../core/wm';
 import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
@@ -120,6 +120,10 @@ export function mountMenubar(bar: HTMLElement): void {
       .sort((x, y) => y.z - x.z)[0];
     return top && top.state === 'max' ? top : null;
   };
+  wcMin.addEventListener('pointerdown', (e) => {
+    const w = target();
+    if (w && e.button === 0) prepareMinimize(w.id);
+  });
   wcMin.addEventListener('click', () => {
     const w = target();
     if (w) minimizeWindow(w.id);

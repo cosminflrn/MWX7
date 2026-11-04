@@ -262,6 +262,7 @@ export function openWindow(manifest: AppManifest, setup: (h: WindowHandle) => vo
   else addResizeHandles(w, cfg.minWidth ?? 280, cfg.minHeight ?? 180);
 
   el.querySelector('.wc-close')!.addEventListener('click', () => closeWindow(id));
+  el.querySelector('.wc-min')!.addEventListener('pointerdown', (e) => (e as PointerEvent).button === 0 && prepareMinimize(id));
   el.querySelector('.wc-min')!.addEventListener('click', () => minimizeWindow(id));
   el.querySelector('.wc-max')!.addEventListener('click', () => toggleMaximize(id));
   el.addEventListener('pointerdown', () => focusWindow(id), true);
@@ -495,6 +496,20 @@ function parseShadows(v: string): Array<{ x: number; y: number; blur: number; co
  * once into an image. The genie animates that like macOS animates its snapshot — a live blur on a moving
  * layer is recomputed every frame and shimmers.
  */
+const prebaked = new Map<Win, { at: number; x: number; y: number; job: Promise<string | null> }>();
+/** Pressing the minimize button starts freezing the glass, so the genie can begin the moment it is released. */
+export function prepareMinimize(id: string): void {
+  const w = wins.get(id);
+  if (!w || w.minimized) return;
+  prebaked.set(w, { at: performance.now(), x: w.rect.x, y: w.rect.y, job: bakeGlass(w) });
+}
+function frozenGlass(w: Win): Promise<string | null> {
+  const p = prebaked.get(w);
+  prebaked.delete(w);
+  if (p && performance.now() - p.at < 1500 && p.x === w.rect.x && p.y === w.rect.y) return p.job;
+  return bakeGlass(w);
+}
+
 function bakeGlass(w: Win): Promise<string | null> {
   if (w.el.classList.contains('maximized')) return Promise.resolve(null);
   const layers = document.querySelectorAll<HTMLElement>('#desktop > .wp-layer');
@@ -637,7 +652,7 @@ function runGenie(w: Win, scroll: ScrollMap, t: DOMRect, from: number, to: numbe
   const imgs = [...layer.querySelectorAll('img')];
   imgs.forEach((im) => (im.loading = 'eager'));
   let bakedUrl = '';
-  const glass = bakeGlass(w).then((url) => {
+  const glass = frozenGlass(w).then((url) => {
     if (!url) return;
     const cs0 = getComputedStyle(w.el);
     for (const c of copies) {
