@@ -6,16 +6,7 @@ import './about.css';
 
 export const VERSION = '0.9.29';
 
-export const about: AppManifest = {
-  id: 'about',
-  name: 'About MWX 7',
-  icon: icons.about,
-  description: 'Version and credits',
-  keywords: ['version', 'info', 'credits', 'system'],
-  desktop: true,
-  singleInstance: true,
-  window: { width: 420, height: 430, resizable: false },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args }) {
     const app = typeof args.app === 'string' ? getApp(args.app) : undefined;
     win.body.classList.add('about');

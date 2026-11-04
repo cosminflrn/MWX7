@@ -27,16 +27,7 @@ const SECTIONS: Section[] = [
   { id: 'system', title: 'System', icon: icons.computer },
 ];
 
-export const settingsApp: AppManifest = {
-  id: 'settings',
-  name: 'Settings',
-  icon: icons.settings,
-  description: 'Personalize MWX 7',
-  keywords: ['preferences', 'control panel', 'wallpaper', 'personalize', 'system', 'sound', 'account'],
-  pinned: true,
-  singleInstance: true,
-  window: { width: 700, height: 500, minWidth: 520, minHeight: 380 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, os }) {
     win.body.classList.add('set');
     const s = os.settings.get();

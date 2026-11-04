@@ -2,7 +2,6 @@ import type { AppManifest, MenuItem } from '../../core/types';
 import { h } from '../../ui/dom';
 import { openMenu } from '../../ui/menu';
 import { showSheet } from '../../ui/sheet';
-import { stickyIcon } from './icon';
 import './stickynotes.css';
 
 const COLORS: Array<[string, string]> = [
@@ -19,16 +18,7 @@ const ICON_PLUS = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.500
 const ICON_X = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.500 3.500 9 9m0-9-9 9" stroke="currentColor" stroke-width="1.800" stroke-linecap="round" fill="none"/></svg>';
 
 /** One window per note; notes are session-only by design, so nothing is persisted. */
-export const stickynotes: AppManifest = {
-  id: 'stickynotes',
-  name: 'Sticky Notes',
-  icon: stickyIcon,
-  description: 'Jot down quick reminders',
-  keywords: ['note', 'memo', 'reminder', 'post-it', 'sticky'],
-  pinned: false,
-  desktop: false,
-  window: { width: 240, height: 240, minWidth: 170, minHeight: 130 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, os }) {
     win.body.classList.add('sn');
     let color = typeof args.color === 'string' && SWATCH[args.color] ? args.color : 'yellow';

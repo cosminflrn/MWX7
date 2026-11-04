@@ -46,16 +46,7 @@ function resolve(text: string): { url?: string; query?: string } {
   return { query: t };
 }
 
-export const browser: AppManifest = {
-  id: 'browser',
-  name: 'Internet',
-  icon: browserIcon,
-  description: 'Browse the web',
-  keywords: ['browser', 'web', 'internet', 'www', 'search', 'wikipedia'],
-  pinned: true,
-  desktop: true,
-  window: { width: 1100, height: 720, minWidth: 520, minHeight: 360 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args }) {
     win.body.classList.add('br');
     const tabs: Tab[] = [];
