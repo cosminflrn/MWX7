@@ -997,6 +997,7 @@ function enableDrag(w: Win, titlebar: HTMLElement): void {
     const start = { x: e.clientX, y: e.clientY };
     const startRect = { ...w.rect };
     const grabRatio = (e.clientX - startRect.x) / startRect.w;
+    let base: { x: number; y: number } | null = null;
     let off = { x: e.clientX - startRect.x, y: e.clientY - startRect.y };
     let dragging = false;
     let snap: WinState = 'normal';
@@ -1019,7 +1020,10 @@ function enableDrag(w: Win, titlebar: HTMLElement): void {
       }
       const x = ev.clientX - off.x;
       const y = Math.max(MENUBAR_H, ev.clientY - off.y);
-      setRect(w, { ...w.rect, x, y });
+      // Moving with a compositor transform (no layout per pointer move); left/top are committed on release.
+      if (!base) base = { x: parseFloat(w.el.style.left) || 0, y: parseFloat(w.el.style.top) || 0 };
+      w.rect = { ...w.rect, x, y };
+      w.el.style.transform = `translate3d(${Math.round(x - base.x)}px, ${Math.round(y - base.y)}px, 0)`;
 
       const resizable = w.manifest.window?.resizable !== false;
       snap = !resizable
@@ -1038,6 +1042,11 @@ function enableDrag(w: Win, titlebar: HTMLElement): void {
       titlebar.removeEventListener('pointermove', onMove);
       titlebar.removeEventListener('pointerup', onUp);
       titlebar.removeEventListener('pointercancel', onUp);
+      if (base) {
+        w.el.style.transform = '';
+        setRect(w, w.rect);
+        base = null;
+      }
       w.el.classList.remove('dragging');
       showPreview(null);
       if (dragging && snap !== 'normal') setState(w, snap);
