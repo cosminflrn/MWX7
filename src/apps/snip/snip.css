@@ -1,0 +1,10 @@
+.snip { display: flex; flex-direction: column; background: #f0f4fa; font-size: 12px; }
+.snip-bar { display: flex; gap: 6px; padding: 8px; background: linear-gradient(#fbfdff, #dfe9f5); border-bottom: 1px solid #a9bcd3; }
+.snip-stage { flex: 1; min-height: 0; overflow: auto; margin: 8px; background: #fff; border: 1px solid #8ea6c2; display: flex; align-items: flex-start; justify-content: flex-start; }
+.snip-empty { margin: auto; color: #7b8aa0; }
+.snip-img { display: block; border: 2px solid #c0392b; margin: 8px; max-width: none; }
+.snip-foot { padding: 4px 10px 8px; color: #4a5d74; }
+.snip-overlay { position: fixed; inset: 0; z-index: 2147483000; background: rgba(0, 20, 50, 0.45); cursor: crosshair; }
+.snip-hint { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #123a6e; font: 13px system-ui, sans-serif; pointer-events: none; }
+.snip-overlay.dragging .snip-hint { display: none; }
+.snip-sel { position: absolute; border: 2px solid #e04030; box-shadow: 0 0 0 9999px rgba(0, 20, 50, 0.0); background: rgba(255, 255, 255, 0.12); pointer-events: none; }

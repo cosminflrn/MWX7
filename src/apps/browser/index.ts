@@ -4,6 +4,12 @@ import { browserIcon } from './icon';
 import './browser.css';
 
 const START = 'mwx:start';
+const HISTORY = 'mwx:history';
+/** Hosts that send X-Frame-Options / frame-ancestors; Chrome gives no readable signal for them, so show the panel at once. */
+const NO_FRAME = /(^|\.)(google|bing|youtube|facebook|instagram|twitter|x|linkedin|github|reddit|netflix|amazon|paypal|duckduckgo|yahoo|whatsapp|tiktok|pinterest|twitch|microsoft|apple)\.[a-z.]+$/i;
+/** Session-only, shared by every Internet window. */
+const favorites: { url: string; title: string }[] = [];
+const visits: { url: string; title: string; at: number }[] = [];
 const SEARCH = 'https://www.bing.com/search?q=';
 const LOAD_TIMEOUT = 15000;
 
@@ -40,22 +46,13 @@ const hostOf = (u: string): string => {
 function resolve(text: string): { url?: string; query?: string } {
   const t = text.trim();
   if (!t) return {};
-  if (t === START) return { url: START };
+  if (t === START || t === HISTORY) return { url: t };
   if (/^https?:\/\//i.test(t)) return { url: t };
   if (!/\s/.test(t) && /^[^\s/]+\.[a-z]{2,}(:\d+)?([/?#].*)?$/i.test(t)) return { url: `https://${t}` };
   return { query: t };
 }
 
-export const browser: AppManifest = {
-  id: 'browser',
-  name: 'Internet',
-  icon: browserIcon,
-  description: 'Browse the web',
-  keywords: ['browser', 'web', 'internet', 'www', 'search', 'wikipedia'],
-  pinned: true,
-  desktop: true,
-  window: { width: 1100, height: 720, minWidth: 520, minHeight: 360 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args }) {
     win.body.classList.add('br');
     const tabs: Tab[] = [];
@@ -66,6 +63,9 @@ export const browser: AppManifest = {
     const reload = h('button', { class: 'br-tool', 'aria-label': 'Reload', title: 'Reload', html: '&#8635;' });
     const home = h('button', { class: 'br-tool', 'aria-label': 'Home', title: 'Home', html: '&#8962;' });
     const address = h('input', { class: 'br-address', type: 'text', spellcheck: false, 'aria-label': 'Address', placeholder: 'Search or type an address' });
+    const star = h('button', { class: 'br-tool br-star', 'aria-label': 'Add to Favorites', title: 'Add to Favorites', html: '&#9734;' });
+    const histBtn = h('button', { class: 'br-tool br-histbtn', 'aria-label': 'History', title: 'History', html: '&#128339;' });
+    const favBar = h('div', { class: 'br-favbar', hidden: true });
     const go = h('button', { class: 'br-tool br-go', 'aria-label': 'Go', title: 'Go', html: '&#10140;' });
     const tabStrip = h('div', { class: 'br-tabs' });
     const newTabBtn = h('button', { class: 'br-newtab', 'aria-label': 'New tab', title: 'New tab' }, '+');
@@ -76,13 +76,13 @@ export const browser: AppManifest = {
       href: '#',
       onclick: (e: Event) => {
         e.preventDefault();
-        if (cur && urlOf(cur) !== START) openOutside(urlOf(cur));
+        if (cur && !urlOf(cur).startsWith('mwx:')) openOutside(urlOf(cur));
       },
     }, 'Open in a new tab');
     const status = h('div', { class: 'br-status' }, statusText, outside);
 
-    const toolbar = h('div', { class: 'br-toolbar' }, h('div', { class: 'br-navgroup' }, back, fwd), reload, home, h('div', { class: 'br-addrwrap' }, address, go));
-    win.body.append(h('div', { class: 'br-tabbar' }, tabStrip, newTabBtn), toolbar, content, status);
+    const toolbar = h('div', { class: 'br-toolbar' }, h('div', { class: 'br-navgroup' }, back, fwd), reload, home, h('div', { class: 'br-addrwrap' }, address, star, go), histBtn);
+    win.body.append(h('div', { class: 'br-tabbar' }, tabStrip, newTabBtn), toolbar, favBar, content, status);
 
     const openOutside = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
     const search = (q: string) => openOutside(SEARCH + encodeURIComponent(q));
@@ -116,22 +116,73 @@ export const browser: AppManifest = {
       );
     };
 
+    const favicon = (url: string, cls: string): HTMLElement => {
+      const wrap = h('span', { class: cls }, hostOf(url)[0]?.toUpperCase() ?? '?');
+      const img = new Image();
+      img.referrerPolicy = 'no-referrer';
+      img.alt = '';
+      img.onload = () => wrap.replaceChildren(img);
+      try {
+        img.src = new URL('/favicon.ico', url).href;
+      } catch {
+        /* keep the letter */
+      }
+      return wrap;
+    };
+
     const showBlocked = (t: Tab, url: string) => {
       clearTimeout(t.timer);
       t.pane.querySelector('.br-blocked')?.remove();
+      t.pane.querySelector('iframe')?.remove();
       t.pane.append(
         h(
           'div',
           { class: 'br-blocked' },
           h('div', { class: 'br-blocked-card' },
-            h('div', { class: 'br-blocked-ico' }, '!'),
-            h('h2', {}, "This page can't be shown inside MWX 7"),
-            h('p', {}, `${hostOf(url)} doesn't allow itself to be displayed in another window.`),
-            h('button', { class: 'br-primary', onclick: () => openOutside(url) }, 'Open in a new tab'),
+            favicon(url, 'br-blocked-fav'),
+            h('div', { class: 'br-blocked-site' }, hostOf(url)),
+            h('h2', {}, "This page can't be shown here"),
+            h('p', {}, `${hostOf(url)} doesn't allow itself to be displayed inside another window. It will work fine in its own browser tab.`),
+            h('button', { class: 'br-primary br-big', onclick: () => openOutside(url) }, 'Open in a new tab'),
+            h('div', { class: 'br-blocked-url' }, url),
           ),
         ),
       );
       setStatus('Blocked from displaying here');
+    };
+
+    const buildHistory = (): HTMLElement => {
+      const rows = h('div', { class: 'br-hist-list' });
+      if (!visits.length) rows.append(h('div', { class: 'br-hist-empty' }, 'No pages visited yet in this session.'));
+      for (const v of [...visits].reverse())
+        rows.append(
+          h('button', { class: 'br-hist-row', onclick: () => navigate(v.url) },
+            favicon(v.url, 'br-hist-fav'),
+            h('span', { class: 'br-hist-t' }, v.title),
+            h('span', { class: 'br-hist-u' }, v.url),
+            h('span', { class: 'br-hist-at' }, new Date(v.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))),
+        );
+      return h('div', { class: 'br-hist' }, h('div', { class: 'br-hist-in' }, h('h2', {}, 'History'), h('p', {}, 'Pages you opened since MWX 7 started.'), rows));
+    };
+
+    const renderFavBar = () => {
+      favBar.hidden = !favorites.length;
+      favBar.replaceChildren(
+        ...favorites.map((f) =>
+          h('button', { class: 'br-fav', title: f.url, onclick: () => navigate(f.url) }, favicon(f.url, 'br-fav-ico'), h('span', {}, f.title)),
+        ),
+      );
+      if (cur) sync();
+    };
+
+    const toggleFavorite = () => {
+      if (!cur) return;
+      const url = urlOf(cur);
+      if (url === START || url === HISTORY) return;
+      const at = favorites.findIndex((f) => f.url === url);
+      if (at >= 0) favorites.splice(at, 1);
+      else favorites.push({ url, title: cur.title });
+      renderFavBar();
     };
 
     const setStatus = (s: string) => {
@@ -143,11 +194,16 @@ export const browser: AppManifest = {
       t.pane.replaceChildren();
       clearTimeout(t.timer);
       t.frame = null;
-      if (url === START) {
-        t.title = 'Start page';
-        t.pane.append(buildStart());
+      if (url === START || url === HISTORY) {
+        t.title = url === START ? 'Start page' : 'History';
+        t.pane.append(url === START ? buildStart() : buildHistory());
         setStatus('Done');
+      } else if (NO_FRAME.test(hostOf(url))) {
+        t.title = hostOf(url);
+        visits.push({ url, title: t.title, at: Date.now() });
+        showBlocked(t, url);
       } else {
+        visits.push({ url, title: hostOf(url), at: Date.now() });
         const frame = h('iframe', {
           class: 'br-frame',
           title: hostOf(url),
@@ -187,7 +243,12 @@ export const browser: AppManifest = {
     const sync = () => {
       if (!cur) return;
       const url = urlOf(cur);
-      address.value = url === START ? '' : url;
+      address.value = url === START || url === HISTORY ? '' : url;
+      const faved = favorites.some((f) => f.url === url);
+      star.innerHTML = faved ? '&#9733;' : '&#9734;';
+      star.classList.toggle('on', faved);
+      star.title = star.ariaLabel = faved ? 'Remove from Favorites' : 'Add to Favorites';
+      star.disabled = url === START || url === HISTORY;
       back.disabled = cur.idx <= 0;
       fwd.disabled = cur.idx >= cur.hist.length - 1;
       cur.tabTitle.textContent = cur.title;
@@ -249,6 +310,8 @@ export const browser: AppManifest = {
     reload.addEventListener('click', () => cur && render(cur));
     home.addEventListener('click', () => cur && urlOf(cur) !== START && navigate(START));
     go.addEventListener('click', submitAddress);
+    star.addEventListener('click', toggleFavorite);
+    histBtn.addEventListener('click', () => cur && urlOf(cur) !== HISTORY && navigate(HISTORY));
     address.addEventListener('keydown', (e) => e.key === 'Enter' && submitAddress());
     address.addEventListener('focus', () => address.select());
     newTabBtn.addEventListener('click', () => addTab());
@@ -257,16 +320,18 @@ export const browser: AppManifest = {
         { label: 'New Tab', action: () => addTab() },
         { label: 'Close Tab', action: () => cur && closeTab(cur) },
         { separator: true },
-        { label: 'Open Page in New Browser Tab', action: () => cur && urlOf(cur) !== START && openOutside(urlOf(cur)) },
+        { label: 'Open Page in New Browser Tab', action: () => cur && !urlOf(cur).startsWith('mwx:') && openOutside(urlOf(cur)) },
       ] },
       { label: 'Go', items: [
         { label: 'Back', action: () => step(-1) },
         { label: 'Forward', action: () => step(1) },
         { label: 'Reload', action: () => cur && render(cur) },
+        { label: 'History', action: () => cur && urlOf(cur) !== HISTORY && navigate(HISTORY) },
         { label: 'Start Page', action: () => cur && urlOf(cur) !== START && navigate(START) },
       ] },
     ]);
 
+    renderFavBar();
     addTab(typeof args.url === 'string' && args.url ? args.url : START);
 
     return () => tabs.forEach((t) => clearTimeout(t.timer));

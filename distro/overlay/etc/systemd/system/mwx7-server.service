@@ -1,0 +1,18 @@
+[Unit]
+Description=MWX 7 static file server (offline, localhost only)
+After=network.target
+
+[Service]
+# python3 http.server is enough for static files and avoids shipping a web server.
+User=mwx
+WorkingDirectory=/opt/mwx7/dist
+ExecStart=/usr/bin/python3 -m http.server 8080 --bind 127.0.0.1
+Restart=always
+# Hardening: it only ever reads /opt/mwx7/dist.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

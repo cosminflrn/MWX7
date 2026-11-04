@@ -76,6 +76,7 @@ from `selawik.glyphs` with fontmake (TTF, no autohint) and converted to WOFF2 wi
 | File | Title | Performer | Source | License |
 |---|---|---|---|---|
 | `goldberg-variatio-1.ogg`, `goldberg-variatio-4.ogg`, `goldberg-variatio-5.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 1, 4 and 5 (from "The Open Goldberg Variations") | Kimiko Ishizaka | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 (public domain dedication) |
+| `goldberg-variatio-2.ogg`, `goldberg-variatio-6.ogg`, `goldberg-variatio-8.ogg`, `goldberg-variatio-10.ogg`, `goldberg-variatio-18.ogg` | J.S. Bach, Goldberg Variations BWV 988: Variatio 2, 6 (Canone alla Seconda), 8, 10 (Fughetta) and 18 (Canone alla Sexta), from "The Open Goldberg Variations", unmodified Ogg Vorbis from the archive | Kimiko Ishizaka (piano) | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
 | `goldberg-aria-da-capo.ogg` | J.S. Bach, Goldberg Variations BWV 988: Aria da Capo e Fine (Open Goldberg Variations), background music of the Welcome tour | Kimiko Ishizaka (piano) | https://archive.org/details/OpenGoldbergVariations | CC0 1.0 |
 
 Unmodified copies of the Ogg Vorbis files published by the project.
@@ -117,3 +118,5 @@ Landscape photographs seeded into `/Pictures` for Photo Viewer. Pexels License (
 | `white-sand-beach.jpg` | 1450353 |
 
 Source URL pattern: `https://www.pexels.com/photo/<id>/`.
+
+Media Player album art is generated in code (original SVG, no third-party artwork).

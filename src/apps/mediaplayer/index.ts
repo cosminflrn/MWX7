@@ -1,6 +1,5 @@
-import type { AppManifest, VFS } from '../../core/types';
+import type { AppManifest, MenuItem, VFS } from '../../core/types';
 import { h } from '../../ui/dom';
-import { mediaPlayerIcon } from './icon';
 import './mediaplayer.css';
 
 const MUSIC = '/Music';
@@ -13,6 +12,11 @@ const BUNDLED = [
   { file: 'Goldberg Variations - Variatio 1.ogg', src: 'media/music/goldberg-variatio-1.ogg', title: 'Goldberg Variations: Variatio 1', artist: 'Kimiko Ishizaka' },
   { file: 'Goldberg Variations - Variatio 4.ogg', src: 'media/music/goldberg-variatio-4.ogg', title: 'Goldberg Variations: Variatio 4', artist: 'Kimiko Ishizaka' },
   { file: 'Goldberg Variations - Variatio 5.ogg', src: 'media/music/goldberg-variatio-5.ogg', title: 'Goldberg Variations: Variatio 5', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 2.ogg', src: 'media/music/goldberg-variatio-2.ogg', title: 'Goldberg Variations: Variatio 2', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 6.ogg', src: 'media/music/goldberg-variatio-6.ogg', title: 'Goldberg Variations: Variatio 6', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 8.ogg', src: 'media/music/goldberg-variatio-8.ogg', title: 'Goldberg Variations: Variatio 8', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 10.ogg', src: 'media/music/goldberg-variatio-10.ogg', title: 'Goldberg Variations: Variatio 10', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 18.ogg', src: 'media/music/goldberg-variatio-18.ogg', title: 'Goldberg Variations: Variatio 18', artist: 'Kimiko Ishizaka' },
 ];
 
 interface Track {
@@ -20,6 +24,16 @@ interface Track {
   title: string;
   artist: string;
   url: string;
+}
+
+/** Original generated cover art: a soft gradient with piano keys and a hue derived from the title, so each track looks distinct. */
+function artFor(seed: string): string {
+  let n = 0;
+  for (const c of seed) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  const hue = n % 360;
+  const keys = Array.from({ length: 7 }, (_, i) => `<rect x="${6 + i * 12}" y="50" width="10" height="${i % 3 === 1 ? 34 : 44}" rx="2" fill="#fff" opacity="${0.55 + ((n >> i) & 3) * 0.1}"/>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 70% 62%)"/><stop offset="1" stop-color="hsl(${(hue + 50) % 360} 65% 28%)"/></linearGradient></defs><rect width="96" height="96" rx="10" fill="url(#g)"/><circle cx="${30 + (n % 40)}" cy="26" r="${10 + (n % 7)}" fill="#fff" opacity=".22"/><path d="M0 40q24-${10 + (n % 16)} 48 0t48 0" fill="none" stroke="#fff" stroke-width="2" opacity=".35"/>${keys}</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 const fmt = (s: number): string => {
@@ -49,20 +63,11 @@ async function loadTracks(fs: VFS): Promise<Track[]> {
     const known = BUNDLED.find((b) => f.content === POINTER + b.src);
     out.push({ path: f.path, url, title: known?.title ?? f.name.replace(AUDIO_EXT, ''), artist: known?.artist ?? 'Unknown artist' });
   }
-  return out.sort((a, b) => a.path.localeCompare(b.path));
+  return out.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
 }
 
-export const mediaplayer: AppManifest = {
-  id: 'mediaplayer',
-  name: 'Media Player',
-  icon: mediaPlayerIcon,
-  description: 'Play music from your Music folder',
-  keywords: ['music', 'audio', 'player', 'mp3', 'ogg', 'wav', 'song'],
-  pinned: true,
-  desktop: false,
-  window: { width: 860, height: 540, minWidth: 560, minHeight: 380 },
-
-  mount({ win, args, fs }) {
+export const impl: Pick<AppManifest, 'mount'> = {
+  mount({ win, args, fs, os }) {
     win.body.classList.add('mp');
     let tracks: Track[] = [];
     let index = -1;
@@ -116,7 +121,7 @@ export const mediaplayer: AppManifest = {
       tracks.forEach((t, i) =>
         list.append(
           h('button', { class: `mp-item${i === index ? ' cur' : ''}`, role: 'option', ondblclick: () => select(i, true), onclick: () => select(i, true) },
-            h('span', { class: 'mp-n' }, String(i + 1)), h('span', { class: 'mp-it' }, h('b', {}, t.title), h('small', {}, t.artist))),
+            h('img', { class: 'mp-art', src: artFor(t.title), alt: '', draggable: false }), h('span', { class: 'mp-it' }, h('b', {}, t.title), h('small', {}, t.artist))),
         ),
       );
     };
@@ -309,6 +314,14 @@ export const mediaplayer: AppManifest = {
       if (at >= 0) select(at, true);
     })();
 
+    // Mini player in the dock's right-click menu (see OSApi.setJumpList).
+    os.setJumpList('mediaplayer', () => [
+      { label: index >= 0 ? `${tracks[index]?.title ?? ''}` : 'Nothing playing', disabled: true },
+      { label: audio.paused ? 'Play' : 'Pause', action: toggle },
+      { label: 'Previous', action: () => step(-1) },
+      { label: 'Next', action: () => step(1) },
+    ] as MenuItem[]);
+
     win.setMenus([
       { label: 'Play', items: [
         { label: 'Play / Pause', action: toggle },
@@ -318,6 +331,7 @@ export const mediaplayer: AppManifest = {
     ]);
 
     return () => {
+      os.setJumpList('mediaplayer', null);
       cancelAnimationFrame(raf);
       audio.pause();
       audio.removeAttribute('src');

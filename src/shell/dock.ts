@@ -1,7 +1,7 @@
 import { icons } from '../assets/icons';
 import { bus } from '../core/events';
 import { settings } from '../core/settings';
-import { launch } from '../core/os';
+import { getJumpList, launch, recentOf } from '../core/os';
 import { getApp, listApps } from '../core/registry';
 import type { MenuItem } from '../core/types';
 import { activeWindow, closeWindow, focusWindow, minimizeWindow, setMinimizeTarget, windowsOf } from '../core/wm';
@@ -189,8 +189,16 @@ export function mountDock(dock: HTMLElement): void {
   const jumpList = (appId: string, btn: HTMLElement) => {
     const app = getApp(appId)!;
     const wins = windowsOf(appId);
-    const items: MenuItem[] = wins.map((w) => ({ label: w.title, icon: app.icon, checked: activeWindow()?.id === w.id, action: () => focusWindow(w.id) }));
-    if (items.length) items.push({ separator: true });
+    const recent: MenuItem[] = recentOf(appId).map((path) => ({
+      label: path.split('/').pop() || path,
+      icon: app.icon,
+      action: () => launch(appId, { path }),
+    }));
+    const extra = wins.length ? getJumpList(appId) : [];
+    const items: MenuItem[] = extra.length ? [...extra, { separator: true }] : [];
+    if (recent.length) items.push({ label: 'Recent', disabled: true }, ...recent, { separator: true });
+    items.push(...wins.map((w) => ({ label: w.title, icon: app.icon, checked: activeWindow()?.id === w.id, action: () => focusWindow(w.id) })));
+    if (wins.length) items.push({ separator: true });
     if (!app.singleInstance || !wins.length)
       items.push({ label: wins.length ? 'New Window' : `Open ${app.name}`, icon: menuIcon(wins.length ? 'new-file' : 'open'), action: () => launch(appId) });
     if (wins.length)

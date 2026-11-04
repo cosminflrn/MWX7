@@ -1,7 +1,6 @@
 import { basename } from '../../core/fs';
 import type { AppManifest, VFS } from '../../core/types';
 import { h } from '../../ui/dom';
-import { photosIcon } from './icon';
 import './photos.css';
 
 const PICTURES = '/Pictures';
@@ -62,16 +61,7 @@ const I = {
   close: svg('M6 6l12 12M18 6 6 18'),
 };
 
-export const photos: AppManifest = {
-  id: 'photos',
-  name: 'Photo Viewer',
-  icon: photosIcon,
-  description: 'View pictures and play slideshows',
-  keywords: ['pictures', 'images', 'photo', 'jpg', 'png', 'slideshow', 'gallery'],
-  pinned: false,
-  desktop: false,
-  window: { width: 860, height: 600, minWidth: 520, minHeight: 360 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, fs, os }) {
     win.body.classList.add('ph');
     let pics: Pic[] = [];

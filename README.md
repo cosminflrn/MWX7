@@ -2,37 +2,55 @@
 
 # MWX 7
 
-**The dream desktop.**
+**The dream desktop.** A complete desktop OS that runs in your browser.
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v0.9
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v1.0.0 · [Changelog](CHANGELOG.md)
 
-![MWX 7 desktop](docs/screenshot.jpg)
+![MWX 7 desktop](docs/media/hero.jpg)
+
+<video src="docs/media/demo.webm" controls muted width="720"></video>
+
+[Animated GIF version](docs/media/demo.gif)
 
 </div>
 
-MWX 7 is a complete desktop operating system that runs in your browser: glass windows, a dock, a Start menu, a real boot sequence, sounds, and its own apps. No install, nothing to download. Every visit is a fresh machine: nothing is stored after you close or reload it.
+MWX 7 is a vanilla-TypeScript mockup operating system that blends the best of macOS, Windows XP and Windows 7: glass windows, a dock, a Start menu, a real boot sequence, original sounds and its own apps. No install, no framework, nothing stored after you close the tab: every visit is a fresh machine.
 
-## Highlights
-- **A real startup.** Press the power button, watch the BIOS test your memory (with the beep), then the boot logo and the logon screen.
-- **Glass everywhere.** Translucent windows, smooth animations, windows that pour into the dock when you minimize them.
-- **Snap, center, full screen.** Drag a window to an edge to snap it, double-click the title bar to center it, or go full screen: the title bar melts into the top bar and the dock stretches edge to edge.
-- **Start menu, Search and Overview.** Click the orb, the magnifier or the overview button in the top bar.
-- **Its own sound.** Original startup chime and system sounds on real sampled instruments.
-- **Living wallpapers.** Real moving footage and animated scenes, with soft ambient sound on the desktop.
-- **Windows XP and 7 at heart.** My Computer, Paint, Calculator, Notepad, Aero Peek, a clock calendar and a Trash in the dock — with glossy Crystal Clear icons.
-- **Apps:** My Computer, Paint, Notepad, Calculator, Space Pinball, Settings — more on the way.
-- **Mouse-first.** Made for a desktop and a mouse: no touch, and no keyboard shortcuts to fight with your real OS.
+| Start menu | Overview | Full screen |
+|---|---|---|
+| ![Start menu](docs/media/start-menu.jpg) | ![Overview](docs/media/overview.jpg) | ![Full screen](docs/media/fullscreen.jpg) |
 
-![MWX 7 logon](docs/logon.jpg)
+## Features
+
+### Desktop & shell
+- Power button, BIOS memory test with beep, boot logo, first-run setup and logon screen
+- Glass windows with tintable blur, snap to edges, center on double-click, full screen that merges the title bar into the top bar
+- Genie minimize into the dock, Aero Peek, show desktop, Overview of all windows
+- Dock with a Trash, Start menu, Search, calendar flyout, notifications, desktop gadgets and icons
+- MWX Commander, a DOS-style two-panel file manager
+
+### Apps
+My Computer (Explorer), Paint, Notepad, Calculator, Internet browser, Media Player, Photo Viewer, Sticky Notes, Task Manager, Settings, Welcome tour, About.
+
+### Games
+Space Pinball, Minesweeper-style Mines, Solitaire.
+
+### Personalization
+Living video and animated wallpapers with ambient sound, glass color and intensity, clock format, dock options, desktop layout, avatars.
 
 ## Run locally
 ```bash
 npm install
-npm run dev
+npm run dev      # dev server
+npm run build    # typecheck + production build
+npm test         # build + end-to-end tests in Chromium
 ```
 
 ## Contributing
 Read [`SPEC.md`](SPEC.md) and [`CLAUDE.md`](CLAUDE.md). Work is tracked as GitHub issues; see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Credits
-Created by Cosmin, built with Claude. Code, logo and arrangements are original; third-party media (Tango icons, Selawik font, Pexels footage and photos, FluidR3 samples) is credited in [public/media/CREDITS.md](public/media/CREDITS.md). MWX 7 is an independent project and is not affiliated with any operating system vendor.
+Created by Cosmin, built with Claude. Code, logo and arrangements are original; third-party media (Tango and Crystal Clear icons, Selawik font, Pexels footage and photos, FluidR3 samples) is credited in [public/media/CREDITS.md](public/media/CREDITS.md). MWX 7 is an independent project and is not affiliated with any operating system vendor.
+
+## License
+No license file has been added yet, so all rights to the original code are reserved by the author until one is chosen. Third-party assets keep their own licenses (see credits).

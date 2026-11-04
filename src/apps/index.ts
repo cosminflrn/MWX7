@@ -1,24 +1,25 @@
 import { registerApp } from '../core/registry';
-import { about } from './about';
-import { browser } from './browser';
-import { calculator } from './calculator';
-import { explorer } from './explorer';
-import { mediaplayer } from './mediaplayer';
-import { mines, minesExpert, minesIntermediate } from './mines';
-import { notepad } from './notepad';
-import { paint } from './paint';
-import { photos } from './photos';
-import { pinball } from './pinball';
-import { solitaire } from './solitaire';
-import { settingsApp } from './settings';
-import { stickynotes } from './stickynotes';
-import { taskmgr } from './taskmgr';
-import { welcome } from './welcome';
+import { about } from './about/manifest';
+import { browser } from './browser/manifest';
+import { calculator } from './calculator/manifest';
+import { explorer } from './explorer/manifest';
+import { mediaplayer } from './mediaplayer/manifest';
+import { mines, minesExpert, minesIntermediate } from './mines/manifest';
+import { notepad } from './notepad/manifest';
+import { paint } from './paint/manifest';
+import { photos } from './photos/manifest';
+import { pinball } from './pinball/manifest';
+import { snip } from './snip';
+import { solitaire } from './solitaire/manifest';
+import { settingsApp } from './settings/manifest';
+import { stickynotes } from './stickynotes/manifest';
+import { taskmgr } from './taskmgr/manifest';
+import { welcome } from './welcome/manifest';
 
 /**
  * App registry. To add an app: create src/apps/<id>/index.ts exporting an
  * AppManifest, then add ONE line here. Order = Start menu / dock order.
  */
 export function registerAll(): void {
-  [explorer, browser, mediaplayer, notepad, paint, calculator, photos, stickynotes, taskmgr, pinball, solitaire, mines, minesIntermediate, minesExpert, settingsApp, about, welcome].forEach(registerApp);
+  [explorer, browser, mediaplayer, notepad, paint, calculator, photos, snip, stickynotes, taskmgr, pinball, solitaire, mines, minesIntermediate, minesExpert, settingsApp, about, welcome].forEach(registerApp);
 }

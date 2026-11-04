@@ -1,7 +1,7 @@
 /** Table layout: all geometry is in table units (a 580 x 740 playfield, y grows downwards). */
 
-export const W = 580;
-export const H = 740;
+import { H, W } from './layout';
+export { H, W };
 /** Left wall x, right edge of the playfield (the launch-lane divider) and the outer right wall. */
 export const WALL_L = 10;
 export const LANE_DIV = 538;

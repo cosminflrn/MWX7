@@ -111,7 +111,9 @@
    Their glyphs are always visible. */
 .win-controls {
   position: relative;
-  z-index: 1;
+  /* Above the resize handles (z 2): while the title bar unfolds after full screen, the top edge handle sat
+     over the lights and swallowed clicks. */
+  z-index: 3;
   flex: none;
   display: flex;
   gap: 8px;
@@ -205,6 +207,9 @@
 .rz-nw { top: -4px; left: -4px; cursor: nwse-resize; }
 .rz-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
 .win.maximized .rz { display: none; }
+/* While the title bar fades back in after full screen it is its own stacking layer, so the top edge handle sat above
+   the lights and ate the first click. Handles are inert until the window has settled. */
+.win.anim .rz { pointer-events: none; }
 
 /* Aero Snap preview */
 .snap-preview {

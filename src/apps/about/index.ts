@@ -4,18 +4,17 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '0.9.29';
+export const VERSION = '1.0.0';
 
-export const about: AppManifest = {
-  id: 'about',
-  name: 'About MWX 7',
-  icon: icons.about,
-  description: 'Version and credits',
-  keywords: ['version', 'info', 'credits', 'system'],
-  desktop: true,
-  singleInstance: true,
-  window: { width: 420, height: 430, resizable: false },
+/** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
+const WHATS_NEW = [
+  'Apps load on demand, so MWX 7 starts faster',
+  'Snipping Tool, Themes and recent files in dock menus',
+  'Deeper My Computer, Internet and Media Player (mini player in the dock menu)',
+  'Traffic lights never miss a click after full screen',
+];
 
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args }) {
     const app = typeof args.app === 'string' ? getApp(args.app) : undefined;
     win.body.classList.add('about');
@@ -46,6 +45,12 @@ export const about: AppManifest = {
         h('dd', {}, 'Cosmin & Claude'),
       ),
       h('a', { class: 'about-link', href: 'https://github.com/cosminflrn/MWX7', target: '_blank', rel: 'noopener' }, 'github.com/cosminflrn/MWX7'),
+      h(
+        'details',
+        { class: 'about-new' },
+        h('summary', {}, `What\u2019s new in ${VERSION}`),
+        h('ul', {}, ...WHATS_NEW.map((t) => h('li', {}, t))),
+      ),
       h(
         'p',
         { class: 'about-small' },

@@ -34,6 +34,8 @@ type SortKey = 'name' | 'modified' | 'kind' | 'size';
 let clipboard: { paths: string[]; cut: boolean } | null = null;
 /** Where a trashed item came from, for "Restore". Session-only, like the file system itself. */
 const trashOrigin = new Map<string, string>();
+/** The VFS only stores a modified time, so "Created" is the earliest modified time seen this session. */
+const firstSeen = new Map<string, number>();
 /** Paths being dragged; dataTransfer data is unreadable during dragover, so the drop target checks this. */
 let dragPaths: string[] | null = null;
 
@@ -63,16 +65,7 @@ const NAV_FAVORITES = [
   { name: 'Music', path: '/Music' },
 ];
 
-export const explorer: AppManifest = {
-  id: 'explorer',
-  name: 'My Computer',
-  icon: icons.explorer,
-  description: 'Browse files and folders',
-  keywords: ['files', 'folders', 'file manager', 'documents', 'finder', 'computer', 'explorer'],
-  pinned: true,
-  desktop: true,
-  window: { width: 920, height: 600, minWidth: 520, minHeight: 360 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, fs, os }) {
     const root = win.body;
     root.classList.add('xp-ex');
@@ -233,6 +226,7 @@ export const explorer: AppManifest = {
       if (!force && (sig === signature || renaming)) return;
       signature = sig;
       items = list;
+      for (const i of list) if (!firstSeen.has(i.path)) firstSeen.set(i.path, i.modified);
       trashCount = trash.length;
       renderAll();
     };
@@ -843,21 +837,28 @@ export const explorer: AppManifest = {
             await walk(it.path);
             info.push(['Size', formatSize(bytes)], ['Contains', `${plural(files, 'file')}, ${plural(dirs, 'folder')}`]);
           } else info.push(['Size', `${formatSize(it.size)} (${it.size.toLocaleString()} bytes)`]);
-          info.push(['Modified', formatDate(it.modified)]);
+          info.push(['Created', formatDate(Math.min(firstSeen.get(it.path) ?? it.modified, it.modified))], ['Modified', formatDate(it.modified)]);
         }
       } else {
         info.push(['Type', loc === COMPUTER ? 'System' : 'File folder'], ['Contains', plural(items.length, 'item')]);
         if (isReal()) info.push(['Location', loc]);
       }
-      showSheet(root, (close) =>
+      // A small centred glass dialog (not the top sheet) so it reads as a real Properties window.
+      const close = () => dlg.remove();
+      const dlg = h(
+        'div',
+        { class: 'ex-pdlg-backdrop', onmousedown: (e: MouseEvent) => e.target === dlg && close() },
         h(
           'div',
-          { class: 'sheet-form ex-props' },
+          { class: 'ex-pdlg', role: 'dialog', 'aria-label': `${title} Properties` },
+          h('div', { class: 'ex-pdlg-title' }, `${title} Properties`),
           h('div', { class: 'ex-props-head' }, h('span', { class: 'ex-ico', html: icon }), h('b', {}, title)),
-          h('dl', {}, ...info.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
-          h('div', { class: 'sheet-actions' }, h('button', { class: 'btn primary', onclick: close }, 'OK')),
+          h('dl', { class: 'ex-props' }, ...info.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
+          h('div', { class: 'ex-pdlg-actions' }, h('button', { class: 'ex-pdlg-ok', onclick: close }, 'OK')),
         ),
       );
+      root.querySelector('.ex-pdlg-backdrop')?.remove();
+      root.append(dlg);
     };
 
     /* ---------- menus ---------- */
@@ -1070,13 +1071,29 @@ export const explorer: AppManifest = {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData(MIME, JSON.stringify(dragPaths));
       e.dataTransfer.setData('text/plain', dragPaths.join('\n'));
-      const ghost = h('div', { class: 'ex-ghost' }, h('span', { class: 'ex-ico', html: iconFor(it) }), dragPaths.length > 1 ? h('b', {}, String(dragPaths.length)) : null);
+      const ghost = h('div', { class: 'ex-ghost' }, h('span', { class: 'ex-ico', html: iconFor(it) }), h('span', { class: 'ex-ghost-n' }, it.name), dragPaths.length > 1 ? h('b', {}, String(dragPaths.length)) : null);
       root.append(ghost);
-      e.dataTransfer.setDragImage(ghost, 24, 24);
+      e.dataTransfer.setDragImage(ghost, 20, 20);
       setTimeout(() => ghost.remove(), 0);
     });
+    // Win7-style "Move to <folder>" tip that follows the pointer while dragging.
+    const tip = h('div', { class: 'ex-dragtip', hidden: true });
+    root.append(tip);
+    root.addEventListener('dragover', (e) => {
+      if (!dragPaths) return;
+      const rb = root.getBoundingClientRect();
+      tip.style.left = `${e.clientX - rb.left + 16}px`;
+      tip.style.top = `${e.clientY - rb.top + 18}px`;
+      queueMicrotask(() => {
+        const el = root.querySelector<HTMLElement>('.drop');
+        const path = el?.dataset.path ?? el?.dataset.nav ?? (el === scroller ? loc : '');
+        tip.hidden = !el;
+        tip.textContent = el ? `Move to ${path ? locName(path) : (el.textContent ?? '').trim()}` : '';
+      });
+    }, true);
     scroller.addEventListener('dragend', () => {
       dragPaths = null;
+      tip.hidden = true;
       clearDrop();
     });
     // Folders inside the pane, or the pane itself (= the current folder).
@@ -1098,6 +1115,7 @@ export const explorer: AppManifest = {
       if (!dragPaths || !d || !canDrop(dragPaths, d)) return;
       e.preventDefault();
       clearDrop();
+      tip.hidden = true;
       void moveInto(dragPaths, d);
     });
 

@@ -8,16 +8,7 @@ import './notepad.css';
 
 const DOCS = '/Documents';
 
-export const notepad: AppManifest = {
-  id: 'notepad',
-  name: 'Notepad',
-  icon: icons.notepad,
-  description: 'Write and save plain text',
-  keywords: ['text', 'editor', 'write', 'note', 'txt'],
-  pinned: true,
-  desktop: true,
-  window: { width: 620, height: 440, minWidth: 320, minHeight: 200 },
-
+export const impl: Pick<AppManifest, 'mount'> = {
   mount({ win, args, fs, os }) {
     let path: string | null = null;
     let dirty = false;
@@ -51,6 +42,7 @@ export const notepad: AppManifest = {
         return;
       }
       path = p;
+      os.addRecent(p);
       text.value = content;
       setDirty(false);
       updateTitle();
