@@ -531,7 +531,8 @@
   border: 0;
   box-shadow: var(--glass-ring), 0 10px 30px rgba(0, 10, 30, 0.3);
   text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
-  pointer-events: auto;
+  /* Click-through: a passing notification must never swallow a click meant for the window beneath it */
+  pointer-events: none;
   cursor: default;
 }
 
