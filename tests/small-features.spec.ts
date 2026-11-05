@@ -56,3 +56,33 @@ test('Snipping Tool opens and New shows the selection overlay', async ({ page })
   await expect(page.locator('.snip-overlay')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('Snipping Tool window mode outlines the window under the pointer', async ({ page }) => {
+  const errors = watch(page);
+  await boot(page);
+  await closeAll(page);
+  await openFromStart(page, 'Snipping Tool');
+  const w = page.locator('#windows > .win[data-app=snip]');
+  await w.locator('.snip-mode').click();
+  await page.locator('.menu-item', { hasText: 'Window Snip' }).click();
+  await expect(page.locator('.snip-overlay.snip-window')).toBeVisible();
+  const b = (await w.boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  const sel = (await page.locator('.snip-sel').boundingBox())!;
+  expect(Math.abs(sel.width - b.width)).toBeLessThan(2);
+  expect(Math.abs(sel.height - b.height)).toBeLessThan(2);
+  await page.mouse.click(5, 5, { button: 'right' });
+  await expect(page.locator('.snip-overlay')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('Media Player playlist titles are distinct and readable', async ({ page }) => {
+  await boot(page);
+  await closeAll(page);
+  await openFromStart(page, 'Media Player');
+  const titles = await page.locator('#windows > .win[data-app=mediaplayer] .mp-it b').allInnerTexts();
+  expect(titles.length).toBeGreaterThan(5);
+  expect(new Set(titles).size).toBe(titles.length);
+  const arts = await page.locator('#windows > .win[data-app=mediaplayer] .mp-art').evaluateAll((els) => els.map((e) => (e as HTMLImageElement).src));
+  expect(new Set(arts).size).toBe(arts.length);
+});

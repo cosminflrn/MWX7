@@ -51,6 +51,9 @@ const SPARSE: Pat = [[0, 1, 0.7], [1.5, 3, 0.45], [3, 2, 0.45]];
 const FLOW: Pat = [[0, 0, 0.7], [0.5, 2, 0.42], [1, 3, 0.5], [2, 4, 0.55], [2.5, 3, 0.38], [3.5, 2, 0.4]];
 const PATS: Pat[] = [SPARSE, FLOW, FLOW, FLOW, SPARSE];
 
+
+/** Generated reverb tails, shared by every Pinball window (AudioBuffers are context-independent). */
+const IMPULSES = new Map<string, AudioBuffer>();
 export class Music {
   enabled = true;
   private bufs: Record<Inst, { buf: AudioBuffer; midi: number }[]> | null = null;
@@ -76,7 +79,13 @@ export class Music {
     const ctx = this.sfx.ctx;
     if (!ctx || !this.sfx.out) return;
     void this.load(ctx).then(() => {
-      if (this.enabled && !this.bus && !this.dead && !this.failed) this.begin();
+      // Building the hall reverb costs a few dozen ms of main thread; wait for an idle moment so the window's open
+      // animation and the first table frames never share a frame with it.
+      const go = () => {
+        if (this.enabled && !this.bus && !this.dead && !this.failed) this.begin();
+      };
+      if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 1200 });
+      else setTimeout(go, 400);
     });
   }
 
@@ -179,16 +188,26 @@ export class Music {
   }
 
   private impulse(ctx: AudioContext, secs: number): AudioBuffer {
+    const key = `${ctx.sampleRate}:${secs}`;
+    const hit = IMPULSES.get(key);
+    if (hit) return hit;
+    const buf = this.makeImpulse(ctx, secs);
+    IMPULSES.set(key, buf);
+    return buf;
+  }
+
+  private makeImpulse(ctx: AudioContext, secs: number): AudioBuffer {
     const len = Math.floor(ctx.sampleRate * secs);
     const buf = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = buf.getChannelData(ch);
       let lp = 0;
+      const attack = ctx.sampleRate * 0.02;
       for (let i = 0; i < len; i++) {
         const t = i / len;
         const a = 0.18 + 0.78 * (1 - t); // one-pole lowpass that darkens as the tail decays
         lp += a * (Math.random() * 2 - 1 - lp);
-        const env = Math.pow(1 - t, 2.6) * Math.min(1, i / (ctx.sampleRate * 0.02));
+        const env = (1 - t) ** 2.6 * (i < attack ? i / attack : 1);
         d[i] = lp * env;
       }
     }

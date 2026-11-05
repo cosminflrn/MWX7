@@ -5,10 +5,22 @@ for i in $(seq 1 50); do
   python3 -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/', timeout=1)" 2>/dev/null && break
   sleep 0.2
 done
-# -s lets cage hide the cursor-less VT switching keys; software GL fallback keeps VMs working.
+# seatd (socket group video, which the mwx user is in) opens the GPU and input devices for cage.
+export LIBSEAT_BACKEND=seatd
 export WLR_NO_HARDWARE_CURSORS=1
-exec cage -s -- chromium \
+# VMs and GPUs without a driver only offer software rendering; let wlroots use it rather than refuse to start.
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+# If the GL path crashed on the previous try (seen with Mesa's software GL in emulated VMs), use wlroots' CPU
+# renderer instead. The marker lives in /run, so every boot tries the faster GPU path first.
+SW=/run/user/$(id -u)/mwx7-pixman
+[ -f "$SW" ] && export WLR_RENDERER=pixman
+START=$(date +%s)
+# -s allows VT switching (Ctrl+Alt+F2 reaches the debug console).
+cage -s -- chromium \
   --kiosk --no-first-run --no-default-browser-check --disable-infobars \
   --ozone-platform=wayland --autoplay-policy=no-user-gesture-required \
   --disable-pinch --overscroll-history-navigation=0 --user-data-dir=/tmp/mwx7-profile \
   http://127.0.0.1:8080/
+CODE=$?
+[ $(( $(date +%s) - START )) -lt 15 ] && touch "$SW"
+exit $CODE

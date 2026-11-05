@@ -1,7 +1,7 @@
 [Unit]
 Description=MWX 7 kiosk session (cage + Chromium on tty1)
-After=systemd-user-sessions.service mwx7-server.service systemd-logind.service
-Wants=mwx7-server.service
+After=systemd-user-sessions.service mwx7-server.service systemd-logind.service seatd.service
+Wants=mwx7-server.service seatd.service
 # Replace the login prompt on tty1.
 Conflicts=getty@tty1.service
 After=getty@tty1.service

@@ -1,10 +1,75 @@
-.snip { display: flex; flex-direction: column; background: #f0f4fa; font-size: 12px; }
-.snip-bar { display: flex; gap: 6px; padding: 8px; background: linear-gradient(#fbfdff, #dfe9f5); border-bottom: 1px solid #a9bcd3; }
-.snip-stage { flex: 1; min-height: 0; overflow: auto; margin: 8px; background: #fff; border: 1px solid #8ea6c2; display: flex; align-items: flex-start; justify-content: flex-start; }
-.snip-empty { margin: auto; color: #7b8aa0; }
-.snip-img { display: block; border: 2px solid #c0392b; margin: 8px; max-width: none; }
-.snip-foot { padding: 4px 10px 8px; color: #4a5d74; }
-.snip-overlay { position: fixed; inset: 0; z-index: 2147483000; background: rgba(0, 20, 50, 0.45); cursor: crosshair; }
-.snip-hint { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 6px; background: rgba(255, 255, 255, 0.92); color: #123a6e; font: 13px system-ui, sans-serif; pointer-events: none; }
+.snip { display: flex; flex-direction: column; background: #eef3f9; font: 12px var(--font-ui); color: #1c3150; }
+.snip .snip-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  padding: 3px 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.35) 48%, rgba(180, 208, 238, 0.28) 52%, rgba(214, 231, 248, 0.5) 100%),
+    linear-gradient(#dce9f7, #cfe0f3);
+  border-bottom: 1px solid #b4c6dc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.snip .snip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+.snip .snip-btn img { width: 16px; height: 16px; }
+.snip .snip-btn:hover:not(:disabled) {
+  border-color: #a9c6e4;
+  background: linear-gradient(#fdfeff 0%, #f1f7fd 48%, #dcebf9 52%, #e9f3fc 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+}
+.snip .snip-btn:active:not(:disabled) { border-color: #7fa6cf; background: linear-gradient(#d3e5f6, #e6f0fa); }
+.snip .snip-btn:disabled { color: #8a98aa; }
+.snip .snip-btn:disabled img { opacity: 0.45; }
+.snip .snip-split { display: inline-flex; }
+.snip .snip-split .snip-new { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.snip .snip-split .snip-mode { padding: 0 5px; border-top-left-radius: 0; border-bottom-left-radius: 0; color: #3a587c; }
+.snip .snip-split:hover .snip-btn { border-color: #a9c6e4; }
+.snip .snip-sep { width: 1px; height: 18px; margin: 0 4px; background: linear-gradient(transparent, rgba(60, 90, 130, 0.3), transparent); }
+.snip .snip-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 8px;
+  background: #fff;
+  border: 1px solid #a9bcd3;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 2px rgba(20, 50, 90, 0.08);
+  display: flex;
+  align-items: flex-start;
+}
+.snip .snip-empty { margin: auto; display: grid; justify-items: center; gap: 4px; color: #6b7c93; text-align: center; }
+.snip .snip-empty .icon-img { width: 64px; height: 64px; margin-bottom: 6px; }
+.snip .snip-empty b { color: #1c3150; font-size: 13px; font-weight: 600; }
+.snip .snip-img { display: block; margin: 8px; max-width: none; box-shadow: 0 0 0 1px #c0392b, 0 2px 8px rgba(0, 0, 0, 0.18); }
+.snip .snip-foot { padding: 0 10px 8px; color: #4a5d74; }
+.snip-overlay { position: fixed; inset: 0; z-index: 2147483000; background: rgba(255, 255, 255, 0.35); cursor: crosshair; }
+.snip-overlay.snip-window { cursor: default; }
+.snip-hint {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 10px rgba(0, 30, 70, 0.2);
+  color: #123a6e;
+  font: 13px var(--font-ui);
+  pointer-events: none;
+}
 .snip-overlay.dragging .snip-hint { display: none; }
-.snip-sel { position: absolute; border: 2px solid #e04030; box-shadow: 0 0 0 9999px rgba(0, 20, 50, 0.0); background: rgba(255, 255, 255, 0.12); pointer-events: none; }
+.snip-sel { position: absolute; display: none; border: 2px solid #e04030; background: rgba(255, 255, 255, 0.1); pointer-events: none; }
+.snip-overlay.dragging .snip-sel { display: block; }

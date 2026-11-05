@@ -54,7 +54,7 @@ Processing: 1920x1280 download, the small Apple logo, the model label and the "P
 
 ## Icons (`icons/`)
 
-Original artwork by MWX 7, drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
+Original artwork by MWX 7 (including `snip.png`), drawn as SVG (glossy blue / silver / manila palette, top lighting) and exported to PNG:
 256x256 for `icons/*.png` (shown at 128 px or less), 32x32 for `icons/16/*.png` (shown at 16 px). No third-party artwork except
 `pinball.png` (below) and `explorer.png`, kept from the earlier set. Replace any PNG by keeping its file name.
 
