@@ -80,7 +80,9 @@ test('Media Player playlist titles are distinct and readable', async ({ page }) 
   await boot(page);
   await closeAll(page);
   await openFromStart(page, 'Media Player');
-  const titles = await page.locator('#windows > .win[data-app=mediaplayer] .mp-it b').allInnerTexts();
+  const items = page.locator('#windows > .win[data-app=mediaplayer] .mp-it b');
+  await expect(items).toHaveCount(8); // the playlist fills in after the Music folder is read
+  const titles = await items.allInnerTexts();
   expect(titles.length).toBeGreaterThan(5);
   expect(new Set(titles).size).toBe(titles.length);
   const arts = await page.locator('#windows > .win[data-app=mediaplayer] .mp-art').evaluateAll((els) => els.map((e) => (e as HTMLImageElement).src));
