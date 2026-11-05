@@ -2,6 +2,11 @@
 
 Derived from the git history. Newest first.
 
+## v1.1.0 "Live"
+- MWX 7 live ISO: boots straight into MWX 7 from a VM or USB stick without installing anything; UEFI with Secure Boot,
+  UEFI and legacy BIOS. Built and boot-tested by CI on every version tag and attached to the GitHub release
+- Windows 11 how-to for VirtualBox, Hyper-V and Rufus (distro/RELEASE_NOTES.md)
+
 ## v1.0.1
 - Snipping Tool redesigned: Windows 7 command bar, New menu with Rectangular, Window and Full-screen snips, glossy icon
 - Media Player playlist shows distinct titles (Variatio 1, 2, …) and a different cover colour per track

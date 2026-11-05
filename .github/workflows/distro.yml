@@ -1,0 +1,46 @@
+name: Live ISO
+
+# Builds the bootable MWX 7 live ISO, boot-tests it in QEMU and attaches it to a GitHub release.
+# Runs on version tags (v1.2.3) and by hand from the Actions tab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin qemu-system-x86 ovmf
+      - name: Build ISO
+        run: sudo -E env "PATH=$PATH" ./distro/build-iso.sh
+      - name: Boot test in QEMU
+        run: |
+          sudo chmod 666 /dev/kvm 2>/dev/null || true
+          sudo ./distro/smoke-test.sh 1500
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          TAG="v$V"
+          cp distro/out/mwx7-live.iso "mwx7-$V-live.iso"
+          sha256sum "mwx7-$V-live.iso" > "mwx7-$V-live.iso.sha256"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "mwx7-$V-live.iso" "mwx7-$V-live.iso.sha256" --clobber
+          else
+            gh release create "$TAG" "mwx7-$V-live.iso" "mwx7-$V-live.iso.sha256" --target "$GITHUB_SHA" \
+              --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md
+          fi
