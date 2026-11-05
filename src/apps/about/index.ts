@@ -4,14 +4,14 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.0.1';
+export const VERSION = '1.1.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
+  'MWX 7 now boots as its own system from a live ISO or USB stick',
   'Snipping Tool: rectangle, window or full-screen snips',
   'Media Player playlist is easier to read',
   'Space Pinball opens without a hitch',
-  'Apps load on demand, so MWX 7 starts faster',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {

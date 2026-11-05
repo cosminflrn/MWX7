@@ -2,6 +2,7 @@
 # Runs INSIDE the new root (called by build.sh via chroot). Installs the kiosk stack and enables services.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# EXTRA_PKGS: set by build-iso.sh to add live-boot (boots the root from a squashfs with a RAM overlay).
 
 cat > /etc/apt/sources.list <<APT
 deb http://deb.debian.org/debian bookworm main
@@ -15,7 +16,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   linux-image-amd64 grub-efi-amd64-bin initramfs-tools systemd-sysv dbus libpam-systemd \
   cage seatd xwayland chromium python3 mesa-utils libgl1-mesa-dri libinput10 fonts-dejavu-core \
-  alsa-utils pipewire pipewire-pulse wireplumber rtkit ca-certificates
+  alsa-utils pipewire pipewire-pulse wireplumber rtkit ca-certificates ${EXTRA_PKGS:-}
 apt-get clean
 
 # Unprivileged kiosk user with access to GPU, input and sound.
