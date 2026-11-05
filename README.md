@@ -4,7 +4,7 @@
 
 **The dream desktop.** A complete desktop OS that runs in your browser.
 
-[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v1.0.0 · [Changelog](CHANGELOG.md)
+[**▶ Try it live**](https://cosminflrn.github.io/MWX7/) · v1.0.1 · [Changelog](CHANGELOG.md)
 
 ![MWX 7 desktop](docs/media/hero.jpg)
 
@@ -53,4 +53,4 @@ Read [`SPEC.md`](SPEC.md) and [`CLAUDE.md`](CLAUDE.md). Work is tracked as GitHu
 Created by Cosmin, built with Claude. Code, logo and arrangements are original; third-party media (Tango and Crystal Clear icons, Selawik font, Pexels footage and photos, FluidR3 samples) is credited in [public/media/CREDITS.md](public/media/CREDITS.md). MWX 7 is an independent project and is not affiliated with any operating system vendor.
 
 ## License
-No license file has been added yet, so all rights to the original code are reserved by the author until one is chosen. Third-party assets keep their own licenses (see credits).
+The original code is released under the [MIT License](LICENSE). Third-party media, icons and fonts keep their own licenses (see [credits](public/media/CREDITS.md)).

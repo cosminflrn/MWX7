@@ -9,7 +9,7 @@ import { notepad } from './notepad/manifest';
 import { paint } from './paint/manifest';
 import { photos } from './photos/manifest';
 import { pinball } from './pinball/manifest';
-import { snip } from './snip';
+import { snip } from './snip/manifest';
 import { solitaire } from './solitaire/manifest';
 import { settingsApp } from './settings/manifest';
 import { stickynotes } from './stickynotes/manifest';

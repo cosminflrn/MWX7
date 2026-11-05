@@ -4,14 +4,14 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.0.1';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
+  'Snipping Tool: rectangle, window or full-screen snips',
+  'Media Player playlist is easier to read',
+  'Space Pinball opens without a hitch',
   'Apps load on demand, so MWX 7 starts faster',
-  'Snipping Tool, Themes and recent files in dock menus',
-  'Deeper My Computer, Internet and Media Player (mini player in the dock menu)',
-  'Traffic lights never miss a click after full screen',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {

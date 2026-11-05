@@ -25,7 +25,7 @@
 .mp-n { width: 16px; text-align: right; opacity: 0.6; flex: none; }
 .mp-it { display: flex; flex-direction: column; min-width: 0; }
 .mp-it b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mp-it small { opacity: 0.65; font-size: 11px; }
+.mp-it small { opacity: 0.65; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .mp-bar {
   flex: none; padding: 8px 14px 10px; border-top: 1px solid #2c4468;

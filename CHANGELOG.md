@@ -2,6 +2,13 @@
 
 Derived from the git history. Newest first.
 
+## v1.0.1
+- Snipping Tool redesigned: Windows 7 command bar, New menu with Rectangular, Window and Full-screen snips, glossy icon
+- Media Player playlist shows distinct titles (Variatio 1, 2, …) and a different cover colour per track
+- Space Pinball opens without a hitch: the hall reverb is built once, when the browser is idle
+- Code released under the MIT License
+- Linux distro: build works without udev or a vfat kernel module, standalone GRUB boot loader that finds the disk by label
+
 ## v1.0.0
 - Apps load on demand: faster first boot, each app's code fetched the first time it opens
 - My Computer: drag ghost for files, Properties dialog; Internet: favorites, history, clear blocked-site panel

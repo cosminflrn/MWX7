@@ -9,14 +9,14 @@ const BASE = import.meta.env.BASE_URL;
 
 /** Bundled CC0 recordings (see public/media/CREDITS.md). VFS stores text, so the file holds a pointer to the asset. */
 const BUNDLED = [
-  { file: 'Goldberg Variations - Variatio 1.ogg', src: 'media/music/goldberg-variatio-1.ogg', title: 'Goldberg Variations: Variatio 1', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 4.ogg', src: 'media/music/goldberg-variatio-4.ogg', title: 'Goldberg Variations: Variatio 4', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 5.ogg', src: 'media/music/goldberg-variatio-5.ogg', title: 'Goldberg Variations: Variatio 5', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 2.ogg', src: 'media/music/goldberg-variatio-2.ogg', title: 'Goldberg Variations: Variatio 2', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 6.ogg', src: 'media/music/goldberg-variatio-6.ogg', title: 'Goldberg Variations: Variatio 6', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 8.ogg', src: 'media/music/goldberg-variatio-8.ogg', title: 'Goldberg Variations: Variatio 8', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 10.ogg', src: 'media/music/goldberg-variatio-10.ogg', title: 'Goldberg Variations: Variatio 10', artist: 'Kimiko Ishizaka' },
-  { file: 'Goldberg Variations - Variatio 18.ogg', src: 'media/music/goldberg-variatio-18.ogg', title: 'Goldberg Variations: Variatio 18', artist: 'Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 1.ogg', src: 'media/music/goldberg-variatio-1.ogg', title: 'Variatio 1', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 4.ogg', src: 'media/music/goldberg-variatio-4.ogg', title: 'Variatio 4', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 5.ogg', src: 'media/music/goldberg-variatio-5.ogg', title: 'Variatio 5', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 2.ogg', src: 'media/music/goldberg-variatio-2.ogg', title: 'Variatio 2', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 6.ogg', src: 'media/music/goldberg-variatio-6.ogg', title: 'Variatio 6', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 8.ogg', src: 'media/music/goldberg-variatio-8.ogg', title: 'Variatio 8', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 10.ogg', src: 'media/music/goldberg-variatio-10.ogg', title: 'Variatio 10', artist: 'Goldberg Variations · Kimiko Ishizaka' },
+  { file: 'Goldberg Variations - Variatio 18.ogg', src: 'media/music/goldberg-variatio-18.ogg', title: 'Variatio 18', artist: 'Goldberg Variations · Kimiko Ishizaka' },
 ];
 
 interface Track {
@@ -28,8 +28,11 @@ interface Track {
 
 /** Original generated cover art: a soft gradient with piano keys and a hue derived from the title, so each track looks distinct. */
 function artFor(seed: string): string {
-  let n = 0;
-  for (const c of seed) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  // FNV-1a plus a final avalanche: titles that differ only in the last digit must still land on far-apart hues.
+  let n = 0x811c9dc5;
+  for (const c of seed) n = Math.imul(n ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  n = Math.imul(n ^ (n >>> 15), 0x2c1b3c6d) >>> 0;
+  n = (n ^ (n >>> 13)) >>> 0;
   const hue = n % 360;
   const keys = Array.from({ length: 7 }, (_, i) => `<rect x="${6 + i * 12}" y="50" width="10" height="${i % 3 === 1 ? 34 : 44}" rx="2" fill="#fff" opacity="${0.55 + ((n >> i) & 3) * 0.1}"/>`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 70% 62%)"/><stop offset="1" stop-color="hsl(${(hue + 50) % 360} 65% 28%)"/></linearGradient></defs><rect width="96" height="96" rx="10" fill="url(#g)"/><circle cx="${30 + (n % 40)}" cy="26" r="${10 + (n % 7)}" fill="#fff" opacity=".22"/><path d="M0 40q24-${10 + (n % 16)} 48 0t48 0" fill="none" stroke="#fff" stroke-width="2" opacity=".35"/>${keys}</svg>`;

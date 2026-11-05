@@ -102,7 +102,7 @@ test('Media Player: 8+ tracks with art, dock mini player menu', async ({ page })
   await expect(win.locator('.mp-title')).toContainText('Variatio 2');
   await dock.click({ button: 'right' });
   const menu = page.locator('.menu-pop');
-  await expect(menu.getByText('Goldberg Variations: Variatio 2', { exact: true })).toBeVisible();
+  await expect(menu.getByText('Variatio 2', { exact: true })).toBeVisible();
   await menu.getByText('Next', { exact: true }).click();
   await expect(win.locator('.mp-title')).toContainText('Variatio 4');
   await dock.click({ button: 'right' });
