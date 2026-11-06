@@ -52,16 +52,9 @@ const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce
 // One listener for all layers; each layer pauses itself rather than relying on browser throttling,
 // which still decodes video in some engines.
 const visibilityHooks = new Set<(hidden: boolean) => void>();
-// Also paused while a full-screen window covers the whole wallpaper: no decoding or redrawing (and no
-// re-blurring of glass over it) for pixels nobody can see.
-let covered = false;
-const paused = () => document.hidden || covered;
+// The wallpaper keeps playing under full-screen windows (Cosmin's call); only a hidden tab pauses it.
+const paused = () => document.hidden;
 document.addEventListener('visibilitychange', () => visibilityHooks.forEach((f) => f(paused())));
-export function setWallpaperCovered(on: boolean): void {
-  if (on === covered) return;
-  covered = on;
-  visibilityHooks.forEach((f) => f(paused()));
-}
 
 /* ------------------------------------------------------------------ shared bits */
 
