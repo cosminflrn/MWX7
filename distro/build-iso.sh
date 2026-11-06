@@ -26,7 +26,10 @@ else (cd "$REPO" && npm ci && npm run build); fi
 # 2. Minimal Debian in a plain directory (no disk image, so no loop devices or partitions are needed).
 rm -rf "$ROOT" "$ISO_DIR"; mkdir -p "$ROOT" "$ISO_DIR/live" "$ISO_DIR/boot/grub"
 echo "==> debootstrap (downloads ~300 MB)"
-debootstrap --variant=minbase bookworm "$ROOT" http://deb.debian.org/debian
+# Debian 13 (trixie): current Mesa, kernel 6.12 and Chromium.
+# Older debootstrap releases lack a trixie script; sid\'s is the same.
+SCRIPT=/usr/share/debootstrap/scripts/trixie; [ -e "$SCRIPT" ] || SCRIPT=/usr/share/debootstrap/scripts/sid
+debootstrap --variant=minbase trixie "$ROOT" http://deb.debian.org/debian "$SCRIPT"
 
 # 3. Same overlay and packages as the disk image, plus live-boot.
 cp -a "$HERE/overlay/." "$ROOT/"
@@ -51,12 +54,16 @@ mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" -comp xz -noappend -quiet
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
 set timeout=2
 set default=0
+# console=ttyS0 last makes the serial port the system console, so boot messages stay off the screen (and CI can
+# read them); the kernel still logs to the screen too.
 menuentry "MWX 7 $VERSION" {
-  linux /live/vmlinuz boot=live components quiet splash loglevel=3 console=ttyS0,115200 console=tty0
+  echo "Starting MWX 7 ..."
+  linux /live/vmlinuz boot=live components quiet splash loglevel=3 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
 menuentry "MWX 7 $VERSION (copy to RAM)" {
-  linux /live/vmlinuz boot=live components toram quiet splash loglevel=3 console=ttyS0,115200 console=tty0
+  echo "Copying MWX 7 into memory, this takes a minute ..."
+  linux /live/vmlinuz boot=live components toram quiet splash loglevel=3 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
 GRUB

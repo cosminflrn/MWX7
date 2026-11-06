@@ -1,9 +1,11 @@
 name: Live ISO
 
 # Builds the bootable MWX 7 live ISO, boot-tests it in QEMU and attaches it to a GitHub release.
-# Runs on version tags (v1.2.3) and by hand from the Actions tab.
+# Runs when a release bumps the version in package.json on main, on version tags, and by hand from the Actions tab.
 on:
   push:
+    branches: [main]
+    paths: ['package.json', 'distro/**']
     tags: ['v*']
   workflow_dispatch:
 
@@ -31,6 +33,7 @@ jobs:
           sudo chmod 666 /dev/kvm 2>/dev/null || true
           sudo ./distro/smoke-test.sh 1500
       - name: Publish release
+        # distro-only changes rebuild and test the ISO; a new release needs a new version number.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -39,6 +42,7 @@ jobs:
           cp distro/out/mwx7-live.iso "mwx7-$V-live.iso"
           sha256sum "mwx7-$V-live.iso" > "mwx7-$V-live.iso.sha256"
           if gh release view "$TAG" >/dev/null 2>&1; then
+            [ "${{ github.event_name }}" = workflow_dispatch ] || { echo "Release $TAG exists; bump the version to publish."; exit 0; }
             gh release upload "$TAG" "mwx7-$V-live.iso" "mwx7-$V-live.iso.sha256" --clobber
           else
             gh release create "$TAG" "mwx7-$V-live.iso" "mwx7-$V-live.iso.sha256" --target "$GITHUB_SHA" \

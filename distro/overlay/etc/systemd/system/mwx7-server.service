@@ -3,12 +3,17 @@ Description=MWX 7 static file server (offline, localhost only)
 After=network.target
 
 [Service]
-# python3 http.server is enough for static files and avoids shipping a web server.
+# A few lines of python3 http.server: enough for static files and avoids shipping a web server.
 User=mwx
 WorkingDirectory=/opt/mwx7/dist
-ExecStart=/usr/bin/python3 -m http.server 8080 --bind 127.0.0.1
+ExecStart=/usr/local/bin/mwx7-server
+# /run/mwx7 holds the 'MWX 7 loaded' marker the kiosk watches; it is recreated empty on every start.
+RuntimeDirectory=mwx7
+RuntimeDirectoryMode=0755
+# The access log also goes to the system console (the serial port), where the CI boot test watches for MWX 7 loading.
+StandardError=journal+console
 Restart=always
-# Hardening: it only ever reads /opt/mwx7/dist.
+# Hardening: it only ever reads /opt/mwx7/dist (and writes its marker in /run/mwx7).
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
