@@ -8,7 +8,8 @@ exactly as it was.
    Tick **Skip Unattended Installation**.
 3. Hardware: **3072 MB** memory, **2** CPUs. Tick **Enable EFI**. Hard disk: **Do Not Add a Virtual Hard Disk**.
 4. Before starting: **Settings → Display** → Graphics Controller **VMSVGA**, Video Memory **128 MB**.
-5. **Start**. After about a minute you are at the MWX 7 power switch.
+5. **Start**. GRUB shows the menu for 2 seconds, then "Starting MWX 7 ...". About a minute later you are at the MWX 7
+   power switch. If a message appears instead, a photo of it is all that is needed to fix it.
 
 Hyper-V (Windows 11 Pro) works too: Quick Create → Local installation source → the ISO, then turn **Secure Boot off**
 under Settings → Security before starting.

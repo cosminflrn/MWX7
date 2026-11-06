@@ -2,6 +2,14 @@
 
 Derived from the git history. Newest first.
 
+## v1.1.1
+- Live ISO: shows "Starting MWX 7 ..." while booting and a readable message on screen if the display cannot start,
+  instead of a blank console with a stray live-boot warning (what a VirtualBox tester saw)
+- Restarts Chromium automatically if it comes up with a blank page on a cold first start
+- Graphics firmware for Intel, AMD and NVIDIA (plus Intel/Realtek network firmware), so real PCs get a picture
+- Moved to Debian 13: kernel 6.12, current Mesa and Chromium
+- CI boot tests pass only once MWX 7 has actually loaded, on BIOS, UEFI and UEFI with Secure Boot
+
 ## v1.1.0 "Live"
 - MWX 7 live ISO: boots straight into MWX 7 from a VM or USB stick without installing anything; UEFI with Secure Boot,
   UEFI and legacy BIOS. Built and boot-tested by CI on every version tag and attached to the GitHub release

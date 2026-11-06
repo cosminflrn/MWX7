@@ -52,3 +52,6 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          # GitHub's Pages backend occasionally takes longer than the 10 minute default (6 Nov 2026 run timed out).
+          timeout: 1800000

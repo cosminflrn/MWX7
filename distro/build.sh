@@ -43,7 +43,10 @@ mount "$LROOT" "$MNT"; mkdir -p "$MNT/boot/efi"
 
 # 3. Minimal Debian.
 echo "==> debootstrap (downloads ~300 MB)"
-debootstrap --variant=minbase bookworm "$MNT" http://deb.debian.org/debian
+# Debian 13 (trixie): current Mesa, kernel 6.12 and Chromium.
+# Older debootstrap releases lack a trixie script; sid\'s is the same.
+SCRIPT=/usr/share/debootstrap/scripts/trixie; [ -e "$SCRIPT" ] || SCRIPT=/usr/share/debootstrap/scripts/sid
+debootstrap --variant=minbase trixie "$MNT" http://deb.debian.org/debian "$SCRIPT"
 
 # 4. Overlay (systemd units, kiosk launcher) and the built site.
 cp -a "$HERE/overlay/." "$MNT/"
@@ -62,7 +65,7 @@ chown -R 1000:1000 "$MNT/opt/mwx7" 2>/dev/null || true   # first useradd user is
 cat > "$MNT/tmp/grub-embed.cfg" <<'GRUB'
 search --no-floppy --label mwx7root --set=root
 set timeout=0
-linux /vmlinuz root=LABEL=mwx7root ro console=ttyS0,115200 console=tty0 quiet splash loglevel=3
+linux /vmlinuz root=LABEL=mwx7root ro console=tty0 console=ttyS0,115200 quiet splash loglevel=3
 initrd /initrd.img
 boot
 GRUB

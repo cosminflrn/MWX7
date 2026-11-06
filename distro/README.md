@@ -11,7 +11,7 @@ To try the ISO on Windows 11 (VirtualBox, Hyper-V or a USB stick), follow [RELEA
 
 ## Design
 ```
-UEFI -> standalone GRUB (finds the disk by label) -> Debian 12 (minbase) -> systemd
+UEFI -> standalone GRUB (finds the disk by label) -> Debian 13 (minbase) -> systemd
    seatd               : hands the screen and input to the kiosk user
    mwx7-server.service : python3 http.server on 127.0.0.1:8080 serving /opt/mwx7/dist
    mwx7-kiosk.service  : cage (Wayland kiosk compositor) -> Chromium --kiosk http://127.0.0.1:8080/
@@ -44,6 +44,12 @@ sudo dd if=distro/out/mwx7.img of=/dev/sdX bs=4M status=progress   # real hardwa
 ```
 
 ## Status and known gaps
+6 Nov 2026, v1.1.1: a VirtualBox tester saw "nothing happens after GRUB": the kiosk failed without saying anything
+behind a stray live-boot message. Now: on-screen status and errors, a watchdog that restarts Chromium if MWX 7 has not
+loaded (a cold first start could leave a blank page), GPU firmware for real PCs, Debian 13. Debian's kernel has no
+simpledrm, so a display needs a real driver (all real GPUs, VirtualBox VMSVGA and VMware have one; vmwgfx is only
+loaded on VMware/VirtualBox). CI boots BIOS, UEFI and Secure Boot and each must load MWX 7.
+
 Live ISO, 5 Nov 2026: all four smoke tests pass in QEMU without KVM (BIOS 50 s, UEFI 65 s, Secure Boot 60 s to login;
 MWX 7 loaded in Chromium after 90 s). Inside the Secure Boot run the kernel reported `Secure boot enabled` and lockdown.
 
