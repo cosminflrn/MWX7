@@ -1,0 +1,35 @@
+name: Prune merged branches
+
+# Deletes remote branches whose last commit is already in main, so nothing is lost. "Automatically delete head
+# branches" covers new PRs; this sweeps the ones from before it was turned on. Runs when this file changes on main,
+# monthly, and by hand.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/prune-branches.yml']
+  schedule:
+    - cron: '17 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Delete branches fully merged into main
+        run: |
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          for ref in $(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin); do
+            case "$ref" in main|HEAD|gh-pages) continue ;; esac
+            if git merge-base --is-ancestor "origin/$ref" origin/main; then
+              echo "deleting $ref"
+              git push origin --delete "$ref"
+            else
+              echo "keeping $ref (has commits not in main)"
+            fi
+          done
