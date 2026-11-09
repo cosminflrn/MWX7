@@ -2,6 +2,11 @@
 
 Derived from the git history. Newest first.
 
+## v1.2.3
+- Clock shows Bucharest time (was UTC)
+- VM integration: VMware tools, SPICE agent and QEMU guest agent (each only runs on its own hypervisor)
+- Chrome: no "restore tabs" bar or default-browser prompt on every start of the live system
+
 ## v1.2.2
 - One download: `mwx7-<version>.iso` is the real MWX 7 desktop. The separate web-kiosk ISO is gone (MWX 7 Classic is
   still there as an app in the dock)
