@@ -48,10 +48,16 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.retry.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
+      # GitHub sometimes leaves a Pages deployment "queued" until the action's 10 minute cap (the maximum it allows)
+      # runs out, even while githubstatus.com reports Pages as operational (6 and 9 Nov 2026). A second attempt after a
+      # short pause has always gone through, so try twice before failing the run.
       - id: deployment
         uses: actions/deploy-pages@v5
-        with:
-          # GitHub's Pages backend occasionally takes longer than the 10 minute default (6 Nov 2026 run timed out).
-          timeout: 1800000
+        continue-on-error: true
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - id: retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v5
