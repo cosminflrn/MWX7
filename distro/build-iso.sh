@@ -58,6 +58,7 @@ if [ "$FLAVOR" = desktop ]; then
   # Selawik (OFL), the font MWX 7 uses on the web, as TTF: Pango loads fonts through HarfBuzz, which can't read WOFF2.
   rm -rf "$ROOT/usr/share/fonts/selawik"; mkdir -p "$ROOT/usr/share/fonts/selawik"
   cp -a "$HERE/desktop/fonts/selawik/." "$ROOT/usr/share/fonts/selawik/"
+  rm -rf "$ROOT/tmp/mwx7-decor"; cp -a "$HERE/desktop/mwx7-decor" "$ROOT/tmp/mwx7-decor"
   cp "$HERE/desktop/setup.sh" "$ROOT/tmp/"
   chroot "$ROOT" /tmp/setup.sh
   rm -f "$ROOT/tmp/setup.sh"
