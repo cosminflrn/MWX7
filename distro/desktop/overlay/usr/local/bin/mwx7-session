@@ -9,6 +9,8 @@ export GDK_BACKEND='wayland,x11'
 # Software rendering is allowed so a VM without 3D still gets a desktop (slower, but never a black screen).
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 export WLR_NO_HARDWARE_CURSORS=1
+# GTK 4's default GPU renderer misdraws in VMware/VirtualBox with 3D on; its older GL renderer is reliable there.
+if [ "$(systemd-detect-virt 2>/dev/null)" != none ]; then export GSK_RENDERER=gl; fi
 # Wayfire writes nothing back to this file; per-user overrides can come later from MWX 7 Settings.
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
   exec dbus-run-session -- wayfire -c /etc/mwx7/wayfire.ini
