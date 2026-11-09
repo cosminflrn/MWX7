@@ -1,13 +1,16 @@
 # MWX 7 as a Linux distro
 
-A tiny Linux that boots straight into MWX 7 full screen, like a console, with no desktop environment, no browser UI and
-no network needed. Two outputs:
-- **Live ISO** (`build-iso.sh`): runs from the ISO or a USB stick, entirely in memory, never touches the PC's disks.
-  Boots on UEFI with Secure Boot on (Microsoft-signed shim, Debian-signed GRUB and kernel), UEFI without it, and legacy
-  BIOS. CI builds it on every version tag and attaches it to the GitHub release. **This is the one to try.**
-- **Disk image** (`build.sh`): the same system as an installable raw disk image.
+MWX 7 as a real operating system: Debian 13 underneath, the MWX 7 desktop on top. Real windows (Wayfire), the native
+MWX 7 shell (status bar, dock, Start menu), Google Chrome, Files, Terminal, and MWX 7 Classic (the website) as an app.
+Roadmap to a daily driver: the project doc `claude/mwx7-distro-roadmap.md`.
 
-To try the ISO on Windows 11 (VirtualBox, Hyper-V or a USB stick), follow [RELEASE_NOTES.md](RELEASE_NOTES.md).
+- **ISO** (`build-iso.sh`, one file per release, `mwx7-<version>.iso`): runs from a VM or a USB stick, never touches
+  the PC's disks. Boots on UEFI with Secure Boot on (Microsoft-signed shim, Debian-signed GRUB and kernel), UEFI
+  without it, and legacy BIOS. CI builds and boot-tests it on every version bump and publishes the release.
+- `build-iso.sh classic` still builds the old web kiosk, only as a debugging aid; it is not released.
+- **Disk image** (`build.sh`): the earlier kiosk as a raw disk image; to be replaced by a real installer (stage 3).
+
+To try it on Windows 11 (VMware, VirtualBox or a USB stick), follow [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## Design
 ```
@@ -36,7 +39,7 @@ UEFI -> standalone GRUB (finds the disk by label) -> Debian 13 (minbase) -> syst
 ## Build and test
 Prerequisites on a Debian/Ubuntu host: `sudo apt install debootstrap parted dosfstools mtools e2fsprogs squashfs-tools xorriso grub-pc-bin qemu-system-x86 ovmf nodejs npm`.
 ```bash
-sudo ./distro/build-iso.sh   # produces distro/out/mwx7-live.iso (~590 MB)
+sudo ./distro/build-iso.sh   # produces distro/out/mwx7.iso (~1.2 GB): the MWX 7 desktop
 ./distro/smoke-test.sh        # boots it headless four ways
 sudo ./distro/build.sh 4      # produces distro/out/mwx7.img (4 GB)
 ./distro/test-qemu.sh         # try it in a VM

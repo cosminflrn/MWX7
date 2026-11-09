@@ -2,6 +2,11 @@
 
 Derived from the git history. Newest first.
 
+## v1.2.2
+- One download: `mwx7-<version>.iso` is the real MWX 7 desktop. The separate web-kiosk ISO is gone (MWX 7 Classic is
+  still there as an app in the dock)
+- CI boot-tests the desktop on legacy BIOS, UEFI and UEFI with Secure Boot
+
 ## v1.2.1
 - Desktop preview: the status bar and dock now appear in VMware and VirtualBox with 3D acceleration (GTK 4's GPU
   renderer misdraws there; the shell now draws on the CPU and other GTK apps use the older GL renderer in VMs)
