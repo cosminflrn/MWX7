@@ -2,6 +2,13 @@
 
 Derived from the git history. Newest first.
 
+## v1.2.0 "Desktop preview"
+- New second ISO, **MWX 7 Desktop (preview)**: a real Linux desktop instead of the web version full screen. Wayfire
+  compositor with glass blur, the native MWX 7 status bar (orb, active app, Show desktop, clock with seconds) and dock
+  (running indicators, click to open / focus / minimize), Google Chrome from Google's own repository, Files (Thunar),
+  Terminal, and MWX 7 Classic as an app window
+- CI builds and boot-tests both ISOs; the desktop one passes once the native shell has started
+
 ## v1.1.1
 - Live ISO: shows "Starting MWX 7 ..." while booting and a readable message on screen if the display cannot start,
   instead of a blank console with a stray live-boot warning (what a VirtualBox tester saw)

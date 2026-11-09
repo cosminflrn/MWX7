@@ -3,13 +3,20 @@
 # disks are never touched. Boots on UEFI (Secure Boot on or off) and legacy BIOS, from a VM or a USB stick.
 # Needs: Debian/Ubuntu host, root, and:
 #   sudo apt install debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin nodejs npm
-# Usage: sudo ./distro/build-iso.sh
+# Usage: sudo ./distro/build-iso.sh [classic|desktop]
+#   REUSE_ROOT=1 keeps the Debian system from the last build of the same flavour and only refreshes MWX 7's own files
+#   and the desktop packages: minutes instead of a full rebuild, for development. CI always builds from scratch.
+#   classic  MWX 7 on the web, full screen (kiosk). The released default for now.
+#   desktop  a real Wayfire desktop with the native MWX 7 shell, Google Chrome and real apps (roadmap stage 1).
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)." >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-OUT="$HERE/out"; ROOT="$OUT/live-root"; ISO_DIR="$OUT/iso"; ISO="$OUT/mwx7-live.iso"
+FLAVOR="${1:-classic}"
+case "$FLAVOR" in classic|desktop) ;; *) echo "Unknown flavour $FLAVOR (classic or desktop)" >&2; exit 1 ;; esac
+OUT="$HERE/out"; ROOT="$OUT/live-root"; ISO_DIR="$OUT/iso"
+ISO="$OUT/mwx7-live.iso"; [ "$FLAVOR" = desktop ] && ISO="$OUT/mwx7-desktop-live.iso"
 VERSION="$(node -p "require('$REPO/package.json').version" 2>/dev/null || echo dev)"
 
 cleanup() {  # always release the bind mounts, even on failure
@@ -24,20 +31,33 @@ if [ -n "${SUDO_USER:-}" ]; then sudo -u "$SUDO_USER" bash -c "cd '$REPO' && npm
 else (cd "$REPO" && npm ci && npm run build); fi
 
 # 2. Minimal Debian in a plain directory (no disk image, so no loop devices or partitions are needed).
-rm -rf "$ROOT" "$ISO_DIR"; mkdir -p "$ROOT" "$ISO_DIR/live" "$ISO_DIR/boot/grub"
+REUSE=0; [ "${REUSE_ROOT:-0}" = 1 ] && [ -x "$ROOT/usr/bin/apt-get" ] && REUSE=1
+rm -rf "$ISO_DIR"; mkdir -p "$ISO_DIR/live" "$ISO_DIR/boot/grub"
+if [ $REUSE = 0 ]; then
+rm -rf "$ROOT"; mkdir -p "$ROOT"
 echo "==> debootstrap (downloads ~300 MB)"
 # Debian 13 (trixie): current Mesa, kernel 6.12 and Chromium.
 # Older debootstrap releases lack a trixie script; sid\'s is the same.
 SCRIPT=/usr/share/debootstrap/scripts/trixie; [ -e "$SCRIPT" ] || SCRIPT=/usr/share/debootstrap/scripts/sid
 debootstrap --variant=minbase trixie "$ROOT" http://deb.debian.org/debian "$SCRIPT"
+fi
 
 # 3. Same overlay and packages as the disk image, plus live-boot.
 cp -a "$HERE/overlay/." "$ROOT/"
-mkdir -p "$ROOT/opt/mwx7"; cp -a "$REPO/dist" "$ROOT/opt/mwx7/dist"
+rm -rf "$ROOT/opt/mwx7/dist"; mkdir -p "$ROOT/opt/mwx7"; cp -a "$REPO/dist" "$ROOT/opt/mwx7/dist"
 cp "$HERE/chroot-setup.sh" "$ROOT/tmp/"
 : > "$ROOT/etc/fstab"   # live-boot mounts the root itself
 for d in dev dev/pts proc sys; do mount --bind "/$d" "$ROOT/$d"; done
-chroot "$ROOT" env EXTRA_PKGS="live-boot shim-signed grub-efi-amd64-signed" /tmp/chroot-setup.sh
+[ $REUSE = 1 ] || chroot "$ROOT" env EXTRA_PKGS="live-boot shim-signed grub-efi-amd64-signed" /tmp/chroot-setup.sh
+if [ "$FLAVOR" = desktop ]; then
+  cp -a "$HERE/desktop/overlay/." "$ROOT/"
+  mkdir -p "$ROOT/usr/share/mwx7/icons"
+  cp -a "$REPO/public/media/icons/." "$ROOT/usr/share/mwx7/icons/"
+  cp "$REPO/public/media/wallpapers/meadow.jpg" "$ROOT/usr/share/mwx7/wallpaper.jpg"
+  cp "$HERE/desktop/setup.sh" "$ROOT/tmp/"
+  chroot "$ROOT" /tmp/setup.sh
+  rm -f "$ROOT/tmp/setup.sh"
+fi
 chown -R 1000:1000 "$ROOT/opt/mwx7"
 rm -f "$ROOT/tmp/chroot-setup.sh"
 for d in dev/pts dev proc sys; do umount "$ROOT/$d"; done
@@ -47,8 +67,11 @@ for d in dev/pts dev proc sys; do umount "$ROOT/$d"; done
 cp -L "$ROOT/vmlinuz" "$ISO_DIR/live/vmlinuz"
 cp -L "$ROOT/initrd.img" "$ISO_DIR/live/initrd.img"
 echo "==> squashfs"
-mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" -comp xz -noappend -quiet -e boot/initrd.img-* -e boot/vmlinuz-*
+# Development rebuilds trade size for speed (zstd); releases use xz.
+COMP=(-comp xz); [ $REUSE = 1 ] && COMP=(-comp zstd -Xcompression-level 3)
+mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" "${COMP[@]}" -noappend -quiet -e boot/initrd.img-* -e boot/vmlinuz-*
 
+LABEL=""; [ "$FLAVOR" = desktop ] && LABEL=" Desktop (preview)"
 # 5. Hybrid ISO: one file that boots on BIOS and UEFI, from optical media or written raw to USB.
 #    The second entry copies the whole system into RAM (needs ~4 GB), so a USB stick can be pulled out afterwards.
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
@@ -56,12 +79,12 @@ set timeout=2
 set default=0
 # console=ttyS0 last makes the serial port the system console, so boot messages stay off the screen (and CI can
 # read them); the kernel still logs to the screen too.
-menuentry "MWX 7 $VERSION" {
+menuentry "MWX 7 $VERSION$LABEL" {
   echo "Starting MWX 7 ..."
   linux /live/vmlinuz boot=live components quiet splash loglevel=3 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
-menuentry "MWX 7 $VERSION (copy to RAM)" {
+menuentry "MWX 7 $VERSION$LABEL (copy to RAM)" {
   echo "Copying MWX 7 into memory, this takes a minute ..."
   linux /live/vmlinuz boot=live components toram quiet splash loglevel=3 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
