@@ -1,0 +1,5 @@
+#!/bin/sh
+# The CPU renderer is enough for a settings window and avoids GTK 4 GPU-renderer issues on some drivers and VMs.
+export GSK_RENDERER=cairo
+export GTK_A11Y=none
+exec python3 /usr/share/mwx7/settings/settings.py "$@"

@@ -1,0 +1,6 @@
+// MWX 7 Settings: the signed-in user at the screen may change the time zone without a password.
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.timedate1.set-timezone" && subject.local && subject.active) {
+    return polkit.Result.YES;
+  }
+});

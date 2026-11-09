@@ -22,7 +22,7 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   wayfire swaybg greetd dbus-user-session \
   python3-gi gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 libgtk4-layer-shell0 librsvg2-common \
   thunar foot network-manager network-manager-gnome polkitd mako-notifier libnotify-bin \
-  plymouth plymouth-themes \
+  plymouth plymouth-themes wlr-randr \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
   adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin \
   open-vm-tools spice-vdagent qemu-guest-agent \

@@ -55,6 +55,11 @@ if [ "$FLAVOR" = desktop ]; then
   cp -a "$REPO/public/media/icons/." "$ROOT/usr/share/mwx7/icons/"
   cp "$REPO/public/media/wallpapers/meadow.jpg" "$ROOT/usr/share/mwx7/wallpaper.jpg"
   rm -rf "$ROOT/usr/share/mwx7/avatars"; cp -a "$REPO/public/media/avatars" "$ROOT/usr/share/mwx7/avatars"
+  # Wallpapers for MWX 7 Settings (stills; the web version's videos are too large for the ISO for now).
+  rm -rf "$ROOT/usr/share/mwx7/wallpapers"; mkdir -p "$ROOT/usr/share/mwx7/wallpapers"
+  cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
+     "$REPO/public/media/pictures/"*.jpg "$ROOT/usr/share/mwx7/wallpapers/"
+  echo "$VERSION" > "$ROOT/usr/share/mwx7/version"
   # Selawik (OFL), the font MWX 7 uses on the web, as TTF: Pango loads fonts through HarfBuzz, which can't read WOFF2.
   rm -rf "$ROOT/usr/share/fonts/selawik"; mkdir -p "$ROOT/usr/share/fonts/selawik"
   cp -a "$HERE/desktop/fonts/selawik/." "$ROOT/usr/share/fonts/selawik/"
