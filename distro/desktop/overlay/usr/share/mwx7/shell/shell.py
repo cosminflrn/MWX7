@@ -101,7 +101,7 @@ def apps_windows(views):
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
     'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
-    'mwx7-classic': 'about', 'chromium': 'browser',
+    'mwx7-classic': 'about', 'chromium': 'browser', 'mwx7-settings': 'settings',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
@@ -370,6 +370,8 @@ class Shell(Gtk.Application):
         pop = Gtk.Popover()
         pop.add_css_class('start')
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.append(self.menu_row('Settings', 'settings',
+                                 lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/settings/mwx7-settings']))))
         col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(PINNED[3][2]))))
         col.append(Gtk.Separator())
         col.append(self.menu_row('Restart', 'logoff', lambda *_: subprocess.Popen(['systemctl', 'reboot'])))

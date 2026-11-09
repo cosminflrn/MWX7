@@ -7,3 +7,4 @@ playwright-report/
 
 # distro build output (multi-GB disk image)
 distro/out/
+__pycache__/

@@ -2,6 +2,14 @@
 
 Derived from the git history. Newest first.
 
+## v1.5.0
+- **MWX 7 boot splash**: the glossy orb and "MWX 7" on deep blue with a pulsing progress glow while the system starts,
+  instead of console text (Plymouth theme, shown even though the serial console stays on for the CI tests)
+- **MWX 7 Settings** app (Start menu, or the top-left orb): wallpaper picker with the MWX 7 photos, window frame colour,
+  display resolution and scale, keyboard layouts and repeat, mouse speed / natural scrolling / left-handed, date & time
+  zone, and About. Changes apply live and are kept in your own config
+- Wallpaper now comes from your settings instead of being fixed
+
 ## v1.4.1
 - Google Chrome uses the MWX 7 window frame and traffic lights like every other app (no welcome or default-browser
   prompts; Google's own terms dialog still appears on the first start)

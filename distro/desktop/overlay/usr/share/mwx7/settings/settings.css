@@ -1,0 +1,41 @@
+/* MWX 7 Settings: light glass sidebar, white content, MWX 7 blue accents (matches Settings on the web). */
+window.mwx7-settings { font-family: Selawik, "DejaVu Sans", sans-serif; color: #1c3150; background: #ffffff; }
+list.nav {
+  min-width: 190px; padding: 10px 6px;
+  background: linear-gradient(to bottom, #eef5fd, #dde9f7);
+  border-right: 1px solid #c3d4e8;
+}
+list.nav row { padding: 7px 10px; border-radius: 6px; margin: 1px 0; color: #1c3150; }
+list.nav row:hover { background: rgba(255, 255, 255, 0.7); }
+list.nav row:selected { background: linear-gradient(to bottom, #fdfeff, #d6e8fb); box-shadow: inset 0 0 0 1px #9cc8ef; color: #0b2440; }
+.page { padding: 18px 26px 26px; }
+.page-title { font-size: 20px; color: #1e4f8c; margin-bottom: 4px; }
+.section { font-size: 14px; font-weight: 600; color: #1e4f8c; margin-top: 12px; }
+.note { color: #5b6f86; font-size: 12px; }
+.key { color: #5b6f86; }
+flowbox.walls flowboxchild { padding: 6px; border-radius: 6px; }
+flowbox.walls flowboxchild:selected { background: #cce8ff; box-shadow: inset 0 0 0 1px #99d1ff; }
+button.swatch { padding: 3px; border-radius: 6px; background: none; border: 1px solid transparent; box-shadow: none; }
+button.swatch:hover { border-color: #9cc8ef; }
+button.swatch.chosen { border: 2px solid #2a6fc1; }
+
+/* MWX 7 title bar for GTK 4 apps, matching the window frames Wayfire draws for other apps. */
+headerbar.mwx7-titlebar {
+  min-height: 30px; padding: 0 8px;
+  background: linear-gradient(to bottom, rgba(232, 242, 252, 0.98) 0%, rgba(206, 226, 248, 0.97) 50%,
+                              rgba(178, 208, 241, 0.97) 51%, rgba(196, 220, 246, 0.98) 100%);
+  border-bottom: 1px solid rgba(40, 80, 130, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.mwx7-title { font-weight: 600; color: #0b2440; text-shadow: 0 0 4px rgba(255, 255, 255, 0.95); }
+button.light {
+  min-width: 13px; min-height: 13px; padding: 0; margin: 0 3px; border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25); box-shadow: inset 0 3px 3px -1px rgba(255, 255, 255, 0.85);
+}
+button.light-close { background: radial-gradient(circle at 50% 75%, #ff7a72, #cc2a21 75%); }
+button.light-min { background: radial-gradient(circle at 50% 75%, #ffd65a, #d9940d 75%); }
+button.light-max { background: radial-gradient(circle at 50% 75%, #7be05e, #219a21 75%); }
+button.light-close:hover { background: radial-gradient(circle at 50% 75%, #ff938c, #e0362c 75%); }
+button.light-min:hover { background: radial-gradient(circle at 50% 75%, #ffe07a, #eba51a 75%); }
+button.light-max:hover { background: radial-gradient(circle at 50% 75%, #93ea78, #2aaf2a 75%); }
+window.mwx7-settings:backdrop button.light { background: radial-gradient(circle at 50% 75%, #dfe2e8, #9ea8b6 75%); }

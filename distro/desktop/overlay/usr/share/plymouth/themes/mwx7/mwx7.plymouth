@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=MWX 7
+Description=MWX 7 boot splash: the glossy orb on deep blue, with a pulsing progress glow.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/mwx7
+ScriptFile=/usr/share/plymouth/themes/mwx7/mwx7.script

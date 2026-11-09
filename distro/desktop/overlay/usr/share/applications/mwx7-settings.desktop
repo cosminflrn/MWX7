@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Comment=Wallpaper, window color, display, keyboard, mouse, time zone
+Exec=/usr/share/mwx7/settings/mwx7-settings
+Icon=/usr/share/mwx7/icons/settings.png
+Categories=Settings;
+Keywords=wallpaper;background;color;display;resolution;keyboard;layout;mouse;time;zone;about;

@@ -4,11 +4,11 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.4.1';
+export const VERSION = '1.5.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
-  'MWX 7 OS: Aero glass window frames with traffic lights',
+  'MWX 7 OS: boot splash, Aero glass window frames with traffic lights, Settings app',
   'MWX 7 OS: Start menu with search, volume and network in the status bar',
   'Notifications at the top right; Files and other apps in the MWX 7 look',
   'Bucharest time, VMware/VirtualBox integration',
