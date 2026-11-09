@@ -85,3 +85,5 @@ button.sm-power:hover { background: rgba(255, 255, 255, 0.7); }
 image.tray { -gtk-icon-size: 16px; color: #0b2440; }
 menubutton.tray-btn > button { min-height: 0; min-width: 0; padding: 1px 4px; background: none; border: none; box-shadow: none; border-radius: 6px; color: #0b2440; }
 menubutton.tray-btn > button:hover { background: rgba(255, 255, 255, 0.5); }
+.menu-head { padding: 2px 10px 4px; font-weight: 600; color: #3a587c; }
+button.menu-row > label { padding: 2px 4px; }

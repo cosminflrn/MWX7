@@ -13,7 +13,7 @@ apt-get update -qq
 
 # wayfire: compositor (glass blur, animations); greetd: logs the user in straight into the session;
 # GTK4 + layer-shell + PyGObject: the native MWX 7 status bar and dock; swaybg: wallpaper;
-# thunar / foot: file manager and terminal; NetworkManager: wired + Wi-Fi; polkitd: lets the signed-in user shut down; portals: file pickers and screen sharing
+# thunar / foot: file manager and terminal; NetworkManager (+ its connection editor for Wi-Fi/VPN): networking; polkitd: lets the signed-in user shut down; portals: file pickers and screen sharing
 # for Chrome; dbus-user-session: per-user bus for portals and PipeWire;
 # open-vm-tools / spice-vdagent / qemu-guest-agent: VM integration (window resizing, clipboard, clean shutdown); each
 # only starts on its own hypervisor.
@@ -21,7 +21,7 @@ apt-get update -qq
 apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   wayfire swaybg greetd dbus-user-session \
   python3-gi gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 libgtk4-layer-shell0 librsvg2-common \
-  thunar foot network-manager polkitd mako-notifier libnotify-bin \
+  thunar foot network-manager network-manager-gnome polkitd mako-notifier libnotify-bin \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
   adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin \
   open-vm-tools spice-vdagent qemu-guest-agent \
@@ -51,5 +51,8 @@ echo Europe/Bucharest > /etc/timezone
 # The kiosk is the "Classic" flavour's session; here greetd starts the desktop.
 systemctl disable mwx7-kiosk.service
 systemctl enable greetd.service NetworkManager.service
+# Chrome reads first-run defaults from next to its binary: use the system window frame (so Chrome gets MWX 7's glass
+# frame and traffic lights like every app) and skip the welcome and default-browser prompts.
+install -m 0644 /usr/share/mwx7/chrome/initial_preferences /opt/google/chrome/initial_preferences
 # Chrome's package adds its own copy of the repo line on first run; keep ours only.
 rm -f /etc/apt/sources.list.d/google-chrome.sources

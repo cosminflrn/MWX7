@@ -2,6 +2,13 @@
 
 Derived from the git history. Newest first.
 
+## v1.4.1
+- Google Chrome uses the MWX 7 window frame and traffic lights like every other app (no welcome or default-browser
+  prompts; Google's own terms dialog still appears on the first start)
+- Dock: **right-click** an icon for New window / Close window
+- Network icon opens network settings (Wi-Fi passwords, VPN)
+- The status bar title follows focus reliably when windows close
+
 ## v1.4.0 "Aero frames"
 - **MWX 7 window frames** for every app: our own Wayfire plugin (`distro/desktop/mwx7-decor`, a fork of Wayfire's MIT
   decoration plugin) draws light-blue Aero glass with a soft gloss and a bright top edge, the title on the left with a

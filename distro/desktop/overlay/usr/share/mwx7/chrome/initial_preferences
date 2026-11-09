@@ -1,0 +1,12 @@
+{
+  "browser": {
+    "custom_chrome_frame": false,
+    "has_seen_welcome_page": true
+  },
+  "distribution": {
+    "skip_first_run_ui": true,
+    "import_bookmarks": false,
+    "suppress_first_run_default_browser_prompt": true,
+    "make_chrome_default_for_user": false
+  }
+}
