@@ -2,6 +2,13 @@ MWX 7 as its own operating system: a live ISO that boots straight into MWX 7, fu
 It runs from the ISO (or a USB stick) and never installs anything or touches your disks. Turn it off and your PC is
 exactly as it was.
 
+## Two downloads
+- **`mwx7-…-live.iso`, MWX 7 Classic**: the MWX 7 you know from the website, full screen, as its own system.
+- **`mwx7-…-desktop-preview.iso`, MWX 7 Desktop (preview)**: the start of MWX 7 as a real operating system. A real
+  Linux desktop with the native MWX 7 status bar and dock, Google Chrome (sign in for your bookmarks and passwords),
+  Files and Terminal. Early: expect plain parts while the MWX 7 look is rebuilt natively stage by stage.
+  Give the VM **4 GB** of memory and turn on **3D acceleration**.
+
 ## Try it on Windows 11 in a window (safest)
 1. Install [VirtualBox](https://www.virtualbox.org/wiki/Downloads) (free).
 2. **New** → name `MWX 7`, ISO image: the `mwx7-…-live.iso` below, Type **Linux**, Version **Debian (64-bit)**.

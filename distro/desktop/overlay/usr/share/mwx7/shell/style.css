@@ -1,0 +1,49 @@
+/* MWX 7 shell glass. The blur itself comes from Wayfire (blur plugin on layer surfaces); these colours tint it. */
+window.bar, window.dock { background: transparent; }
+
+window.bar .bar-plate {
+  min-height: 28px;
+  padding: 0 10px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.62), rgba(225, 238, 252, 0.45));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 1px 0 rgba(20, 50, 90, 0.25);
+  color: #0b2440;
+  font-family: Selawik, "DejaVu Sans", sans-serif;
+  font-size: 13px;
+}
+window.bar .bar-plate > centerbox { min-height: 28px; }
+.app-title { font-weight: 600; text-shadow: 0 0 6px rgba(255, 255, 255, 0.9); }
+.clock { text-shadow: 0 0 6px rgba(255, 255, 255, 0.9); }
+
+menubutton.orb > button, button.flat-ico {
+  min-height: 0; min-width: 0; padding: 1px 4px;
+  background: none; border: none; box-shadow: none; border-radius: 6px;
+}
+menubutton.orb image { -gtk-icon-size: 22px; }
+menubutton.orb > button:hover, button.flat-ico:hover { background: rgba(255, 255, 255, 0.5); }
+
+.dock-shelf {
+  padding: 6px 12px 4px;
+  border-radius: 14px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.72), rgba(218, 234, 252, 0.52));
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px rgba(10, 30, 60, 0.35);
+}
+button.dock-item {
+  padding: 4px 6px 0; min-width: 0; min-height: 0;
+  background: none; border: none; box-shadow: none; border-radius: 10px;
+  transition: background 120ms ease-out;
+}
+button.dock-item:hover { background: rgba(255, 255, 255, 0.35); }
+.run-dot { min-width: 5px; min-height: 5px; margin: 2px 0 1px; border-radius: 3px; background: transparent; }
+button.dock-item.running .run-dot { background: #ffffff; box-shadow: 0 0 4px rgba(40, 120, 255, 0.9); }
+
+popover.start > contents {
+  padding: 8px;
+  border-radius: 10px;
+  background: linear-gradient(to bottom, rgba(250, 252, 255, 0.92), rgba(225, 236, 250, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  color: #0b2440;
+}
+button.menu-row { padding: 4px 10px; background: none; border: none; box-shadow: none; border-radius: 6px; }
+button.menu-row:hover { background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; }

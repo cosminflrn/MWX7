@@ -1,0 +1,16 @@
+#!/bin/sh
+# The MWX 7 desktop session: Wayfire with MWX 7's config. The shell, wallpaper and portals start from its autostart.
+export XDG_CURRENT_DESKTOP=MWX7:wlroots
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=mwx7
+export MOZ_ENABLE_WAYLAND=1
+export QT_QPA_PLATFORM='wayland;xcb'
+export GDK_BACKEND='wayland,x11'
+# Software rendering is allowed so a VM without 3D still gets a desktop (slower, but never a black screen).
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export WLR_NO_HARDWARE_CURSORS=1
+# Wayfire writes nothing back to this file; per-user overrides can come later from MWX 7 Settings.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  exec dbus-run-session -- wayfire -c /etc/mwx7/wayfire.ini
+fi
+exec wayfire -c /etc/mwx7/wayfire.ini

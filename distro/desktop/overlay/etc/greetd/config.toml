@@ -1,0 +1,12 @@
+# The live system logs straight in as the "mwx" user (no password on a live medium). An installed system will use the
+# MWX 7 logon screen instead (roadmap stage 2).
+[terminal]
+vt = 1
+
+[initial_session]
+command = "/usr/local/bin/mwx7-session"
+user = "mwx"
+
+[default_session]
+command = "agreety --cmd /usr/local/bin/mwx7-session"
+user = "_greetd"
