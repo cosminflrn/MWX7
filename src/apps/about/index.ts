@@ -4,16 +4,14 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.2.3';
+export const VERSION = '1.3.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
-  'Desktop preview ISO: a real Linux desktop with the MWX 7 status bar and dock',
-  'Live ISO: clearer startup, works with Intel, AMD and NVIDIA graphics',
-  'MWX 7 boots as its own system from a live ISO or USB stick',
-  'Snipping Tool: rectangle, window or full-screen snips',
-  'Media Player playlist is easier to read',
-  'Space Pinball opens without a hitch',
+  'MWX 7 OS: Start menu with search, volume and network in the status bar',
+  'Notifications at the top right; Files and other apps in the MWX 7 look',
+  'Bucharest time, VMware/VirtualBox integration',
+  'One ISO: the real MWX 7 desktop',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {

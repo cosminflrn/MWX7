@@ -54,6 +54,10 @@ if [ "$FLAVOR" = desktop ]; then
   mkdir -p "$ROOT/usr/share/mwx7/icons"
   cp -a "$REPO/public/media/icons/." "$ROOT/usr/share/mwx7/icons/"
   cp "$REPO/public/media/wallpapers/meadow.jpg" "$ROOT/usr/share/mwx7/wallpaper.jpg"
+  rm -rf "$ROOT/usr/share/mwx7/avatars"; cp -a "$REPO/public/media/avatars" "$ROOT/usr/share/mwx7/avatars"
+  # Selawik (OFL), the font MWX 7 uses on the web, as TTF: Pango loads fonts through HarfBuzz, which can't read WOFF2.
+  rm -rf "$ROOT/usr/share/fonts/selawik"; mkdir -p "$ROOT/usr/share/fonts/selawik"
+  cp -a "$HERE/desktop/fonts/selawik/." "$ROOT/usr/share/fonts/selawik/"
   cp "$HERE/desktop/setup.sh" "$ROOT/tmp/"
   chroot "$ROOT" /tmp/setup.sh
   rm -f "$ROOT/tmp/setup.sh"

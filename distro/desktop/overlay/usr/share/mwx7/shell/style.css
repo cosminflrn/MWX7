@@ -47,3 +47,41 @@ popover.start > contents {
 }
 button.menu-row { padding: 4px 10px; background: none; border: none; box-shadow: none; border-radius: 6px; }
 button.menu-row:hover { background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; }
+
+/* Dock Start orb */
+menubutton.dock-orb > button {
+  padding: 0 4px; min-width: 0; min-height: 0;
+  background: none; border: none; box-shadow: none; border-radius: 40px;
+}
+menubutton.dock-orb > button:hover { background: radial-gradient(circle, rgba(120, 200, 255, 0.55), transparent 70%); }
+.dock-sep { min-width: 1px; margin: 8px 4px 10px; background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.9), transparent); }
+
+/* Start menu: glass panel above the orb, like MWX 7 on the web. */
+popover.startmenu > contents {
+  padding: 0;
+  min-width: 340px;
+  border-radius: 12px;
+  background: linear-gradient(to bottom, rgba(235, 244, 255, 0.96), rgba(214, 230, 249, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 30px rgba(10, 30, 60, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  color: #0b2440;
+  font-family: Selawik, "DejaVu Sans", sans-serif;
+}
+.sm-head { padding: 10px 14px; border-bottom: 1px solid rgba(120, 160, 210, 0.35); }
+frame.sm-avatar { border-radius: 6px; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+frame.sm-avatar > image { border-radius: 4px; }
+.sm-user { font-size: 15px; font-weight: 600; }
+list.sm-list { background: rgba(255, 255, 255, 0.9); margin: 8px 8px 0; border-radius: 6px; padding: 4px; }
+list.sm-list row { padding: 5px 8px; border-radius: 4px; }
+list.sm-list row:hover, list.sm-list row:selected {
+  background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; color: #0b2440;
+}
+.sm-foot { padding: 8px; }
+.sm-foot entry { border-radius: 4px; background: #ffffff; border: 1px solid #9fb6d1; color: #0b2440; min-height: 28px; }
+button.sm-power { padding: 3px 6px; min-height: 0; background: none; border: none; box-shadow: none; border-radius: 4px; }
+button.sm-power:hover { background: rgba(255, 255, 255, 0.7); }
+
+/* Status icons in the bar */
+image.tray { -gtk-icon-size: 16px; color: #0b2440; }
+menubutton.tray-btn > button { min-height: 0; min-width: 0; padding: 1px 4px; background: none; border: none; box-shadow: none; border-radius: 6px; color: #0b2440; }
+menubutton.tray-btn > button:hover { background: rgba(255, 255, 255, 0.5); }

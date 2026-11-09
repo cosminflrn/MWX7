@@ -1,0 +1,9 @@
+# MWX 7 defaults for GTK apps (GTK reads these on Wayland, via GSettings and the settings portal).
+[org.gnome.desktop.interface]
+gtk-theme='MWX7'
+icon-theme='Adwaita'
+cursor-theme='Adwaita'
+font-name='Selawik 10'
+document-font-name='Selawik 10'
+color-scheme='prefer-light'
+clock-format='24h'

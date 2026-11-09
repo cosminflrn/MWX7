@@ -13,11 +13,13 @@ import time
 import urllib.request
 
 import gi
+import pwd
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
+gi.require_version('GdkPixbuf', '2.0')
 gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -96,6 +98,159 @@ def apps_windows(views):
     return [v for v in views or [] if v.get('type') == 'toplevel' and v.get('mapped', True) and v.get('role') != 'desktop']
 
 
+# MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
+APP_ICONS = {
+    'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
+    'mwx7-classic': 'about', 'chromium': 'browser',
+}
+# Friendly names for apps whose package names mean nothing to a person.
+DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
+# Helpers and duplicates: Chromium only exists to run MWX 7 Classic, Chrome is the browser.
+HIDDEN_APPS = ('chromium', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
+               'org.freedesktop.Xwayland', 'debian-', 'gcr-', 'polkit', 'agreety', 'vim', 'htop', 'python3')
+
+
+def app_name(app):
+    aid = (app.get_id() or '').removesuffix('.desktop').lower()
+    return DISPLAY_NAMES.get(aid, app.get_display_name())
+
+
+def user_display_name():
+    p = pwd.getpwuid(os.getuid())
+    full = (p.pw_gecos or '').split(',')[0].strip()
+    return full or p.pw_name.capitalize()
+
+
+def app_icon_widget(app, size):
+    aid = (app.get_id() or '').removesuffix('.desktop').lower()
+    for key, name in APP_ICONS.items():
+        if aid.startswith(key):
+            img = Gtk.Image.new_from_file(os.path.join(ICONS, name + '.png'))
+            break
+    else:
+        icon = app.get_icon()
+        img = Gtk.Image.new_from_gicon(icon) if icon else Gtk.Image.new_from_icon_name('application-x-executable')
+    img.set_pixel_size(size)
+    return img
+
+
+class StartMenu(Gtk.Popover):
+    """The MWX 7 Start menu: account tile, every installed app, search, power. Opens above the dock orb."""
+
+    def __init__(self, shell):
+        super().__init__()
+        self.shell = shell
+        self.add_css_class('startmenu')
+        self.set_has_arrow(False)
+        self.set_position(Gtk.PositionType.TOP)
+        self.set_offset(0, -8)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # Account tile.
+        head = Gtk.Box(spacing=10)
+        head.add_css_class('sm-head')
+        # Scale the photo up front: a Gtk.Picture asks for its full natural size and ignores size requests.
+        try:
+            buf = GdkPixbuf.Pixbuf.new_from_file_at_scale('/usr/share/mwx7/avatars/03-guitar.jpg', 48, 48, False)
+            pic = Gtk.Image.new_from_paintable(Gdk.Texture.new_for_pixbuf(buf))
+        except GLib.Error:
+            pic = Gtk.Image.new_from_icon_name('avatar-default')
+        pic.set_pixel_size(48)
+        frame = Gtk.Frame()
+        frame.set_valign(Gtk.Align.CENTER)
+        frame.add_css_class('sm-avatar')
+        frame.set_child(pic)
+        head.append(frame)
+        name = Gtk.Label(label=user_display_name(), xalign=0)
+        name.add_css_class('sm-user')
+        head.append(name)
+        root.append(head)
+        # App list.
+        self.listbox = Gtk.ListBox()
+        self.listbox.add_css_class('sm-list')
+        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.listbox.set_activate_on_single_click(True)
+        self.listbox.connect('row-activated', self.on_row)
+        self.listbox.set_filter_func(self.filter_row)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(360)
+        scroll.set_max_content_height(360)
+        scroll.set_child(self.listbox)
+        root.append(scroll)
+        # Search + power.
+        foot = Gtk.Box(spacing=8)
+        foot.add_css_class('sm-foot')
+        self.search = Gtk.SearchEntry()
+        self.search.set_placeholder_text('Search programs and files')
+        self.search.set_hexpand(True)
+        self.search.connect('search-changed', lambda *_: self.listbox.invalidate_filter())
+        self.search.connect('activate', self.on_enter)
+        foot.append(self.search)
+        for label, icon, cmd in (('Restart', 'logoff', ['systemctl', 'reboot']),
+                                 ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])):
+            b = Gtk.Button()
+            b.add_css_class('sm-power')
+            b.set_tooltip_text(label)
+            img = Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
+            img.set_pixel_size(22)
+            b.set_child(img)
+            b.connect('clicked', lambda *_, c=cmd: subprocess.Popen(c))
+            foot.append(b)
+        root.append(foot)
+        self.set_child(root)
+        self.connect('show', self.on_show)
+        self.monitor = Gio.AppInfoMonitor.get()
+        self.monitor.connect('changed', lambda *_: self.fill())
+        self.fill()
+
+    def fill(self):
+        while (row := self.listbox.get_row_at_index(0)) is not None:
+            self.listbox.remove(row)
+        apps = [a for a in Gio.AppInfo.get_all() if a.should_show()
+                and not (a.get_id() or '').lower().startswith(HIDDEN_APPS)]
+        apps.sort(key=lambda a: app_name(a).lower())
+        for app in apps:
+            row = Gtk.ListBoxRow()
+            row.app = app
+            row.terms = ' '.join(filter(None, [app_name(app), app.get_display_name(), app.get_description() or '',
+                                               ' '.join(getattr(app, 'get_keywords', lambda: [])() or [])])).lower()
+            box = Gtk.Box(spacing=10)
+            box.append(app_icon_widget(app, 32))
+            box.append(Gtk.Label(label=app_name(app), xalign=0))
+            row.set_child(box)
+            self.listbox.append(row)
+        return False
+
+    def filter_row(self, row):
+        q = self.search.get_text().strip().lower()
+        return not q or all(w in row.terms for w in q.split())
+
+    def first_visible(self):
+        i = 0
+        while (row := self.listbox.get_row_at_index(i)) is not None:
+            if row.get_child_visible() and self.filter_row(row):
+                return row
+            i += 1
+        return None
+
+    def on_enter(self, *_):
+        row = self.first_visible()
+        if row:
+            self.on_row(self.listbox, row)
+
+    def on_row(self, _lb, row):
+        self.popdown()
+        try:
+            row.app.launch([], None)
+        except GLib.Error:
+            pass
+
+    def on_show(self, *_):
+        self.search.set_text('')
+        self.listbox.invalidate_filter()
+        GLib.idle_add(self.search.grab_focus)
+
+
 class Shell(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='org.mwx7.shell')
@@ -150,12 +305,42 @@ class Shell(Gtk.Application):
         orb_img = Gtk.Image.new_from_file(os.path.join(ICONS, 'orb.png'))
         orb_img.set_pixel_size(22)
         orb.set_child(orb_img)
-        orb.set_popover(self.build_start())
+        orb.set_popover(self.build_system_menu())
         left.append(orb)
         self.title = Gtk.Label(label='MWX 7')
         self.title.add_css_class('app-title')
         left.append(self.title)
         right = Gtk.Box(spacing=10)
+        # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
+        self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
+        self.net.add_css_class('tray')
+        right.append(self.net)
+        # Volume: click for a slider; scrolling over it also works.
+        self.vol_btn = Gtk.MenuButton()
+        self.vol_btn.add_css_class('tray-btn')
+        self.vol_img = Gtk.Image.new_from_icon_name('audio-volume-medium-symbolic')
+        self.vol_btn.set_child(self.vol_img)
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        self.vol_scale = Gtk.Scale.new_with_range(Gtk.Orientation.VERTICAL, 0, 100, 1)
+        self.vol_scale.set_inverted(True)
+        self.vol_scale.set_size_request(-1, 140)
+        self.vol_scale.set_draw_value(True)
+        self.vol_scale.connect('value-changed', self.on_volume)
+        self.vol_mute = Gtk.ToggleButton(label='Mute')
+        self.vol_mute.connect('toggled', self.on_mute)
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        vbox.append(self.vol_scale)
+        vbox.append(self.vol_mute)
+        pop.set_child(vbox)
+        self.vol_btn.set_popover(pop)
+        scroll = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL)
+        scroll.connect('scroll', lambda _c, _dx, dy: (self.vol_scale.set_value(self.vol_scale.get_value() - dy * 5), True)[1])
+        self.vol_btn.add_controller(scroll)
+        right.append(self.vol_btn)
+        self.vol_updating = False
+        GLib.timeout_add_seconds(2, self.poll_status)
+        GLib.idle_add(self.poll_status)
         show_desktop = Gtk.Button()
         show_desktop.add_css_class('flat-ico')
         show_desktop.set_child(Gtk.Image.new_from_file(os.path.join(ICONS, '16', 'desktop.png')) if os.path.exists(
@@ -176,12 +361,11 @@ class Shell(Gtk.Application):
         w.set_child(plate)
         return w
 
-    def build_start(self):
+    def build_system_menu(self):
         pop = Gtk.Popover()
         pop.add_css_class('start')
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for label, icon, cmd, _ in PINNED:
-            col.append(self.menu_row(label, icon, lambda *_, c=cmd: (pop.popdown(), self.launch(c))))
+        col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(PINNED[3][2]))))
         col.append(Gtk.Separator())
         col.append(self.menu_row('Restart', 'logoff', lambda *_: subprocess.Popen(['systemctl', 'reboot'])))
         col.append(self.menu_row('Shut Down', 'shutdown', lambda *_: subprocess.Popen(['systemctl', 'poweroff'])))
@@ -203,9 +387,22 @@ class Shell(Gtk.Application):
     def build_dock(self):
         w = self.layer_window('dock', (Layer.Edge.BOTTOM,), 0)
         Layer.set_margin(w, Layer.Edge.BOTTOM, 6)
+        # The search box in the Start menu needs the keyboard; on demand means only while it has focus.
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.ON_DEMAND)
         self.dock_box = Gtk.Box(spacing=6)
         self.dock_box.add_css_class('dock-shelf')
         self.dock_items = []
+        start = Gtk.MenuButton()
+        start.add_css_class('dock-orb')
+        start.set_tooltip_text('Start')
+        orb_big = Gtk.Image.new_from_file(os.path.join(ICONS, 'orb.png'))
+        orb_big.set_pixel_size(52)
+        start.set_child(orb_big)
+        start.set_popover(StartMenu(self))
+        self.dock_box.append(start)
+        sep = Gtk.Box()
+        sep.add_css_class('dock-sep')
+        self.dock_box.append(sep)
         for label, icon, cmd, ids in PINNED:
             b = Gtk.Button()
             b.add_css_class('dock-item')
@@ -257,6 +454,56 @@ class Shell(Gtk.Application):
         focused = next((v for v in apps_windows(self.views) if v.get('activated')), None)
         self.title.set_label(focused.get('title', '')[:60] if focused else 'MWX 7')
         return False
+
+    # ---- volume and network ----------------------------------------------------------------------------------------
+    @staticmethod
+    def capture(cmd):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=2).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            return ''
+
+    def poll_status(self):
+        # wpctl: "Volume: 0.40" or "Volume: 0.40 [MUTED]"
+        out = self.capture(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@']).split()
+        if len(out) >= 2:
+            try:
+                level = round(float(out[1]) * 100)
+            except ValueError:
+                level = 0
+            muted = '[MUTED]' in out
+            name = 'muted' if muted or level == 0 else 'low' if level < 34 else 'medium' if level < 67 else 'high'
+            self.vol_img.set_from_icon_name(f'audio-volume-{name}-symbolic')
+            self.vol_btn.set_tooltip_text(f'Volume {level}%' + (' (muted)' if muted else ''))
+            if not self.vol_btn.get_popover().get_visible():
+                self.vol_updating = True
+                self.vol_scale.set_value(level)
+                self.vol_mute.set_active(muted)
+                self.vol_updating = False
+        else:
+            self.vol_img.set_from_icon_name('audio-volume-muted-symbolic')
+            self.vol_btn.set_tooltip_text('No sound device')
+        # nmcli: TYPE:STATE:CONNECTION per device
+        icon, tip = 'network-offline-symbolic', 'Not connected'
+        for line in self.capture(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device']).splitlines():
+            parts = line.split(':')
+            if len(parts) >= 3 and parts[1] == 'connected':
+                if parts[0] == 'wifi':
+                    icon, tip = 'network-wireless-signal-excellent-symbolic', f'Wi-Fi: {parts[2]}'
+                    break
+                if parts[0] == 'ethernet':
+                    icon, tip = 'network-wired-symbolic', f'Connected: {parts[2]}'
+        self.net.set_from_icon_name(icon)
+        self.net.set_tooltip_text(tip)
+        return True
+
+    def on_volume(self, scale):
+        if not self.vol_updating:
+            subprocess.Popen(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@', f'{int(scale.get_value())}%'])
+
+    def on_mute(self, btn):
+        if not self.vol_updating:
+            subprocess.Popen(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if btn.get_active() else '0'])
 
     def tick_clock(self):
         # Same format as MWX 7 on the web: "Mon, Nov 9 09:51:37".
