@@ -5,7 +5,8 @@ Derived from the git history. Newest first.
 ## v1.2.1
 - Desktop preview: the status bar and dock now appear in VMware and VirtualBox with 3D acceleration (GTK 4's GPU
   renderer misdraws there; the shell now draws on the CPU and other GTK apps use the older GL renderer in VMs)
-- The shell restarts itself if it ever crashes and logs to /run/user/1000/mwx7-shell.log
+- The shell restarts itself if it ever crashes and logs to /run/user/1000/mwx7-shell.log; Wayfire logs to
+  /run/user/1000/wayfire.log instead of flashing its first log line on screen
 
 ## v1.2.0 "Desktop preview"
 - New second ISO, **MWX 7 Desktop (preview)**: a real Linux desktop instead of the web version full screen. Wayfire
