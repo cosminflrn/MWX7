@@ -266,7 +266,7 @@ class Shell(Gtk.Application):
         self.bar.present()
         self.dock.present()
         GLib.timeout_add(200, self.tick_clock)
-        threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.refresh),), daemon=True).start()
+        threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
         self.refresh()
         threading.Thread(target=self.announce, daemon=True).start()
 
@@ -313,8 +313,13 @@ class Shell(Gtk.Application):
         right = Gtk.Box(spacing=10)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
         self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
-        self.net.add_css_class('tray')
-        right.append(self.net)
+        net_btn = Gtk.Button()
+        net_btn.add_css_class('flat-ico')
+        net_btn.set_child(self.net)
+        # NetworkManager's own editor for now (Wi-Fi passwords, VPN); MWX 7 Settings will take this over.
+        net_btn.connect('clicked', lambda *_: self.launch(['nm-connection-editor']))
+        self.net_btn = net_btn
+        right.append(net_btn)
         # Volume: click for a slider; scrolling over it also works.
         self.vol_btn = Gtk.MenuButton()
         self.vol_btn.add_css_class('tray-btn')
@@ -417,6 +422,11 @@ class Shell(Gtk.Application):
             v.append(dot)
             b.set_child(v)
             b.connect('clicked', lambda *_, c=cmd, i=ids: self.dock_click(c, i))
+            right_click = Gtk.GestureClick(button=3)
+            # Capture phase: the button's own click handling would otherwise swallow the secondary button.
+            right_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            right_click.connect('pressed', lambda *_a, btn=b, l=label, c=cmd, i=ids: self.dock_menu(btn, l, c, i))
+            b.add_controller(right_click)
             self.dock_box.append(b)
             self.dock_items.append((b, ids))
         w.set_child(self.dock_box)
@@ -442,6 +452,47 @@ class Shell(Gtk.Application):
             if w.get('minimized'):
                 self.ipc.call('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.ipc.call('window-rules/focus-view', {'id': w['id']})
+
+    def dock_menu(self, button, label, cmd, ids):
+        # Right-click on a dock icon: open another window, or close the app's windows.
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.set_parent(button)
+        pop.set_position(Gtk.PositionType.TOP)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        head = Gtk.Label(label=label, xalign=0)
+        head.add_css_class('menu-head')
+        col.append(head)
+
+        def item(text, fn):
+            b = Gtk.Button(label=text)
+            b.add_css_class('menu-row')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (pop.popdown(), fn()))
+            col.append(b)
+
+        item('New window', lambda: self.launch(cmd))
+        wins = self.windows_of(ids)
+        if wins:
+            item('Close window' if len(wins) == 1 else f'Close all {len(wins)} windows',
+                 lambda: [self.ipc.call('window-rules/close-view', {'id': w['id']}) for w in wins])
+        pop.set_child(col)
+        pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
+        pop.popup()
+
+    def on_ipc_event(self):
+        # Wayfire sends focus/close events a moment before its view list reflects them, so look again shortly after;
+        # coalesce bursts of events into one follow-up.
+        self.refresh()
+        if not getattr(self, 'refresh_pending', False):
+            self.refresh_pending = True
+
+            def later():
+                self.refresh_pending = False
+                self.refresh()
+                return False
+            GLib.timeout_add(150, later)
+        return False
 
     def refresh(self):
         views = self.ipc.call('window-rules/list-views')
@@ -494,7 +545,7 @@ class Shell(Gtk.Application):
                 if parts[0] == 'ethernet':
                     icon, tip = 'network-wired-symbolic', f'Connected: {parts[2]}'
         self.net.set_from_icon_name(icon)
-        self.net.set_tooltip_text(tip)
+        self.net_btn.set_tooltip_text(tip + ' (click for network settings)')
         return True
 
     def on_volume(self, scale):
