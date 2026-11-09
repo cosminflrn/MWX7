@@ -2,6 +2,13 @@
 
 Derived from the git history. Newest first.
 
+## v1.4.0 "Aero frames"
+- **MWX 7 window frames** for every app: our own Wayfire plugin (`distro/desktop/mwx7-decor`, a fork of Wayfire's MIT
+  decoration plugin) draws light-blue Aero glass with a soft gloss and a bright top edge, the title on the left with a
+  white caption glow, and glossy **traffic lights** on the right (green maximize, yellow minimize, red close) that turn
+  grey on unfocused windows and show their symbol under the pointer
+- Built from source inside the ISO build against Debian's Wayfire; the compiler is removed again afterwards
+
 ## v1.3.0
 - **Start menu** on the dock orb, like MWX 7 on the web: account picture and name, every installed app with MWX 7
   icons where we have them, type-to-search (Enter opens the first match), Restart and Shut Down

@@ -31,6 +31,16 @@ fc-cache -f /usr/share/fonts/selawik >/dev/null
 # MWX 7 theme and font as the GTK defaults (90_mwx7.gschema.override).
 glib-compile-schemas /usr/share/glib-2.0/schemas
 
+# MWX 7 window frames (desktop/mwx7-decor, a fork of Wayfire's decoration plugin): compile against Debian's
+# wayfire-dev, install, then remove the toolchain again so it doesn't ship.
+BUILD_DEPS="wayfire-dev meson ninja-build g++ pkg-config libcairo2-dev libpango1.0-dev libglm-dev"
+apt-get install -y --no-install-recommends $BUILD_DEPS
+(cd /tmp/mwx7-decor && meson setup build --wipe -Dprefix=/usr >/dev/null && ninja -C build && ninja -C build install)
+rm -rf /tmp/mwx7-decor
+apt-get purge -y $BUILD_DEPS
+apt-get autoremove -y --purge
+test -f "$(ls /usr/lib/x86_64-linux-gnu/wayfire/libmwx7-decor.so)"
+
 # The name shown in the Start menu (the live user has no password; an installed system asks at setup).
 usermod -c 'MWX 7 User' mwx
 
