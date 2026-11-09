@@ -86,12 +86,12 @@ set default=0
 # read them); the kernel still logs to the screen too.
 menuentry "MWX 7 $VERSION$LABEL" {
   echo "Starting MWX 7 ..."
-  linux /live/vmlinuz boot=live components quiet splash loglevel=3 console=tty0 console=ttyS0,115200
+  linux /live/vmlinuz boot=live components quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
 menuentry "MWX 7 $VERSION$LABEL (copy to RAM)" {
   echo "Copying MWX 7 into memory, this takes a minute ..."
-  linux /live/vmlinuz boot=live components toram quiet splash loglevel=3 console=tty0 console=ttyS0,115200
+  linux /live/vmlinuz boot=live components toram quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
 GRUB
