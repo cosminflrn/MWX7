@@ -37,6 +37,8 @@ test('every app opens, goes full screen, minimizes, restores and closes', async 
     }
     const id = await page.locator('#windows > .win.active').getAttribute('data-app');
     const mine = page.locator(`#windows > .win[data-app="${id}"]`).last();
+    // Wait for the restore animation itself rather than a fixed pause: on a busy machine it can outlast 500 ms.
+    await expect(mine).not.toHaveClass(/\banim\b/, { timeout: 5000 });
     await mine.locator('.wc-min').click({ force: true });
     await expect(mine, `${name} minimizes`).toBeHidden({ timeout: 5000 });
     await page.locator(`.dock-item[data-label="${name}"]`).click();

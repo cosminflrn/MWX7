@@ -7,6 +7,9 @@ export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM='wayland;xcb'
 export GDK_BACKEND='wayland,x11'
 # Software rendering is allowed so a VM without 3D still gets a desktop (slower, but never a black screen).
+# GTK 3 apps under Wayland don't reliably pick the theme up from GSettings (no GNOME settings daemon here), so name it
+# directly. GTK 4 apps find no gtk-4.0 folder in it and keep their default look.
+export GTK_THEME=MWX7
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 export WLR_NO_HARDWARE_CURSORS=1
 # GTK 4's default GPU renderer misdraws in VMware/VirtualBox with 3D on; its older GL renderer is reliable there.

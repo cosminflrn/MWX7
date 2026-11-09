@@ -21,11 +21,18 @@ apt-get update -qq
 apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   wayfire swaybg greetd dbus-user-session \
   python3-gi gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 libgtk4-layer-shell0 librsvg2-common \
-  thunar foot network-manager polkitd \
+  thunar foot network-manager polkitd mako-notifier libnotify-bin \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
-  adwaita-icon-theme fonts-noto-color-emoji \
+  adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin \
   open-vm-tools spice-vdagent qemu-guest-agent \
   google-chrome-stable
+
+fc-cache -f /usr/share/fonts/selawik >/dev/null
+# MWX 7 theme and font as the GTK defaults (90_mwx7.gschema.override).
+glib-compile-schemas /usr/share/glib-2.0/schemas
+
+# The name shown in the Start menu (the live user has no password; an installed system asks at setup).
+usermod -c 'MWX 7 User' mwx
 
 # Bucharest time until MWX 7 Settings can pick the time zone.
 ln -sf /usr/share/zoneinfo/Europe/Bucharest /etc/localtime

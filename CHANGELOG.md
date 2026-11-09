@@ -2,6 +2,15 @@
 
 Derived from the git history. Newest first.
 
+## v1.3.0
+- **Start menu** on the dock orb, like MWX 7 on the web: account picture and name, every installed app with MWX 7
+  icons where we have them, type-to-search (Enter opens the first match), Restart and Shut Down
+- Top-left orb is now a small system menu (About, Restart, Shut Down)
+- Status bar: **network** (wired / Wi-Fi with the connection name) and **volume** (click for a slider and Mute, or scroll)
+- **Notifications** as MWX 7 glass cards at the top right
+- **MWX 7 look for apps**: Selawik is the system font, and GTK 3 apps (Files, file dialogs) get an MWX 7 theme with
+  Aero command bars, Windows 7 selection blue, glossy buttons and menus
+
 ## v1.2.3
 - Clock shows Bucharest time (was UTC)
 - VM integration: VMware tools, SPICE agent and QEMU guest agent (each only runs on its own hypervisor)
