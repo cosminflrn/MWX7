@@ -14,7 +14,9 @@ apt-get update -qq
 # wayfire: compositor (glass blur, animations); greetd: logs the user in straight into the session;
 # GTK4 + layer-shell + PyGObject: the native MWX 7 status bar and dock; swaybg: wallpaper;
 # thunar / foot: file manager and terminal; NetworkManager: wired + Wi-Fi; polkitd: lets the signed-in user shut down; portals: file pickers and screen sharing
-# for Chrome; dbus-user-session: per-user bus for portals and PipeWire.
+# for Chrome; dbus-user-session: per-user bus for portals and PipeWire;
+# open-vm-tools / spice-vdagent / qemu-guest-agent: VM integration (window resizing, clipboard, clean shutdown); each
+# only starts on its own hypervisor.
 # Our overlay is copied in first, so keep our config files where a package ships its own (greetd).
 apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   wayfire swaybg greetd dbus-user-session \
@@ -22,7 +24,12 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   thunar foot network-manager polkitd \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
   adwaita-icon-theme fonts-noto-color-emoji \
+  open-vm-tools spice-vdagent qemu-guest-agent \
   google-chrome-stable
+
+# Bucharest time until MWX 7 Settings can pick the time zone.
+ln -sf /usr/share/zoneinfo/Europe/Bucharest /etc/localtime
+echo Europe/Bucharest > /etc/timezone
 
 # The kiosk is the "Classic" flavour's session; here greetd starts the desktop.
 systemctl disable mwx7-kiosk.service

@@ -4,7 +4,7 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.2.2';
+export const VERSION = '1.2.3';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
