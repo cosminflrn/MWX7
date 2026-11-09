@@ -1,6 +1,6 @@
 #!/bin/bash
-# Headless boot tests for the live ISO, run by CI (works without KVM, just slower). Each one boots through the ISO's
-# own boot loader and passes only when Chromium inside the VM has loaded MWX 7's JavaScript from the local server
+# Headless boot tests for the MWX 7 ISO, run by CI (works without KVM, just slower). Each one boots through the ISO's
+# own boot loader and passes only when the native MWX 7 shell has started and announced itself to the local server
 # (the server's access log reaches the serial port, which is the system console):
 #   bios        legacy BIOS, standard VGA (bochs DRM)
 #   uefi        UEFI, virtio GPU
@@ -8,11 +8,11 @@
 # QEMU's VMware SVGA model is not tested: vmwgfx refuses it ("unsupported hypervisor"), and Debian's kernel has no
 # simpledrm fallback, so there is no display by design. Real VMware/VirtualBox and real GPUs all have drivers.
 # Needs: qemu-system-x86, ovmf. Usage: ./distro/smoke-test.sh [timeout-seconds per boot, default 900] [tests...]
-# FLAVOR=desktop tests the desktop ISO instead: it passes once the native MWX 7 shell has started.
+# FLAVOR=classic tests the old kiosk build instead (passes once MWX 7's JavaScript has loaded).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-OUT="$HERE/out"; ISO="$OUT/mwx7-live.iso"; WANT='GET /assets/.*\.js'
-if [ "${FLAVOR:-classic}" = desktop ]; then ISO="$OUT/mwx7-desktop-live.iso"; WANT='GET /__mwx7-shell-ready'; fi
+OUT="$HERE/out"; ISO="$OUT/mwx7.iso"; WANT='GET /__mwx7-shell-ready'
+if [ "${FLAVOR:-desktop}" = classic ]; then ISO="$OUT/mwx7-classic.iso"; WANT='GET /assets/.*\.js'; fi
 LIMIT="${1:-900}"; shift || true
 TESTS=("${@:-bios uefi secureboot}"); read -r -a TESTS <<< "${TESTS[*]}"
 [ -f "$ISO" ] || { echo "No ISO at $ISO (run build-iso.sh first)" >&2; exit 1; }
@@ -27,7 +27,7 @@ ovmf() {  # $1 = plain | ms (Microsoft keys enrolled, Secure Boot enforced)
 
 boot() {  # $1 = test name, $2 = machine type, $3 = vga, rest = extra qemu args
   local name="$1" machine="$2" vga="$3"; shift 3
-  local log="$OUT/smoke-${FLAVOR:-classic}-$name.log" want="$WANT"; rm -f "$log"
+  local log="$OUT/smoke-${FLAVOR:-desktop}-$name.log" want="$WANT"; rm -f "$log"
   qemu-system-x86_64 -machine "$machine",accel=$ACCEL -cpu $CPU -smp 2 -m 3072 -display none $vga \
     -cdrom "$ISO" -boot d -serial file:"$log" -no-reboot "$@" &
   local pid=$! t

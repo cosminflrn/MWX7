@@ -13,10 +13,10 @@ set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)." >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-FLAVOR="${1:-classic}"
+FLAVOR="${1:-desktop}"
 case "$FLAVOR" in classic|desktop) ;; *) echo "Unknown flavour $FLAVOR (classic or desktop)" >&2; exit 1 ;; esac
 OUT="$HERE/out"; ROOT="$OUT/live-root"; ISO_DIR="$OUT/iso"
-ISO="$OUT/mwx7-live.iso"; [ "$FLAVOR" = desktop ] && ISO="$OUT/mwx7-desktop-live.iso"
+ISO="$OUT/mwx7.iso"; [ "$FLAVOR" = classic ] && ISO="$OUT/mwx7-classic.iso"
 VERSION="$(node -p "require('$REPO/package.json').version" 2>/dev/null || echo dev)"
 
 cleanup() {  # always release the bind mounts, even on failure
@@ -71,7 +71,7 @@ echo "==> squashfs"
 COMP=(-comp xz); [ $REUSE = 1 ] && COMP=(-comp zstd -Xcompression-level 3)
 mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" "${COMP[@]}" -noappend -quiet -e boot/initrd.img-* -e boot/vmlinuz-*
 
-LABEL=""; [ "$FLAVOR" = desktop ] && LABEL=" Desktop (preview)"
+LABEL=""; [ "$FLAVOR" = classic ] && LABEL=" Classic (kiosk)"
 # 5. Hybrid ISO: one file that boots on BIOS and UEFI, from optical media or written raw to USB.
 #    The second entry copies the whole system into RAM (needs ~4 GB), so a USB stick can be pulled out afterwards.
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
