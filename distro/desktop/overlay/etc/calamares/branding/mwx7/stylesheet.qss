@@ -1,0 +1,18 @@
+/* MWX 7 look for the installer: Selawik, Aero-blue sidebar, glossy buttons, Windows 7 selection blue. */
+* { font-family: "Selawik"; font-size: 10pt; }
+#sidebarApp { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8f2fc, stop:1 #cfe2f6); border-right: 1px solid #a9c4e2; }
+#sidebarMenuApp { padding: 4px; font-size: 11pt; background: transparent; color: #1e3a5f; }
+#logoApp { min-width: 110px; padding: 8px; }
+QPushButton {
+  min-height: 24px; padding: 2px 16px; border: 1px solid #8fa9c8; border-radius: 4px; color: #10243d;
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffffff, stop:0.5 #eaf2fb, stop:0.51 #dbe8f6, stop:1 #e8f1fb);
+}
+QPushButton:hover { border-color: #3b8be6; background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f4faff, stop:0.5 #d9ecfd, stop:0.51 #bfdcf8, stop:1 #d6eafc); }
+QPushButton:pressed { background: #c4ddf5; }
+QPushButton:disabled { color: #8a97a6; border-color: #c3cedb; background: #eef2f6; }
+QLineEdit, QComboBox, QSpinBox { min-height: 22px; border: 1px solid #9db3cc; border-radius: 3px; background: #ffffff; padding: 1px 4px; }
+QLineEdit:focus, QComboBox:focus { border-color: #3b8be6; }
+QListView, QTreeView { border: 1px solid #9db3cc; background: #ffffff; selection-background-color: #cce8ff; selection-color: #10243d; }
+QProgressBar { border: 1px solid #8fa9c8; border-radius: 4px; background: #ffffff; text-align: center; min-height: 18px; }
+QProgressBar::chunk { border-radius: 3px; background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8fe08a, stop:0.5 #3fc23a, stop:0.51 #25ae22, stop:1 #5fd35a); }
+#summaryStep QLabel { font-size: 10pt; }

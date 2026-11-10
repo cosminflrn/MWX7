@@ -26,7 +26,42 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk \
   adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin \
   open-vm-tools spice-vdagent qemu-guest-agent \
-  google-chrome-stable
+  google-chrome-stable \
+  calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window squashfs-tools rsync dosfstools btrfs-progs e2fsprogs efibootmgr os-prober \
+  grub-efi-amd64 grub-pc-bin cryptsetup cryptsetup-initramfs \
+  sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra
+
+# --- Installer and installed-system groundwork ---------------------------------------------------------------------
+# calamares (+ Qt's Wayland plugin): the installer; it copies this very system from the live medium, so everything an
+# installed MWX 7 needs is installed here: both GRUBs (UEFI with Secure Boot, and BIOS), disk encryption, btrfs.
+# sudo: administration without a root login; zram: swap in compressed RAM; unattended-upgrades: daily security fixes;
+# nftables: a firewall that lets nothing unasked in.
+# Real UTF-8 locales (English and Romanian); without them programs fall back to plain ASCII "C".
+sed -i -E 's/^# (en_US|en_GB|ro_RO)\.UTF-8 UTF-8/\1.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen >/dev/null
+update-locale LANG=en_US.UTF-8
+chmod 0440 /etc/sudoers.d/mwx7-live
+# sudo looks the host name up; without this line every sudo prints a warning and waits.
+grep -q '127.0.1.1' /etc/hosts 2>/dev/null || printf '127.0.0.1\tlocalhost\n127.0.1.1\tmwx7\n' >> /etc/hosts
+chmod 0755 /usr/local/bin/mwx7-install /usr/local/bin/mwx7-greeter-session
+systemctl enable nftables.service
+# MWX 7's name where programs look for the system's name. Diverted so Debian's base-files updates don't put theirs
+# back; ID_LIKE tells package tools that this is Debian underneath.
+dpkg-divert --quiet --add --rename --divert /usr/lib/os-release.debian /usr/lib/os-release 2>/dev/null || true
+V=$(cat /usr/share/mwx7/version)
+cat > /usr/lib/os-release <<OSR
+PRETTY_NAME="MWX 7 $V"
+NAME="MWX 7"
+VERSION_ID="$V"
+VERSION="$V"
+VERSION_CODENAME=trixie
+ID=mwx7
+ID_LIKE=debian
+HOME_URL="https://cosminflrn.github.io/MWX7/"
+SUPPORT_URL="https://github.com/cosminflrn/MWX7/issues"
+BUG_REPORT_URL="https://github.com/cosminflrn/MWX7/issues"
+OSR
+sed -i "s/@VERSION@/$V/g" /etc/calamares/branding/mwx7/branding.desc
 
 fc-cache -f /usr/share/fonts/selawik >/dev/null
 # MWX 7 theme and font as the GTK defaults (90_mwx7.gschema.override).

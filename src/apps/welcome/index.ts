@@ -5,7 +5,7 @@ import { h } from '../../ui/dom';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const BASE = import.meta.env.BASE_URL;
 // J.S. Bach, Aria da Capo (Goldberg Variations), Kimiko Ishizaka, CC0: a real piano recording, see media/CREDITS.md
 const MUSIC = `${BASE}media/music/goldberg-aria-da-capo.ogg`;

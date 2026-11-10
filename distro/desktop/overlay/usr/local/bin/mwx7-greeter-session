@@ -1,0 +1,10 @@
+#!/bin/sh
+# The MWX 7 logon screen: greetd runs this as its own unprivileged user. cage shows exactly one program full screen and
+# ends when it does, which is when the logon succeeded and greetd starts the person's desktop.
+export XDG_SESSION_TYPE=wayland
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export WLR_NO_HARDWARE_CURSORS=1
+# The CPU renderer draws the same everywhere; the logon screen has nothing that needs a GPU.
+export GSK_RENDERER=cairo
+export GDK_BACKEND=wayland
+exec cage -s -d -- /usr/bin/python3 /usr/share/mwx7/greeter/greeter.py > /tmp/mwx7-greeter.log 2>&1

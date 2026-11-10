@@ -33,6 +33,14 @@ PINNED = [
     ('MWX 7 Classic', 'about', ['chromium', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/',
                                 '--user-data-dir=/tmp/mwx7-classic'], ('chrome-127.0.0.1',)),
 ]
+# Ending the Wayfire session returns to the MWX 7 logon screen. The live medium has no password to log back in with,
+# so Log Off only exists on an installed system.
+POWER_ACTIONS = [('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
+if not os.path.exists('/usr/local/bin/mwx7-install'):
+    POWER_ACTIONS.insert(0, ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']))
+# On the live medium the installer sits in the dock; an installed system has no installer.
+if os.path.exists('/usr/local/bin/mwx7-install'):
+    PINNED.append(('Install MWX 7', 'drive', ['/usr/local/bin/mwx7-install'], ('calamares', 'io.calamares')))
 
 
 class Ipc:
@@ -186,8 +194,7 @@ class StartMenu(Gtk.Popover):
         self.search.connect('search-changed', lambda *_: self.listbox.invalidate_filter())
         self.search.connect('activate', self.on_enter)
         foot.append(self.search)
-        for label, icon, cmd in (('Restart', 'logoff', ['systemctl', 'reboot']),
-                                 ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])):
+        for label, icon, cmd in POWER_ACTIONS:
             b = Gtk.Button()
             b.add_css_class('sm-power')
             b.set_tooltip_text(label)
@@ -374,8 +381,8 @@ class Shell(Gtk.Application):
                                  lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/settings/mwx7-settings']))))
         col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(PINNED[3][2]))))
         col.append(Gtk.Separator())
-        col.append(self.menu_row('Restart', 'logoff', lambda *_: subprocess.Popen(['systemctl', 'reboot'])))
-        col.append(self.menu_row('Shut Down', 'shutdown', lambda *_: subprocess.Popen(['systemctl', 'poweroff'])))
+        for label, icon, cmd in POWER_ACTIONS:
+            col.append(self.menu_row(label, icon, lambda *_a, c=cmd: subprocess.Popen(c)))
         pop.set_child(col)
         return pop
 

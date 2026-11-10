@@ -4,16 +4,15 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.6.0';
+export const VERSION = '1.7.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
+  'MWX 7 OS: installer with disk encryption, MWX 7 logon screen',
   'MWX 7 OS: genie minimize into the dock, running apps in the dock',
   'MWX 7 OS: boot splash, Aero glass window frames with traffic lights, Settings app',
   'MWX 7 OS: Start menu with search, volume and network in the status bar',
   'Notifications at the top right; Files and other apps in the MWX 7 look',
-  'Bucharest time, VMware/VirtualBox integration',
-  'One ISO: the real MWX 7 desktop',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {
