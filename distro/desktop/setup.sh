@@ -86,6 +86,8 @@ plymouth-set-default-theme -R mwx7
 
 # The name shown in the Start menu (the live user has no password; an installed system asks at setup).
 usermod -c 'MWX 7 User' mwx
+# A known password, so the logon and lock screens can be tried without installing (the installer removes this user).
+echo 'mwx:mwx7' | chpasswd
 
 # Bucharest time until MWX 7 Settings can pick the time zone.
 ln -sf /usr/share/zoneinfo/Europe/Bucharest /etc/localtime

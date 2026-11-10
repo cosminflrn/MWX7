@@ -33,12 +33,10 @@ PINNED = [
     ('MWX 7 Classic', 'about', ['chromium', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/',
                                 '--user-data-dir=/tmp/mwx7-classic'], ('chrome-127.0.0.1',)),
 ]
-# Ending the Wayfire session returns to the MWX 7 logon screen. The live medium has no password to log back in with,
-# so Log Off only exists on an installed system.
-POWER_ACTIONS = [('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
-if not os.path.exists('/usr/local/bin/mwx7-install'):
-    POWER_ACTIONS.insert(0, ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']))
-    POWER_ACTIONS.insert(0, ('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']))
+# Log Off ends the Wayfire session, which returns to the MWX 7 logon screen. (The live session's password is mwx7.)
+POWER_ACTIONS = [('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']),
+                 ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']),
+                 ('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
 # On the live medium the installer sits in the dock; an installed system has no installer.
 if os.path.exists('/usr/local/bin/mwx7-install'):
     PINNED.append(('Install MWX 7', 'drive', ['/usr/local/bin/mwx7-install'], ('calamares', 'io.calamares')))
