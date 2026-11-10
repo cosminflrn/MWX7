@@ -283,6 +283,9 @@ class Settings(Gtk.Application):
                     modes.append((label, value))
                 if m.get('current'):
                     cur = value
+            # Highest refresh first within a resolution, so a 144 Hz monitor's best mode is easy to find.
+            modes.sort(key=lambda m: (-int(m[1].split('x')[0]), -int(m[1].split('x')[1].split('@')[0]),
+                                      -int(m[1].split('@')[1])))
             dd = Gtk.DropDown.new_from_strings([m[0] for m in modes])
             if cur:
                 dd.set_selected(next((i for i, m in enumerate(modes) if m[1] == cur), 0))
@@ -304,6 +307,11 @@ class Settings(Gtk.Application):
             r2.append(Gtk.Label(label='Size of text and apps', xalign=0, width_chars=14, wrap=True))
             r2.append(sd)
             p.append(r2)
+            # A monitor with tiny text out of the box gets a hint (Wayfire starts every screen at 100%).
+            mm_w = int(o.get('physical_size', {}).get('width') or 0)
+            cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
+            if mm_w and cur_w and cur_w / (mm_w / 25.4) > 140 and float(o.get('scale', 1)) < 1.25:
+                p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
         return p
 
     # ---- Keyboard ---------------------------------------------------------------------------------------------------

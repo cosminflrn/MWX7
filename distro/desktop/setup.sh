@@ -30,7 +30,7 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window squashfs-tools rsync dosfstools btrfs-progs e2fsprogs efibootmgr os-prober \
   grub-efi-amd64 grub-pc-bin cryptsetup cryptsetup-initramfs \
   sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra \
-  swaylock swayidle lxpolkit
+  swaylock swayidle lxpolkit xdg-user-dirs
 
 # Smaller download: the installer's disk tools need *a* password-prompt agent, and left to itself apt picked ukui-polkit,
 # which pulls in OpenCV and map libraries (~150 MB); lxpolkit is 47 kB. Chromium was only there for MWX 7 Classic,
