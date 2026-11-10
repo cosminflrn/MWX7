@@ -2,6 +2,10 @@
 
 Derived from the git history. Newest first.
 
+## v1.7.1
+- Try the logon and lock screens without installing: the live session's password is now **mwx7** (the logon screen
+  says so), and **Lock** and **Log Off** are in the menus there too. The installer removes this user.
+
 ## v1.7.0 "Installer"
 - **Install MWX 7** to a disk: the drive icon in the dock (live session only) starts an MWX 7-branded installer
   (Calamares). Erase a disk or partition by hand, optional **full-disk encryption**, your own account. Works offline.
