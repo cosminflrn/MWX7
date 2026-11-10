@@ -7,4 +7,7 @@ export WLR_NO_HARDWARE_CURSORS=1
 # The CPU renderer draws the same everywhere; the logon screen has nothing that needs a GPU.
 export GSK_RENDERER=cairo
 export GDK_BACKEND=wayland
+# The password is typed in the keyboard layout chosen at installation.
+[ -r /etc/default/keyboard ] && . /etc/default/keyboard
+export XKB_DEFAULT_LAYOUT="${XKBLAYOUT:-us}" XKB_DEFAULT_VARIANT="${XKBVARIANT:-}"
 exec cage -s -d -- /usr/bin/python3 /usr/share/mwx7/greeter/greeter.py > /tmp/mwx7-greeter.log 2>&1

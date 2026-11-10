@@ -29,13 +29,14 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   google-chrome-stable \
   calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window squashfs-tools rsync dosfstools btrfs-progs e2fsprogs efibootmgr os-prober \
   grub-efi-amd64 grub-pc-bin cryptsetup cryptsetup-initramfs \
-  sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra
+  sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra \
+  swaylock swayidle
 
 # --- Installer and installed-system groundwork ---------------------------------------------------------------------
 # calamares (+ Qt's Wayland plugin): the installer; it copies this very system from the live medium, so everything an
 # installed MWX 7 needs is installed here: both GRUBs (UEFI with Secure Boot, and BIOS), disk encryption, btrfs.
 # sudo: administration without a root login; zram: swap in compressed RAM; unattended-upgrades: daily security fixes;
-# nftables: a firewall that lets nothing unasked in.
+# nftables: a firewall that lets nothing unasked in; swaylock/swayidle: lock screen (Super+L, after 10 idle minutes).
 # Real UTF-8 locales (English and Romanian); without them programs fall back to plain ASCII "C".
 sed -i -E 's/^# (en_US|en_GB|ro_RO)\.UTF-8 UTF-8/\1.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen >/dev/null
