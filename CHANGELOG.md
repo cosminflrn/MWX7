@@ -2,6 +2,13 @@
 
 Derived from the git history. Newest first.
 
+## v1.6.0 "Genie"
+- **Genie minimize** on MWX 7 OS: a window pours into its dock icon and pours back out when you click the icon, like
+  MWX 7 on the web (our own Wayfire plugin `distro/desktop/mwx7-animate`; a click mid-way turns it around)
+- **Running apps appear in the dock**: any open app that is not pinned (Settings, for example) gets its icon with the
+  running dot while it has a window, so a minimized window can always be brought back
+- The status bar shows "MWX 7" instead of a minimized window's title
+
 ## v1.5.0
 - **MWX 7 boot splash**: the glossy orb and "MWX 7" on deep blue with a pulsing progress glow while the system starts,
   instead of console text (Plymouth theme, shown even though the serial console stays on for the CI tests)

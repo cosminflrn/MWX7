@@ -32,15 +32,18 @@ fc-cache -f /usr/share/fonts/selawik >/dev/null
 # MWX 7 theme and font as the GTK defaults (90_mwx7.gschema.override).
 glib-compile-schemas /usr/share/glib-2.0/schemas
 
-# MWX 7 window frames (desktop/mwx7-decor, a fork of Wayfire's decoration plugin): compile against Debian's
-# wayfire-dev, install, then remove the toolchain again so it doesn't ship.
-BUILD_DEPS="wayfire-dev meson ninja-build g++ pkg-config libcairo2-dev libpango1.0-dev libglm-dev"
+# MWX 7's own Wayfire plugins, forks of Wayfire's MIT plugins: window frames (desktop/mwx7-decor) and animations with
+# the genie minimize (desktop/mwx7-animate). Compile against Debian's wayfire-dev, install, then remove the toolchain
+# again so it doesn't ship.
+BUILD_DEPS="wayfire-dev meson ninja-build g++ pkg-config libcairo2-dev libpango1.0-dev libglm-dev nlohmann-json3-dev"
 apt-get install -y --no-install-recommends $BUILD_DEPS
-(cd /tmp/mwx7-decor && meson setup build --wipe -Dprefix=/usr >/dev/null && ninja -C build && ninja -C build install)
-rm -rf /tmp/mwx7-decor
+for p in mwx7-decor mwx7-animate; do
+  (cd /tmp/$p && meson setup build --wipe -Dprefix=/usr >/dev/null && ninja -C build && ninja -C build install)
+  rm -rf /tmp/$p
+  test -f /usr/lib/x86_64-linux-gnu/wayfire/lib$p.so
+done
 apt-get purge -y $BUILD_DEPS
 apt-get autoremove -y --purge
-test -f "$(ls /usr/lib/x86_64-linux-gnu/wayfire/libmwx7-decor.so)"
 
 # MWX 7 boot splash; -R rebuilds the initramfs so the splash starts as early as possible.
 plymouth-set-default-theme -R mwx7
