@@ -94,12 +94,13 @@ LABEL=""; [ "$FLAVOR" = classic ] && LABEL=" Classic (kiosk)"
 #    one the system simply starts fresh.
 #    The second entry copies the whole system into RAM (needs ~4 GB), so a USB stick can be pulled out afterwards.
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
-set timeout=2
+# Straight to the splash: the menu stays hidden unless Esc (or Shift) is held while it waits a moment.
+set timeout_style=hidden
+set timeout=1
 set default=0
 # console=ttyS0 last makes the serial port the system console, so boot messages stay off the screen (and CI can
 # read them); the kernel still logs to the screen too.
 menuentry "MWX 7 $VERSION$LABEL" {
-  echo "Starting MWX 7 ..."
   linux /live/vmlinuz boot=live components persistence persistence-label=mwx7-data quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }

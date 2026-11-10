@@ -30,8 +30,9 @@ PINNED = [
     ('Google Chrome', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], ('google-chrome',)),
     ('Files', 'computer', ['thunar'], ('thunar',)),
     ('Terminal', 'text', ['foot'], ('foot',)),
-    ('MWX 7 Classic', 'about', ['chromium', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/',
-                                '--user-data-dir=/tmp/mwx7-classic'], ('chrome-127.0.0.1',)),
+    # An app window of Google Chrome (its own window, no tabs or address bar).
+    ('MWX 7 Classic', 'about', ['google-chrome-stable', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/'],
+     ('chrome-127.0.0.1',)),
 ]
 # Log Off ends the Wayfire session, which returns to the MWX 7 logon screen. (The live session's password is mwx7.)
 POWER_ACTIONS = [('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']),
@@ -50,8 +51,10 @@ class Ipc:
         self.lock = threading.Lock()
         self.sock = None
 
-    def _connect(self):
+    def _connect(self, timeout=1.0):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        # Requests from the main thread must never wait long: a missing answer is better than a frozen bar.
+        s.settimeout(timeout)
         s.connect(self.path)
         return s
 
@@ -84,7 +87,10 @@ class Ipc:
                     self.sock = self._connect()
                 self._send(self.sock, method, data)
                 return self._recv(self.sock)
-            except OSError:
+            except (OSError, ValueError):
+                # Timed out or broken: drop the socket, since a late answer would be read as the next reply.
+                if self.sock is not None:
+                    self.sock.close()
                 self.sock = None
                 return None
 
@@ -92,7 +98,7 @@ class Ipc:
         """Blocking loop on its own socket; reconnects if Wayfire restarts."""
         while True:
             try:
-                s = self._connect()
+                s = self._connect(timeout=None)  # the event stream may be quiet for hours
                 self._send(s, 'window-rules/events/watch')
                 self._recv(s)
                 while True:
@@ -112,7 +118,7 @@ APP_ICONS = {
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
-# Helpers and duplicates: Chromium only exists to run MWX 7 Classic, Chrome is the browser.
+# Helpers and duplicates that make no sense as Start menu entries.
 HIDDEN_APPS = ('chromium', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
                'org.freedesktop.Xwayland', 'debian-', 'gcr-', 'polkit', 'agreety', 'vim', 'htop', 'python3')
 
@@ -578,15 +584,40 @@ class Shell(Gtk.Application):
     # ---- volume and network ----------------------------------------------------------------------------------------
     @staticmethod
     def capture(cmd):
+        """Output of a command, '' if it fails, None if it did not answer in time."""
         try:
-            return subprocess.run(cmd, capture_output=True, text=True, timeout=2).stdout
-        except (OSError, subprocess.TimeoutExpired):
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
+        except subprocess.TimeoutExpired:
+            return None
+        except OSError:
             return ''
 
     def poll_status(self):
+        """Ask for volume and network in a worker thread; the answer is applied on the main thread.
+        Running wpctl/nmcli on the main thread froze the clock, the title and every click for seconds whenever the
+        system was busy (found with Chrome loading in a VM, 10 Nov 2026). At most one check runs at a time."""
+        if getattr(self, 'status_busy', False):
+            return True
+        self.status_busy = True
+
+        def work():
+            vol = self.capture(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
+            net = self.capture(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device'])
+            GLib.idle_add(self.apply_status, vol, net)
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def apply_status(self, vol, net):
+        self.status_busy = False
+        # None means the tool did not answer in time (a busy system): keep showing what was last known rather than
+        # flashing "muted" / "not connected".
+        if vol is None and net is None:
+            return False
         # wpctl: "Volume: 0.40" or "Volume: 0.40 [MUTED]"
-        out = self.capture(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@']).split()
-        if len(out) >= 2:
+        out = (vol or '').split()
+        if vol is None:
+            pass
+        elif len(out) >= 2:
             try:
                 level = round(float(out[1]) * 100)
             except ValueError:
@@ -604,8 +635,10 @@ class Shell(Gtk.Application):
             self.vol_img.set_from_icon_name('audio-volume-muted-symbolic')
             self.vol_btn.set_tooltip_text('No sound device')
         # nmcli: TYPE:STATE:CONNECTION per device
+        if net is None:
+            return False
         icon, tip = 'network-offline-symbolic', 'Not connected'
-        for line in self.capture(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device']).splitlines():
+        for line in net.splitlines():
             parts = line.split(':')
             if len(parts) >= 3 and parts[1] == 'connected':
                 if parts[0] == 'wifi':
@@ -615,7 +648,7 @@ class Shell(Gtk.Application):
                     icon, tip = 'network-wired-symbolic', f'Connected: {parts[2]}'
         self.net.set_from_icon_name(icon)
         self.net_btn.set_tooltip_text(tip + ' (click for network settings)')
-        return True
+        return False
 
     def on_volume(self, scale):
         if not self.vol_updating:

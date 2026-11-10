@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=MWX 7 Classic
-Exec=chromium --ozone-platform=wayland --app=http://127.0.0.1:8080/ --user-data-dir=/tmp/mwx7-classic
+Exec=google-chrome-stable --ozone-platform=wayland --app=http://127.0.0.1:8080/
 Icon=/usr/share/mwx7/icons/orb.png
 Categories=Game;

@@ -30,7 +30,13 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window squashfs-tools rsync dosfstools btrfs-progs e2fsprogs efibootmgr os-prober \
   grub-efi-amd64 grub-pc-bin cryptsetup cryptsetup-initramfs \
   sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra \
-  swaylock swayidle
+  swaylock swayidle lxpolkit
+
+# Smaller download: the installer's disk tools need *a* password-prompt agent, and left to itself apt picked ukui-polkit,
+# which pulls in OpenCV and map libraries (~150 MB); lxpolkit is 47 kB. Chromium was only there for MWX 7 Classic,
+# which now opens in Google Chrome as an app window (~380 MB less).
+apt-get purge -y ukui-polkit chromium chromium-common chromium-sandbox 2>/dev/null || true
+apt-get autoremove -y --purge
 
 # --- Installer and installed-system groundwork ---------------------------------------------------------------------
 # calamares (+ Qt's Wayland plugin): the installer; it copies this very system from the live medium, so everything an
@@ -46,6 +52,9 @@ chmod 0440 /etc/sudoers.d/mwx7-live
 grep -q '127.0.1.1' /etc/hosts 2>/dev/null || printf '127.0.0.1\tlocalhost\n127.0.1.1\tmwx7\n' >> /etc/hosts
 chmod 0755 /usr/local/bin/mwx7-install /usr/local/bin/mwx7-greeter-session
 systemctl enable nftables.service
+# ldconfig.service rebuilds the library cache whenever /etc looks older than /usr, which on a live image is every boot
+# (6 s on the way to the desktop). The image's cache is current, and installing packages refreshes it anyway.
+systemctl mask ldconfig.service
 # MWX 7's name where programs look for the system's name. Diverted so Debian's base-files updates don't put theirs
 # back; ID_LIKE tells package tools that this is Debian underneath.
 dpkg-divert --quiet --add --rename --divert /usr/lib/os-release.debian /usr/lib/os-release 2>/dev/null || true
