@@ -4,10 +4,11 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.8.0';
+export const VERSION = '1.8.1';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
+  'MWX 7 OS: no status bar freezes, smaller and faster to start',
   'MWX 7 OS: Keep settings — remembers everything without installing',
   'MWX 7 OS: installer with disk encryption, MWX 7 logon screen',
   'MWX 7 OS: genie minimize into the dock, running apps in the dock',

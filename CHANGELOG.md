@@ -2,6 +2,16 @@
 
 Derived from the git history. Newest first.
 
+## v1.8.1 "No lag"
+- **Status bar no longer freezes** while the PC is busy: the volume and network checks ran on the bar's own thread, so
+  when one of them was slow (Chrome starting, for example) the clock, the window title and every click on the bar and
+  dock stopped for seconds. They run in the background now; a check that doesn't answer keeps the last state instead
+  of flashing "muted" or "not connected"
+- **Smaller download** (about 240 MB less): MWX 7 Classic opens as a Google Chrome app window, so the separate Chromium
+  is gone, and a heavy password-prompt helper (with map and image libraries) is replaced by a 47 kB one
+- **Faster start**: the boot menu stays hidden (hold Esc or Shift to see it) and a library-cache rebuild that ran on
+  every live boot is skipped
+
 ## v1.8.0 "Keep settings"
 - **MWX 7 remembers everything without installing**: Settings → **Keep settings** turns an empty disk (in VMware the
   VM's own virtual disk) into MWX 7's memory: wallpaper, settings, Chrome sign-in, files and Wi-Fi networks survive
