@@ -1,5 +1,5 @@
-# The live system logs straight in as the "mwx" user (no password on a live medium). An installed system will use the
-# MWX 7 logon screen instead (roadmap stage 2).
+# The live system logs straight in as the "mwx" user (no password on a live medium). The installer rewrites this file:
+# an installed system starts at the MWX 7 logon screen (default_session) unless the person chose automatic logon.
 [terminal]
 vt = 1
 
@@ -8,5 +8,5 @@ command = "/usr/local/bin/mwx7-session"
 user = "mwx"
 
 [default_session]
-command = "agreety --cmd /usr/local/bin/mwx7-session"
+command = "/usr/local/bin/mwx7-greeter-session"
 user = "_greetd"

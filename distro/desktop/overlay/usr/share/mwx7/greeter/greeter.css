@@ -1,0 +1,30 @@
+/* MWX 7 logon screen: the wallpaper, the account picture in a glossy frame, and one glass password field. */
+window.greeter { background: #0d2040; font-family: Selawik, sans-serif; font-size: 14px; }
+.avatar {
+  padding: 6px; border-radius: 10px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(214,232,250,0.9));
+  border: 1px solid rgba(255,255,255,0.9);
+  box-shadow: 0 4px 18px rgba(0,20,60,0.55), inset 0 1px 0 #ffffff;
+}
+.name { color: #ffffff; font-size: 24px; text-shadow: 0 1px 4px rgba(0,20,60,0.9), 0 0 12px rgba(0,20,60,0.6); margin: 6px 0 4px; }
+entry.password, .greeter entry {
+  min-height: 30px; padding: 0 10px; border-radius: 6px; color: #10243d;
+  background: rgba(255,255,255,0.92); border: 1px solid rgba(20,60,110,0.55);
+  box-shadow: inset 0 1px 3px rgba(0,30,70,0.25), 0 1px 0 rgba(255,255,255,0.5);
+}
+.greeter entry:focus-within { border-color: #3b8be6; box-shadow: 0 0 0 2px rgba(80,160,255,0.45); }
+button.go {
+  min-width: 32px; min-height: 30px; padding: 0; border-radius: 16px; color: #ffffff; font-weight: bold; font-size: 16px;
+  background: linear-gradient(to bottom, #7fc1ff, #2f7fe0 50%, #1c62c4 51%, #3f93f0);
+  border: 1px solid #154a96; box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 1px 4px rgba(0,20,60,0.5);
+}
+button.go:hover { background: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); }
+button.go:disabled { opacity: 0.6; }
+.message { color: #ffffff; min-height: 22px; text-shadow: 0 1px 3px rgba(0,20,60,0.95); }
+.brand { color: rgba(255,255,255,0.92); font-size: 18px; font-weight: 600; text-shadow: 0 1px 4px rgba(0,20,60,0.9); }
+.clock { color: #ffffff; font-size: 16px; text-shadow: 0 1px 4px rgba(0,20,60,0.9); }
+button.power, button.other {
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.45); border-radius: 8px; padding: 6px;
+  color: #ffffff; box-shadow: none; text-shadow: 0 1px 3px rgba(0,20,60,0.9);
+}
+button.power:hover, button.other:hover { background: rgba(255,255,255,0.38); }

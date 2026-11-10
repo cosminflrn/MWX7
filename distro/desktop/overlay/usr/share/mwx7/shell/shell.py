@@ -33,6 +33,15 @@ PINNED = [
     ('MWX 7 Classic', 'about', ['chromium', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/',
                                 '--user-data-dir=/tmp/mwx7-classic'], ('chrome-127.0.0.1',)),
 ]
+# Ending the Wayfire session returns to the MWX 7 logon screen. The live medium has no password to log back in with,
+# so Log Off only exists on an installed system.
+POWER_ACTIONS = [('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
+if not os.path.exists('/usr/local/bin/mwx7-install'):
+    POWER_ACTIONS.insert(0, ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']))
+    POWER_ACTIONS.insert(0, ('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']))
+# On the live medium the installer sits in the dock; an installed system has no installer.
+if os.path.exists('/usr/local/bin/mwx7-install'):
+    PINNED.append(('Install MWX 7', 'drive', ['/usr/local/bin/mwx7-install'], ('calamares', 'io.calamares')))
 
 
 class Ipc:
@@ -108,6 +117,12 @@ DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot'
 # Helpers and duplicates: Chromium only exists to run MWX 7 Classic, Chrome is the browser.
 HIDDEN_APPS = ('chromium', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
                'org.freedesktop.Xwayland', 'debian-', 'gcr-', 'polkit', 'agreety', 'vim', 'htop', 'python3')
+
+
+def icon_image(name):
+    """An MWX 7 icon when we drew one, otherwise the icon of that name from the system theme."""
+    path = os.path.join(ICONS, name + '.png')
+    return Gtk.Image.new_from_file(path) if os.path.exists(path) else Gtk.Image.new_from_icon_name(name)
 
 
 def app_name(app):
@@ -186,12 +201,11 @@ class StartMenu(Gtk.Popover):
         self.search.connect('search-changed', lambda *_: self.listbox.invalidate_filter())
         self.search.connect('activate', self.on_enter)
         foot.append(self.search)
-        for label, icon, cmd in (('Restart', 'logoff', ['systemctl', 'reboot']),
-                                 ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])):
+        for label, icon, cmd in POWER_ACTIONS:
             b = Gtk.Button()
             b.add_css_class('sm-power')
             b.set_tooltip_text(label)
-            img = Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
+            img = icon_image(icon)
             img.set_pixel_size(22)
             b.set_child(img)
             b.connect('clicked', lambda *_, c=cmd: subprocess.Popen(c))
@@ -374,8 +388,8 @@ class Shell(Gtk.Application):
                                  lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/settings/mwx7-settings']))))
         col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(PINNED[3][2]))))
         col.append(Gtk.Separator())
-        col.append(self.menu_row('Restart', 'logoff', lambda *_: subprocess.Popen(['systemctl', 'reboot'])))
-        col.append(self.menu_row('Shut Down', 'shutdown', lambda *_: subprocess.Popen(['systemctl', 'poweroff'])))
+        for label, icon, cmd in POWER_ACTIONS:
+            col.append(self.menu_row(label, icon, lambda *_a, c=cmd: subprocess.Popen(c)))
         pop.set_child(col)
         return pop
 
@@ -383,7 +397,7 @@ class Shell(Gtk.Application):
         b = Gtk.Button()
         b.add_css_class('menu-row')
         row = Gtk.Box(spacing=10)
-        img = Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
+        img = icon_image(icon)
         img.set_pixel_size(32)
         row.append(img)
         row.append(Gtk.Label(label=label, xalign=0))

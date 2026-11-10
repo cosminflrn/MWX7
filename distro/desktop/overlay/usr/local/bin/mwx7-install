@@ -1,0 +1,5 @@
+#!/bin/sh
+# Starts the MWX 7 installer from the live session. It needs root to partition the disk; the live user may use sudo
+# without a password (an installed system removes that).
+exec sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR,XDG_CURRENT_DESKTOP \
+  env QT_QPA_PLATFORM=wayland QT_STYLE_OVERRIDE=Fusion calamares "$@"

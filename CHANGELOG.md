@@ -2,6 +2,19 @@
 
 Derived from the git history. Newest first.
 
+## v1.7.0 "Installer"
+- **Install MWX 7** to a disk: the drive icon in the dock (live session only) starts an MWX 7-branded installer
+  (Calamares). Erase a disk or partition by hand, optional **full-disk encryption**, your own account. Works offline.
+- **MWX 7 logon screen** on an installed system: your picture, name and password on the wallpaper, Restart and Shut
+  Down in the corner; "log in automatically" is a choice in the installer. **Log Off** appears in the menus.
+- **Lock screen** (installed system): Super+L or **Lock** in the menus, and automatically after 10 idle minutes and
+  before sleep; your wallpaper with a ring that fills as you type the password
+- An installed MWX 7 is set up to be safe by default: root locked (sudo with your password), a firewall that lets
+  nothing unasked in, daily automatic security updates (Debian and Chrome), btrfs with compression and separate
+  system / home subvolumes, swap in compressed RAM.
+- The system calls itself **MWX 7** (boot menu, About, `/etc/os-release`); English and Romanian locales are built in
+- Tested in QEMU: install → boot → logon → desktop on UEFI (plain and encrypted) and on BIOS
+
 ## v1.6.0 "Genie"
 - **Genie minimize** on MWX 7 OS: a window pours into its dock icon and pours back out when you click the icon, like
   MWX 7 on the web (our own Wayfire plugin `distro/desktop/mwx7-animate`; a click mid-way turns it around)

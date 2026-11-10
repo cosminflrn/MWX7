@@ -60,6 +60,13 @@ if [ "$FLAVOR" = desktop ]; then
   cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
      "$REPO/public/media/pictures/"*.jpg "$ROOT/usr/share/mwx7/wallpapers/"
   echo "$VERSION" > "$ROOT/usr/share/mwx7/version"
+  # Installer pictures: the orb as its logo, MWX 7 wallpapers for the welcome page and the slides.
+  B="$ROOT/etc/calamares/branding/mwx7"
+  cp "$HERE/desktop/overlay/usr/share/mwx7/icons/orb.png" "$B/logo.png"
+  cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/welcome.jpg"
+  cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/slide1.jpg"
+  cp "$REPO/public/media/wallpapers/sierra.jpg" "$B/slide2.jpg"
+  cp "$REPO/public/media/pictures/alpine-lake.jpg" "$B/slide3.jpg"
   # Selawik (OFL), the font MWX 7 uses on the web, as TTF: Pango loads fonts through HarfBuzz, which can't read WOFF2.
   rm -rf "$ROOT/usr/share/fonts/selawik"; mkdir -p "$ROOT/usr/share/fonts/selawik"
   cp -a "$HERE/desktop/fonts/selawik/." "$ROOT/usr/share/fonts/selawik/"

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install MWX 7
+Comment=Put MWX 7 on this computer's disk, next to or instead of the system that is there
+Exec=/usr/local/bin/mwx7-install
+Icon=/usr/share/mwx7/icons/drive.png
+Categories=System;
+StartupWMClass=calamares
+Keywords=install;setup;disk;
