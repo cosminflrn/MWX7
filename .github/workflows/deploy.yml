@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A version that fails the end-to-end checks never goes live.
+  # A version that fails the end-to-end checks never goes live. `npm test` builds first, so the tested dist/ is the one
+  # that is published (one job instead of two: fewer runners that GitHub can fail to start).
   e2e:
     runs-on: ubuntu-latest
     steps:
@@ -27,24 +28,12 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
-
-  build:
-    needs: e2e
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
       - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
-    needs: build
+    needs: e2e
     runs-on: ubuntu-latest
     environment:
       name: github-pages

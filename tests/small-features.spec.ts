@@ -67,10 +67,14 @@ test('Snipping Tool window mode outlines the window under the pointer', async ({
   await page.locator('.menu-item', { hasText: 'Window Snip' }).click();
   await expect(page.locator('.snip-overlay.snip-window')).toBeVisible();
   const b = (await w.boundingBox())!;
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-  const sel = (await page.locator('.snip-sel').boundingBox())!;
-  expect(Math.abs(sel.width - b.width)).toBeLessThan(2);
-  expect(Math.abs(sel.height - b.height)).toBeLessThan(2);
+  // On a busy CI machine the outline is drawn a moment after the pointer arrives: keep nudging until it is there
+  // (measuring right away failed with "boundingBox() is null" on 9 Nov 2026).
+  let nudge = 0;
+  await expect.poll(async () => {
+    await page.mouse.move(b.x + b.width / 2 + (nudge++ % 2), b.y + b.height / 2);
+    const sel = await page.locator('.snip-sel').boundingBox();
+    return sel ? Math.max(Math.abs(sel.width - b.width), Math.abs(sel.height - b.height)) : Infinity;
+  }, { timeout: 5000 }).toBeLessThan(2);
   await page.mouse.click(5, 5, { button: 'right' });
   await expect(page.locator('.snip-overlay')).toHaveCount(0);
   expect(errors).toEqual([]);
