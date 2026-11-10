@@ -14,11 +14,11 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 export WLR_NO_HARDWARE_CURSORS=1
 # GTK 4's default GPU renderer misdraws in VMware/VirtualBox with 3D on; its older GL renderer is reliable there.
 if [ "$(systemd-detect-virt 2>/dev/null)" != none ]; then export GSK_RENDERER=gl; fi
-# Wayfire writes nothing back to this file; per-user overrides can come later from MWX 7 Settings.
 # Each user gets their own copy of the MWX 7 Wayfire config, which MWX 7 Settings edits; Wayfire reloads it live.
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
 mkdir -p "$CONF"
-[ -f "$CONF/wayfire.ini" ] || cp /etc/mwx7/wayfire.ini "$CONF/wayfire.ini"
+# A copy from another MWX 7 release is rebuilt from the current defaults, keeping what was chosen in Settings.
+/usr/share/mwx7/bin/mwx7-config-merge "$CONF/wayfire.ini" || [ -f "$CONF/wayfire.ini" ] || cp /etc/mwx7/wayfire.ini "$CONF/wayfire.ini"
 # Wayfire's log goes to a file, not to the console that is visible for the second before the first frame.
 LOG="${XDG_RUNTIME_DIR:-/tmp}/wayfire.log"
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then

@@ -455,13 +455,16 @@ class Shell(Gtk.Application):
     def sync_running_apps(self):
         """Give every running app without a pinned icon its own dock icon, and take it away when its last window closes."""
         pinned = tuple(i for _b, ids in self.dock_items[:len(PINNED)] for i in ids)
-        open_ids = {(v.get('app-id') or '').lower() for v in apps_windows(self.views)}
+        # Dialogs (windows with a parent) belong to their app's icon, not one of their own.
+        open_ids = {(v.get('app-id') or '').lower() for v in apps_windows(self.views) if v.get('parent', -1) in (-1, None)}
         open_ids = {a for a in open_ids if a and not a.startswith(pinned)}
         for aid in list(self.dock_running):
             if aid not in open_ids:
                 b = self.dock_running.pop(aid)
                 self.dock_items = [(x, ids) for x, ids in self.dock_items if x is not b]
                 self.dock_box.remove(b)
+                # A window never shrinks by itself in GTK 4; ask for the smallest size so the dock fits its icons again.
+                self.dock.set_default_size(1, 1)
         for aid in sorted(open_ids - set(self.dock_running)):
             app = next((a for a in Gio.AppInfo.get_all()
                         if aid in ((a.get_id() or '').removesuffix('.desktop').lower(),

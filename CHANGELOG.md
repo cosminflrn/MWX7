@@ -2,6 +2,18 @@
 
 Derived from the git history. Newest first.
 
+## v1.8.0 "Keep settings"
+- **MWX 7 remembers everything without installing**: Settings → **Keep settings** turns an empty disk (in VMware the
+  VM's own virtual disk) into MWX 7's memory: wallpaper, settings, Chrome sign-in, files and Wi-Fi networks survive
+  restarts. A newer MWX 7 ISO started with the same disk keeps all of it, because only your home folder and Wi-Fi are
+  kept and the system itself always comes fresh from the ISO. Only completely blank disks are offered or accepted.
+  A notification points to it when such a disk is there.
+- New MWX 7 defaults now reach a kept or installed system: an older copy of the window manager settings is rebuilt
+  from the new release, keeping what you chose in Settings (window colour, keyboard, mouse, display)
+- Dock: dialogs no longer get an icon of their own; the dock shrinks back when an app closes
+- Notifications: click to do what they offer, right-click to dismiss
+- CI: one job per workflow and no flaky Snipping Tool test (no more failure emails caused by GitHub hiccups)
+
 ## v1.7.1
 - Try the logon and lock screens without installing: the live session's password is now **mwx7** (the logon screen
   says so), and **Lock** and **Log Off** are in the menus there too. The installer removes this user.
