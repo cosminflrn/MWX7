@@ -3,6 +3,7 @@ MWX 7 as a real operating system: Linux (Debian 13) with the MWX 7 desktop. Real
 a USB stick without touching your disks, and from 1.7.0 it can also be **installed** (see below).
 
 **Preview:** running from the ISO, nothing is saved between restarts. An installed MWX 7 keeps everything.
+The live session's password is **mwx7** (for Lock and Log Off → logon screen).
 
 ## Try it on Windows 11 in a window (safest)
 **VMware Workstation Pro** (free):

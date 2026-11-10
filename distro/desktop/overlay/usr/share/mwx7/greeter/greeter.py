@@ -17,7 +17,8 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHARE = '/usr/share/mwx7'
 SESSION = ['/usr/local/bin/mwx7-session']
-LAST_USER = os.path.expanduser('~/last-user')  # the greeter's own home (/var/lib/greetd)
+LAST_USER = os.path.expanduser('~/last-user')
+LIVE = os.path.exists('/usr/local/bin/mwx7-install')  # the greeter's own home (/var/lib/greetd)
 
 
 def people():
@@ -203,7 +204,8 @@ class Greeter(Gtk.Application):
             self.avatar.set_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 112, 112, False))
         except GLib.Error:
             pass
-        self.message.set_label('')
+        # On the live medium, say what the password is: nobody chose it.
+        self.message.set_label('Live session: the password is mwx7' if user[0] == 'mwx' and LIVE else '')
         self.password.set_text('')
         self.password.grab_focus()
 

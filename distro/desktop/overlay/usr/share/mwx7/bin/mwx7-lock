@@ -1,5 +1,5 @@
 #!/bin/sh
-# Locks the screen: the person's wallpaper with a ring that fills as the password is typed. Unlocks with the account
+# Locks the screen (live session password: mwx7): the person's wallpaper with a ring that fills as the password is typed. Unlocks with the account
 # password. (A lock screen that looks exactly like the MWX 7 logon is planned once GTK's layer-shell supports locking.)
 pgrep -u "$(id -u)" -x swaylock >/dev/null && exit 0
 WP=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/wallpaper" 2>/dev/null)
