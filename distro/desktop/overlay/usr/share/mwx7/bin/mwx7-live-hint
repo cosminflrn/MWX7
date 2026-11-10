@@ -1,0 +1,14 @@
+#!/bin/sh
+# Live session only: once per start, if nothing is being kept yet but an empty disk is there to keep it on, say so.
+[ -e /usr/local/bin/mwx7-install ] || exit 0
+[ -n "$(ls -A /run/live/persistence 2>/dev/null)" ] && exit 0
+lsblk -J -b -o NAME,SIZE,TYPE,PTTYPE,FSTYPE | python3 -c '
+import json, sys
+ds = json.load(sys.stdin)["blockdevices"]
+ok = any(d["type"] == "disk" and not d.get("children") and not d.get("pttype") and not d.get("fstype")
+         and int(d["size"]) >= 2e9 and not d["name"].startswith(("zram", "loop")) for d in ds)
+sys.exit(0 if ok else 1)' || exit 0
+sleep 8
+a=$(notify-send -a "MWX 7" -i /usr/share/mwx7/icons/drive.png -t 15000 -A default=Open \
+  "Keep your settings?" "Click to have MWX 7 remember everything on the empty disk here.")
+[ "$a" = default ] && exec /usr/share/mwx7/settings/mwx7-settings

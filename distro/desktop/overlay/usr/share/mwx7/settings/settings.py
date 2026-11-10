@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 
 import gi
 
@@ -22,6 +23,8 @@ CONF_DIR = os.path.join(GLib.get_user_config_dir(), 'mwx7')
 WF_INI = os.path.join(CONF_DIR, 'wayfire.ini')
 WALL_FILE = os.path.join(CONF_DIR, 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
+LIVE = os.path.exists('/usr/local/bin/mwx7-install')
+KEEP_LABEL = 'mwx7-data'
 
 # Window colours: (name, active RGBA, inactive RGBA), MWX 7's glass tints.
 COLORS = [
@@ -140,6 +143,8 @@ class Settings(Gtk.Application):
             ('datetime', 'Date & time', 'about', self.page_datetime),
             ('about', 'About', 'about', self.page_about),
         ]
+        if LIVE:
+            pages.insert(0, ('keep', 'Keep settings', 'drive', self.page_keep))
         for pid, label, icon, build in pages:
             row = Gtk.ListBoxRow()
             row.pid = pid
@@ -155,7 +160,7 @@ class Settings(Gtk.Application):
             scroll.set_child(build())
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
-        nav.select_row(nav.get_row_at_index(0))
+        nav.select_row(nav.get_row_at_index(0))  # Keep settings comes first on the live medium
         root.append(nav)
         root.append(self.stack)
         w.set_child(root)
@@ -373,6 +378,100 @@ class Settings(Gtk.Application):
         p.append(dd)
         p.append(status)
         p.append(note('The clock uses the 24-hour format with seconds.'))
+        return p
+
+    # ---- Keep settings (live session only) --------------------------------------------------------------------------
+    @staticmethod
+    def disks():
+        try:
+            tree = json.loads(run(['lsblk', '-J', '-b', '-o', 'NAME,SIZE,TYPE,PTTYPE,FSTYPE,LABEL,MODEL,MOUNTPOINTS']))
+        except ValueError:
+            return None, []
+        kept, blank = None, []
+        for d in tree.get('blockdevices', []):
+            for part in d.get('children') or []:
+                if part.get('label') == KEEP_LABEL:
+                    kept = d
+            if (d.get('type') == 'disk' and not d.get('children') and not d.get('pttype') and not d.get('fstype')
+                    and int(d.get('size') or 0) >= 2_000_000_000 and not d['name'].startswith(('zram', 'loop'))):
+                blank.append(d)
+        return kept, blank
+
+    def page_keep(self):
+        p = page()
+        p.append(heading('Keep settings'))
+        p.append(note('MWX 7 is running from its ISO, so it starts fresh every time. Give it an empty disk and it '
+                      'remembers your wallpaper, settings, Chrome sign-in, files and Wi-Fi networks, with no installing. '
+                      'Starting a newer MWX 7 ISO with the same disk keeps all of it.'))
+        status = note('')
+        status.add_css_class('status')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        p.append(box)
+        p.append(status)
+        mounted = os.path.isdir('/run/live/persistence') and bool(os.listdir('/run/live/persistence'))
+
+        def fill():
+            while (c := box.get_first_child()):
+                box.remove(c)
+            kept, blank = self.disks()
+            if kept and mounted:
+                box.append(section('Your settings are kept'))
+                box.append(note(f"On {kept.get('model') or kept['name']} ({int(kept['size']) / 1e9:.0f} GB)."))
+                return
+            if kept:
+                box.append(section('Ready'))
+                box.append(note('The disk is set up. MWX 7 starts keeping your settings from the next start, so '
+                                'restart now: what you change before that is not kept.'))
+                b = Gtk.Button(label='Restart now')
+                b.add_css_class('suggested-action')
+                b.set_halign(Gtk.Align.START)
+                b.connect('clicked', lambda *_: subprocess.Popen(['systemctl', 'reboot']))
+                box.append(b)
+                return
+            box.append(section('Empty disks'))
+            if not blank:
+                box.append(note('There is no empty disk. In VMware or VirtualBox, give the virtual machine a new '
+                                '(empty) virtual disk of 4 GB or more and start again. Disks that hold anything are '
+                                'never touched here.'))
+            for d in blank:
+                row = Gtk.Box(spacing=12)
+                lbl = Gtk.Label(label=f"{d.get('model') or 'Disk'} — {int(d['size']) / 1e9:.0f} GB (/dev/{d['name']})",
+                                xalign=0, hexpand=True)
+                row.append(lbl)
+                b = Gtk.Button(label='Use this disk')
+                b.add_css_class('suggested-action')
+                b.connect('clicked', lambda _b, dev=d: ask(dev))
+                row.append(b)
+                box.append(row)
+
+        def ask(dev):
+            dlg = Gtk.AlertDialog()
+            dlg.set_message(f"Use /dev/{dev['name']} to keep your settings?")
+            dlg.set_detail('The disk is empty, so nothing is lost. It is set up for MWX 7 and cannot hold anything '
+                           'else afterwards (until it is erased again).')
+            dlg.set_buttons(['Cancel', 'Use this disk'])
+            dlg.set_cancel_button(0)
+            dlg.set_default_button(1)
+            dlg.choose(self.get_active_window(), None, lambda d, res: d.choose_finish(res) == 1 and go(dev))
+
+        def go(dev):
+            status.set_label('Setting up the disk…')
+            box.set_sensitive(False)
+
+            def work():
+                r = subprocess.run(['sudo', '-n', '/usr/share/mwx7/bin/mwx7-keep-settings', '/dev/' + dev['name']],
+                                   capture_output=True, text=True)
+                GLib.idle_add(done, r)
+            threading.Thread(target=work, daemon=True).start()
+
+        def done(r):
+            box.set_sensitive(True)
+            status.set_label('' if r.returncode == 0
+                             else 'That did not work: ' + (r.stderr.strip().splitlines() or ['unknown error'])[-1])
+            fill()
+            return False
+
+        fill()
         return p
 
     # ---- About ------------------------------------------------------------------------------------------------------

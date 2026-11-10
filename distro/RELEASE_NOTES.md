@@ -2,7 +2,7 @@ MWX 7 as a real operating system: Linux (Debian 13) with the MWX 7 desktop. Real
 (sign in for your bookmarks and passwords), Files and Terminal, plus MWX 7 Classic as an app. It runs from the ISO or
 a USB stick without touching your disks, and from 1.7.0 it can also be **installed** (see below).
 
-**Preview:** running from the ISO, nothing is saved between restarts. An installed MWX 7 keeps everything.
+**Preview:** running from the ISO, nothing is saved between restarts unless you use Keep settings (below).
 The live session's password is **mwx7** (for Lock and Log Off → logon screen).
 
 ## Try it on Windows 11 in a window (safest)
@@ -15,6 +15,12 @@ The live session's password is **mwx7** (for Lock and Log Off → logon screen).
 
 **VirtualBox** (free): New VM → Linux, Debian (64-bit), **4096 MB**, 2 CPUs, **Enable EFI**, no hard disk; Display →
 **VMSVGA**, **Enable 3D Acceleration**, 128 MB video memory. Attach the ISO and start.
+
+## Keep your settings without installing
+In VMware the VM already has an empty virtual disk. On the MWX 7 desktop open **Settings → Keep settings** (a
+notification also offers it), click **Use this disk**, then **Restart now**. From then on MWX 7 remembers your
+wallpaper, settings, Chrome sign-in, files and Wi-Fi. To update, just point the CD/DVD at the newer ISO: everything
+stays. Only a completely empty disk is ever offered, so your own disks are never touched.
 
 ## Install it (in the virtual machine first)
 1. On the MWX 7 desktop click **Install MWX 7** in the dock (the drive icon).

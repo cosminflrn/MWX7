@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Keeps a user's ~/.config/mwx7/wayfire.ini current. MWX 7 releases change the system defaults in /etc/mwx7 (new
+plugins, new options); a copy made by an older release would hide them. When the copy is from another release it is
+rebuilt from the current defaults, keeping what the person chose in MWX 7 Settings."""
+import os
+import re
+import sys
+
+SYSTEM = '/etc/mwx7/wayfire.ini'
+VERSION_FILE = '/usr/share/mwx7/version'
+STAMP = '# mwx7-defaults:'
+# What MWX 7 Settings changes, so what a person can have chosen. Every [output:...] section is theirs too.
+KEPT = {'decoration': ('active_color', 'inactive_color'),
+        'input': ('xkb_layout', 'xkb_variant', 'kb_repeat_delay', 'kb_repeat_rate', 'mouse_cursor_speed',
+                  'mouse_natural_scroll', 'left_handed_mode'),
+        'mwx7-animate': ('genie_duration',)}
+
+
+def sections(text):
+    """{name: (start, end)} of each section body."""
+    out = {}
+    for m in re.finditer(r'^\[([^\]]+)\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def get(body, key):
+    m = re.search(r'^' + re.escape(key) + r'\s*=\s*(.*)$', body, re.M)
+    return m.group(1).rstrip() if m else None
+
+
+def put(text, section, key, value):
+    line = f'{key} = {value}'
+    m = re.search(r'^\[' + re.escape(section) + r'\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+    if not m:
+        return text.rstrip('\n') + f'\n\n[{section}]\n{line}\n'
+    body = m.group(1)
+    if re.search(r'^' + re.escape(key) + r'\s*=.*$', body, re.M):
+        body = re.sub(r'^' + re.escape(key) + r'\s*=.*$', lambda _m: line, body, count=1, flags=re.M)
+    else:
+        body = '\n' + line + body if body.startswith('\n') else '\n' + line + '\n' + body
+    return text[:m.start(1)] + body + text[m.end(1):]
+
+
+def main(user):
+    version = open(VERSION_FILE).read().strip()
+    system = open(SYSTEM).read()
+    stamp = f'{STAMP} {version}\n'
+    try:
+        old = open(user).read()
+    except FileNotFoundError:
+        old = None
+    if old is not None and old.startswith(stamp):
+        return
+    new = stamp + system
+    if old is not None:
+        mine = sections(old)
+        for sec, keys in KEPT.items():
+            for k in keys:
+                v = get(mine.get(sec, ''), k)
+                if v is not None:
+                    new = put(new, sec, k, v)
+        for sec, body in mine.items():
+            if sec.startswith('output:'):
+                for line in body.splitlines():
+                    if '=' in line and not line.lstrip().startswith('#'):
+                        k, v = line.split('=', 1)
+                        new = put(new, sec, k.strip(), v.strip())
+    os.makedirs(os.path.dirname(user), exist_ok=True)
+    tmp = user + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(new)
+    os.replace(tmp, user)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1])
