@@ -12,8 +12,7 @@ STAMP = '# mwx7-defaults:'
 # What MWX 7 Settings changes, so what a person can have chosen. Every [output:...] section is theirs too.
 KEPT = {'decoration': ('active_color', 'inactive_color'),
         'input': ('xkb_layout', 'xkb_variant', 'kb_repeat_delay', 'kb_repeat_rate', 'mouse_cursor_speed',
-                  'mouse_natural_scroll', 'left_handed_mode'),
-        'mwx7-animate': ('genie_duration',)}
+                  'mouse_natural_scroll', 'left_handed_mode')}
 
 
 def sections(text):

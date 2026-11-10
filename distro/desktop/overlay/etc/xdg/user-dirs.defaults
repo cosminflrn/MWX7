@@ -1,0 +1,7 @@
+# MWX 7: the folders people expect (as on Windows and macOS), without "Public" and "Templates".
+DESKTOP=Desktop
+DOWNLOAD=Downloads
+DOCUMENTS=Documents
+MUSIC=Music
+PICTURES=Pictures
+VIDEOS=Videos

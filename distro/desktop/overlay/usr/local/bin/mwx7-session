@@ -15,6 +15,16 @@ export WLR_NO_HARDWARE_CURSORS=1
 # GTK 4's default GPU renderer misdraws in VMware/VirtualBox with 3D on; its older GL renderer is reliable there.
 if [ "$(systemd-detect-virt 2>/dev/null)" != none ]; then export GSK_RENDERER=gl; fi
 # Each user gets their own copy of the MWX 7 Wayfire config, which MWX 7 Settings edits; Wayfire reloads it live.
+# Documents, Downloads, Music, Pictures, Videos, Desktop: created on first login, and Files and Chrome know them.
+xdg-user-dirs-update >/dev/null 2>&1 || true
+# The same folders in the Files sidebar, under Places (only the first time, so the person's own changes stay).
+if [ ! -f "$HOME/.config/gtk-3.0/bookmarks" ]; then
+  mkdir -p "$HOME/.config/gtk-3.0"
+  . "${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs" 2>/dev/null || true
+  for d in "$XDG_DOCUMENTS_DIR" "$XDG_DOWNLOAD_DIR" "$XDG_MUSIC_DIR" "$XDG_PICTURES_DIR" "$XDG_VIDEOS_DIR"; do
+    [ -d "$d" ] && printf 'file://%s\n' "$d"
+  done > "$HOME/.config/gtk-3.0/bookmarks"
+fi
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
 mkdir -p "$CONF"
 # A copy from another MWX 7 release is rebuilt from the current defaults, keeping what was chosen in Settings.

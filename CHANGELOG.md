@@ -2,6 +2,14 @@
 
 Derived from the git history. Newest first.
 
+## v1.8.2
+- **Files feels like Explorer**: Desktop, Documents, Downloads, Music, Pictures and Videos exist from the first login,
+  are listed in the sidebar and open in icon view; the window is titled by the folder ("Documents", not "mwx - Thunar")
+- **Sharper text**: Selawik everywhere an app asks for the system font (Chrome's pages too), with light hinting and
+  greyscale smoothing for crisp letters on ordinary monitors
+- Settings → Display: highest refresh rate first for each resolution (144 Hz monitors), and a hint to enlarge text
+  on screens with small pixels
+
 ## v1.8.1 "No lag"
 - **Status bar no longer freezes** while the PC is busy: the volume and network checks ran on the bar's own thread, so
   when one of them was slow (Chrome starting, for example) the clock, the window title and every click on the bar and
