@@ -1,0 +1,55 @@
+# MWX 7 boot menu (installed systems): the splash's blue with the orb, a frosted-glass list and a glossy selection.
+# Fonts are made from Selawik at build time (selawik-16.pf2, selawik-20.pf2).
+title-text: ""
+desktop-image: "background.png"
+desktop-color: "#05102a"
+terminal-font: "Selawik Regular 16"
+terminal-box: "menu_*.png"
+terminal-left: "25%"
+terminal-top: "52%"
+terminal-width: "50%"
+terminal-height: "34%"
+terminal-border: "0"
+
++ boot_menu {
+  left = 33%
+  top = 52%
+  width = 34%
+  height = 26%
+  menu_pixmap_style = "menu_*.png"
+  item_font = "Selawik Regular 20"
+  item_color = "#dce9f7"
+  selected_item_font = "Selawik Regular 20"
+  selected_item_color = "#ffffff"
+  selected_item_pixmap_style = "select_*.png"
+  item_height = 40
+  item_padding = 14
+  item_spacing = 6
+  icon_width = 0
+  icon_height = 0
+  item_icon_space = 0
+  scrollbar = false
+}
+
++ label {
+  left = 0
+  top = 100%-60
+  width = 100%
+  height = 24
+  align = "center"
+  font = "Selawik Regular 16"
+  color = "#9fb8d6"
+  text = "Use the arrow keys to choose, Enter to start"
+}
+
++ label {
+  id = "__timeout__"
+  left = 0
+  top = 100%-36
+  width = 100%
+  height = 24
+  align = "center"
+  font = "Selawik Regular 16"
+  color = "#7f9cc0"
+  text = "Starting in %d s"
+}

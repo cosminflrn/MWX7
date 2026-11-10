@@ -1,0 +1,23 @@
+#!/bin/sh
+# Boot menu names: "MWX 7" instead of "MWX 7 GNU/Linux", and "Windows" instead of "Windows Boot Manager (on /dev/sda1)".
+# GRUB's own scripts build the names; this patches two lines of them. It runs at build time and after every package
+# change (apt hook), because a GRUB update brings back the stock scripts. Every patched script is checked with sh -n
+# and put back as it was if the check fails, so a mistake here can never stop the system from getting a boot menu.
+patch() {  # patch FILE MARKER SED-SCRIPT
+  F=$1
+  [ -f "$F" ] || return 0
+  grep -q "$2" "$F" && return 0
+  cp -p "$F" "$F.mwx7-orig"
+  sed -i "$3" "$F"
+  if grep -q "$2" "$F" && sh -n "$F"; then
+    unlink "$F.mwx7-orig"
+  else
+    mv -f "$F.mwx7-orig" "$F"
+  fi
+}
+# 10_linux appends " GNU/Linux" to every distributor name except the ones in this case pattern. The name has a space,
+# so it must be quoted inside the pattern (unquoted, the whole script is a syntax error and grub-mkconfig fails).
+patch /etc/grub.d/10_linux '"MWX 7"|Ubuntu' 's/^    Ubuntu|Kubuntu|\*GNU\/Linux)$/    "MWX 7"|Ubuntu|Kubuntu|*GNU\/Linux)/'
+# 30_os-prober: Windows gets a plain name and no "(on /dev/...)" suffix.
+patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name' 's|^  LONGNAME="`echo \${OS} \| cut -d .:. -f 2 \| tr .\^. . .`"$|&\n  # MWX 7: short Windows name\n  onstr_off=; case "${LONGNAME}" in Windows*) LONGNAME=Windows; onstr_off=1 ;; esac|; s|^\t  onstr="\$(gettext_printf "(on %s)" "\${DEVICE}")"$|\t  onstr="$(gettext_printf "(on %s)" "${DEVICE}")"; [ -n "${onstr_off:-}" ] \&\& onstr=""|'
+exit 0

@@ -30,7 +30,7 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold \
   calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window squashfs-tools rsync dosfstools btrfs-progs e2fsprogs efibootmgr os-prober \
   grub-efi-amd64 grub-pc-bin cryptsetup cryptsetup-initramfs \
   sudo systemd-zram-generator unattended-upgrades nftables locales util-linux-extra \
-  swaylock swayidle lxpolkit xdg-user-dirs
+  swaylock swayidle lxpolkit xdg-user-dirs python3-gi-cairo
 
 # Smaller download: the installer's disk tools need *a* password-prompt agent, and left to itself apt picked ukui-polkit,
 # which pulls in OpenCV and map libraries (~150 MB); lxpolkit is 47 kB. Chromium was only there for MWX 7 Classic,
@@ -90,6 +90,14 @@ done
 apt-get purge -y $BUILD_DEPS
 apt-get autoremove -y --purge
 
+# MWX 7 boot menu theme for installed systems (GRUB reads its own font format, made here from Selawik).
+for size in 16 20; do
+  grub-mkfont -s $size -o /usr/share/grub/themes/mwx7/selawik-$size.pf2 /usr/share/fonts/selawik/selawik-regular.ttf
+done
+/usr/share/mwx7/bin/mwx7-grub-names
+# Every script in /etc/grub.d must still be valid: the installer runs grub-mkconfig on the new system, and one broken
+# script fails the whole installation (a quoting mistake did exactly that in testing on 10 Nov 2026).
+for f in /etc/grub.d/[0-9]*; do if [ -x "$f" ]; then sh -n "$f"; fi; done
 # MWX 7 boot splash; -R rebuilds the initramfs so the splash starts as early as possible.
 plymouth-set-default-theme -R mwx7
 
