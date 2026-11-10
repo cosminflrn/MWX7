@@ -3,18 +3,9 @@ name: CI
 on:
   pull_request:
 
+# One job: `npm test` builds (typecheck + production build) before the end-to-end checks, so a separate build job only
+# added a second chance for GitHub to fail to start a runner (a "No jobs were run" email on 9 Nov 2026).
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-
   e2e:
     runs-on: ubuntu-latest
     steps:
