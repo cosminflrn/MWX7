@@ -411,28 +411,55 @@ class Shell(Gtk.Application):
         sep.add_css_class('dock-sep')
         self.dock_box.append(sep)
         for label, icon, cmd, ids in PINNED:
-            b = Gtk.Button()
-            b.add_css_class('dock-item')
-            b.set_tooltip_text(label)
-            v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             img = Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
-            img.set_pixel_size(48)
-            dot = Gtk.Box()
-            dot.add_css_class('run-dot')
-            dot.set_halign(Gtk.Align.CENTER)
-            v.append(img)
-            v.append(dot)
-            b.set_child(v)
-            b.connect('clicked', lambda *_, c=cmd, i=ids: self.dock_click(c, i))
-            right_click = Gtk.GestureClick(button=3)
-            # Capture phase: the button's own click handling would otherwise swallow the secondary button.
-            right_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-            right_click.connect('pressed', lambda *_a, btn=b, l=label, c=cmd, i=ids: self.dock_menu(btn, l, c, i))
-            b.add_controller(right_click)
-            self.dock_box.append(b)
-            self.dock_items.append((b, ids))
+            self.add_dock_item(label, img, lambda c=cmd: self.launch(c), ids)
+        # Apps that are running but not pinned get an icon after the pinned ones while they have a window.
+        self.dock_running = {}
         w.set_child(self.dock_box)
         return w
+
+    def add_dock_item(self, label, img, launch, ids):
+        b = Gtk.Button()
+        b.add_css_class('dock-item')
+        b.set_tooltip_text(label)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        img.set_pixel_size(48)
+        dot = Gtk.Box()
+        dot.add_css_class('run-dot')
+        dot.set_halign(Gtk.Align.CENTER)
+        v.append(img)
+        v.append(dot)
+        b.set_child(v)
+        b.connect('clicked', lambda *_: self.dock_click(launch, ids))
+        right_click = Gtk.GestureClick(button=3)
+        # Capture phase: the button's own click handling would otherwise swallow the secondary button.
+        right_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        right_click.connect('pressed', lambda *_a: self.dock_menu(b, label, launch, ids))
+        b.add_controller(right_click)
+        self.dock_box.append(b)
+        self.dock_items.append((b, ids))
+        return b
+
+    def sync_running_apps(self):
+        """Give every running app without a pinned icon its own dock icon, and take it away when its last window closes."""
+        pinned = tuple(i for _b, ids in self.dock_items[:len(PINNED)] for i in ids)
+        open_ids = {(v.get('app-id') or '').lower() for v in apps_windows(self.views)}
+        open_ids = {a for a in open_ids if a and not a.startswith(pinned)}
+        for aid in list(self.dock_running):
+            if aid not in open_ids:
+                b = self.dock_running.pop(aid)
+                self.dock_items = [(x, ids) for x, ids in self.dock_items if x is not b]
+                self.dock_box.remove(b)
+        for aid in sorted(open_ids - set(self.dock_running)):
+            app = next((a for a in Gio.AppInfo.get_all()
+                        if aid in ((a.get_id() or '').removesuffix('.desktop').lower(),
+                                   (a.get_startup_wm_class() or '').lower())), None)
+            if app:
+                label, img, launch = app_name(app), app_icon_widget(app, 48), lambda a=app: a.launch([], None)
+            else:
+                # A window whose app has no menu entry (a helper dialog): still reachable, just no way to start another.
+                label, img, launch = aid, Gtk.Image.new_from_icon_name('application-x-executable'), None
+            self.dock_running[aid] = self.add_dock_item(label, img, launch, (aid,))
 
     # ---- behaviour ------------------------------------------------------------------------------------------------
     @staticmethod
@@ -442,10 +469,11 @@ class Shell(Gtk.Application):
     def windows_of(self, ids):
         return [v for v in apps_windows(self.views) if (v.get('app-id') or '').lower().startswith(ids)]
 
-    def dock_click(self, cmd, ids):
+    def dock_click(self, launch, ids):
         wins = self.windows_of(ids)
         if not wins:
-            self.launch(cmd)
+            if launch:
+                launch()
             return
         w = wins[0]
         if w.get('activated') and not w.get('minimized'):
@@ -455,7 +483,7 @@ class Shell(Gtk.Application):
                 self.ipc.call('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.ipc.call('window-rules/focus-view', {'id': w['id']})
 
-    def dock_menu(self, button, label, cmd, ids):
+    def dock_menu(self, button, label, launch, ids):
         # Right-click on a dock icon: open another window, or close the app's windows.
         pop = Gtk.Popover()
         pop.add_css_class('start')
@@ -473,7 +501,8 @@ class Shell(Gtk.Application):
             b.connect('clicked', lambda *_: (pop.popdown(), fn()))
             col.append(b)
 
-        item('New window', lambda: self.launch(cmd))
+        if launch:
+            item('New window', launch)
         wins = self.windows_of(ids)
         if wins:
             item('Close window' if len(wins) == 1 else f'Close all {len(wins)} windows',
@@ -499,14 +528,37 @@ class Shell(Gtk.Application):
     def refresh(self):
         views = self.ipc.call('window-rules/list-views')
         self.views = views if isinstance(views, list) else []
+        self.sync_running_apps()
         for b, ids in self.dock_items:
             if self.windows_of(ids):
                 b.add_css_class('running')
             else:
                 b.remove_css_class('running')
-        focused = next((v for v in apps_windows(self.views) if v.get('activated')), None)
+        self.send_minimize_hints()
+        focused = next((v for v in apps_windows(self.views) if v.get('activated') and not v.get('minimized')), None)
         self.title.set_label(focused.get('title', '')[:60] if focused else 'MWX 7')
         return False
+
+    def send_minimize_hints(self):
+        """Tell the compositor where each window's dock icon is, so minimize pours the window into it (genie)."""
+        dock = next((v for v in self.views if v.get('app-id') == 'mwx7-dock'), None)
+        geo = (dock or {}).get('geometry') or (dock or {}).get('bbox')
+        if not geo:
+            return
+        sent = getattr(self, 'hints', {})
+        live = {}
+        for v in apps_windows(self.views):
+            app = (v.get('app-id') or '').lower()
+            # Windows without a dock icon pour into the Start orb.
+            button = next((b for b, ids in self.dock_items if app.startswith(ids)), self.dock_box.get_first_child())
+            ok, r = button.compute_bounds(self.dock)
+            if not ok or r.get_width() < 1:
+                continue
+            hint = (int(geo['x'] + r.get_x() + r.get_width() / 2 - 24), int(geo['y'] + r.get_y() + 4), 48, 48)
+            live[v['id']] = hint
+            if sent.get(v['id']) != hint:
+                self.ipc.call('mwx7/set-minimize-hint', {'id': v['id'], 'x': hint[0], 'y': hint[1], 'width': 48, 'height': 48})
+        self.hints = live
 
     # ---- volume and network ----------------------------------------------------------------------------------------
     @staticmethod
