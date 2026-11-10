@@ -2,6 +2,15 @@
 
 Derived from the git history. Newest first.
 
+## v1.8.3
+- **MWX 7 boot menu** on an installed system: the splash's deep blue with the orb, a frosted-glass list and a glossy
+  selection, in Selawik. Entries read "MWX 7" and "Windows" instead of "MWX 7 GNU/Linux" and "Windows Boot Manager
+  (on /dev/sda1)". It shows only when Windows is there to choose or Esc is held
+- **Lock screen like the logon screen**: your wallpaper, account picture and name, "Locked", and the password ring
+  where the logon screen has its field
+- Safety: the boot menu names are patched into GRUB's scripts only if the result is still valid (otherwise the scripts
+  stay as they were), and the build stops if any boot menu script is broken — a mistake there would fail installation
+
 ## v1.8.2
 - **Files feels like Explorer**: Desktop, Documents, Downloads, Music, Pictures and Videos exist from the first login,
   are listed in the sidebar and open in icon view; the window is titled by the folder ("Documents", not "mwx - Thunar")

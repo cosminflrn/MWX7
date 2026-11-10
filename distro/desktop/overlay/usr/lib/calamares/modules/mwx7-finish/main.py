@@ -66,5 +66,10 @@ GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
 GRUB_CMDLINE_LINUX="loglevel=3 vt.global_cursor_default=0"
 GRUB_DISABLE_OS_PROBER=false
 GRUB_DISABLE_RECOVERY=true
+# The menu in MWX 7's look; it only shows when Esc is held or another system (Windows) is there to choose.
+GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
+GRUB_GFXMODE=1920x1080,1280x800,auto
+GRUB_GFXPAYLOAD_LINUX=keep
+GRUB_TIMEOUT_STYLE=menu
 ''')
     return None

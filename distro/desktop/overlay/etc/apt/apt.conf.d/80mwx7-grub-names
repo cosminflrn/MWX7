@@ -1,0 +1,2 @@
+// Keep MWX 7's boot menu names after GRUB package updates (see /usr/share/mwx7/bin/mwx7-grub-names).
+DPkg::Post-Invoke { "[ -x /usr/share/mwx7/bin/mwx7-grub-names ] && /usr/share/mwx7/bin/mwx7-grub-names || true"; };

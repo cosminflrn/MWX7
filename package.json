@@ -1,7 +1,7 @@
 {
   "name": "mwx7",
   "private": true,
-  "version": "1.8.2",
+  "version": "1.8.3",
   "license": "MIT",
   "description": "MWX 7 \u2014 the dream desktop OS, in your browser.",
   "type": "module",
