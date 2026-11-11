@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- MWX 7 Settings' administrator actions (Updates, Account). -->
+<policyconfig>
+  <vendor>MWX 7</vendor>
+  <action id="org.mwx7.update">
+    <description>Install updates</description>
+    <message>Installing updates needs an administrator.</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/share/mwx7/bin/mwx7-update</annotate>
+  </action>
+  <action id="org.mwx7.account">
+    <description>Change your account</description>
+    <message>Confirm it's you to change your password or how you sign in.</message>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/share/mwx7/bin/mwx7-admin</annotate>
+  </action>
+</policyconfig>

@@ -1,0 +1,72 @@
+name: Updates
+
+# The MWX 7 update channel: every change to the distro on main builds a new mwx7-desktop package and publishes it,
+# signed, to the "updates" release, where installed systems find it (Settings -> Updates). No ISO is built here.
+on:
+  push:
+    branches: [main]
+    paths: ['package.json', 'distro/**', 'public/media/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: updates
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 30
+    steps:
+      - name: Tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates nodejs gnupg apt-utils curl >/dev/null
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the build number is the commit count
+      - name: Build the package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          V="$(node -p "require('./package.json').version").$(git rev-list --count HEAD)"
+          echo "V=$V" >> "$GITHUB_ENV"
+          MWX7_VERSION="$V" ./distro/desktop/build-deb.sh repo
+      - name: Sign the channel
+        env:
+          KEY: ${{ secrets.MWX7_UPDATES_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            # Without the key here the package is still uploaded; distro/sign-updates.sh signs the channel elsewhere.
+            echo "::warning::MWX7_UPDATES_KEY is not set: uploading the package only; run distro/sign-updates.sh to publish it."
+            echo "UNSIGNED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          export GNUPGHOME="$(mktemp -d)"
+          echo "$KEY" | gpg --batch --import
+          cd repo
+          apt-ftparchive packages . > Packages
+          gzip -9kn Packages
+          apt-ftparchive -o APT::FTPArchive::Release::Origin="MWX 7" -o APT::FTPArchive::Release::Label="MWX 7" \
+            -o APT::FTPArchive::Release::Suite=updates release . > Release
+          gpg --batch --yes --clearsign -o InRelease Release
+          gpg --batch --yes -abs -o Release.gpg Release
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apt-get install -y -qq --no-install-recommends gh >/dev/null
+          cd repo
+          gh release view updates -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create updates -R "$GITHUB_REPOSITORY" --prerelease --title "MWX 7 updates" \
+              --notes "The MWX 7 update channel, used by Settings -> Updates on installed systems. Nothing to download here by hand."
+          # The new package first, then the index that points at it, so a system checking in between never sees an
+          # index for a package that isn't there yet.
+          gh release upload updates -R "$GITHUB_REPOSITORY" --clobber ./*.deb
+          [ -n "${UNSIGNED:-}" ] || gh release upload updates -R "$GITHUB_REPOSITORY" --clobber Packages Packages.gz Release Release.gpg InRelease
+          # Keep the two newest packages (one for systems still holding the previous index).
+          gh release view updates -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep '\.deb$' | sort -V |
+            head -n -2 | while read -r old; do gh release delete-asset updates "$old" -R "$GITHUB_REPOSITORY" -y; done
+          echo "Published mwx7-desktop $V"

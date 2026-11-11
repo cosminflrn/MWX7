@@ -1,0 +1,58 @@
+#!/bin/sh
+# Runs after mwx7-desktop is installed or updated ($2 is the version it replaces; empty on the first install).
+set -e
+[ "$1" = configure ] || exit 0
+V=$(cat /usr/share/mwx7/version)
+
+# MWX 7's name where programs look for the system's name. Diverted so Debian's base-files updates don't put theirs
+# back; ID_LIKE tells package tools that this is Debian underneath.
+dpkg-divert --quiet --add --rename --divert /usr/lib/os-release.debian /usr/lib/os-release
+cat > /usr/lib/os-release <<OSR
+PRETTY_NAME="MWX 7 $V"
+NAME="MWX 7"
+VERSION_ID="$V"
+VERSION="$V"
+VERSION_CODENAME=trixie
+ID=mwx7
+ID_LIKE=debian
+HOME_URL="https://github.com/cosminflrn/MWX7"
+SUPPORT_URL="https://github.com/cosminflrn/MWX7/issues"
+BUG_REPORT_URL="https://github.com/cosminflrn/MWX7/issues"
+OSR
+
+# Real UTF-8 locales for the languages the first-start setup offers; without them programs fall back to plain ASCII.
+changed=
+for l in en_US en_GB ro_RO; do
+  if grep -q "^# $l.UTF-8 UTF-8" /etc/locale.gen 2>/dev/null; then
+    sed -i "s/^# $l.UTF-8 UTF-8/$l.UTF-8 UTF-8/" /etc/locale.gen; changed=1
+  fi
+done
+[ -z "$changed" ] || locale-gen >/dev/null
+
+if [ -z "$2" ]; then
+  systemctl enable nftables.service greetd.service NetworkManager.service >/dev/null 2>&1 || true
+  # ldconfig.service rebuilds the library cache whenever /etc looks older than /usr (6 s on every boot of a live
+  # image); installing packages refreshes the cache anyway.
+  systemctl mask ldconfig.service >/dev/null 2>&1 || true
+  plymouth-set-default-theme mwx7 || true
+fi
+# Lighter and faster start: nothing here waits for the network at boot, scrubs ext4 (MWX 7 uses btrfs) or keeps a
+# terminal server and an audio filter chain running in every session.
+systemctl disable NetworkManager-wait-online.service e2scrub_reap.service e2scrub_all.timer >/dev/null 2>&1 || true
+systemctl --global disable filter-chain.service foot-server.service foot-server.socket >/dev/null 2>&1 || true
+
+# Chrome reads first-run defaults from next to its binary: the system window frame (MWX 7's glass frame and traffic
+# lights), no welcome or default-browser prompts.
+if [ -d /opt/google/chrome ]; then
+  install -m 0644 /usr/share/mwx7/chrome/initial_preferences /opt/google/chrome/initial_preferences
+fi
+rm -f /etc/apt/sources.list.d/google-chrome.sources  # Chrome adds a second copy of its repo line on first run
+
+# Boot menu: MWX 7's entry names, checked so a mistake can never leave the system without a boot menu. An installed
+# system gets the menu rebuilt now; the ISO build and the first-start setup build theirs themselves.
+/usr/share/mwx7/bin/mwx7-grub-names
+for f in /etc/grub.d/[0-9]*; do if [ -x "$f" ]; then sh -n "$f"; fi; done
+if [ -f /etc/mwx7/installed ] && [ -f /boot/grub/grub.cfg ] && command -v update-grub >/dev/null; then
+  update-grub >/dev/null 2>&1 || echo "mwx7-desktop: update-grub failed; the previous boot menu stays" >&2
+fi
+exit 0

@@ -1,34 +1,27 @@
 #!/bin/bash
-# Builds a live ISO (distro/out/mwx7-live.iso) that runs MWX 7 entirely from RAM: nothing is installed and the PC's
-# disks are never touched. Boots on UEFI (Secure Boot on or off) and legacy BIOS, from a VM or a USB stick.
-# Needs: Debian/Ubuntu host, root, and:
-#   sudo apt install debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin nodejs npm
-# Usage: sudo ./distro/build-iso.sh [classic|desktop]
-#   REUSE_ROOT=1 keeps the Debian system from the last build of the same flavour and only refreshes MWX 7's own files
-#   and the desktop packages: minutes instead of a full rebuild, for development. CI always builds from scratch.
-#   classic  MWX 7 on the web, full screen (kiosk). The released default for now.
-#   desktop  a real Wayfire desktop with the native MWX 7 shell, Google Chrome and real apps (roadmap stage 1).
+# Builds the MWX 7 ISO (distro/out/mwx7.iso). It starts straight into the first-start setup, which puts MWX 7 on the
+# PC's disk (asking where first) and sets it up. Boots on UEFI (Secure Boot on or off) and legacy BIOS, from a VM or a
+# USB stick.
+# Needs: Debian/Ubuntu host, root, git, node, and:
+#   sudo apt install debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin
+# Usage: sudo ./distro/build-iso.sh
+#   REUSE_ROOT=1 keeps the Debian system from the last build and only refreshes MWX 7's own files and packages:
+#   minutes instead of a full rebuild, for development. CI always builds from scratch.
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo)." >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(dirname "$HERE")"
-FLAVOR="${1:-desktop}"
-case "$FLAVOR" in classic|desktop) ;; *) echo "Unknown flavour $FLAVOR (classic or desktop)" >&2; exit 1 ;; esac
-OUT="$HERE/out"; ROOT="$OUT/live-root"; ISO_DIR="$OUT/iso"
-ISO="$OUT/mwx7.iso"; [ "$FLAVOR" = classic ] && ISO="$OUT/mwx7-classic.iso"
-VERSION="$(node -p "require('$REPO/package.json').version" 2>/dev/null || echo dev)"
+OUT="$HERE/out"; ROOT="$OUT/live-root"; ISO_DIR="$OUT/iso"; ISO="$OUT/mwx7.iso"
+# 1.9.0 in package.json + the commit count: every build of main gets a higher number, which is what the update
+# channel compares (CI checks out the full history for this).
+VERSION="$(node -p "require('$REPO/package.json').version").$(git -C "$REPO" rev-list --count HEAD)"
 
 cleanup() {  # always release the bind mounts, even on failure
   set +e
   for d in dev/pts dev proc sys; do umount "$ROOT/$d" 2>/dev/null; done
 }
 trap cleanup EXIT
-
-# 1. Build the OS itself with the normal build (as the invoking user if run through sudo).
-echo "==> Building MWX 7 $VERSION (dist/)"
-if [ -n "${SUDO_USER:-}" ]; then sudo -u "$SUDO_USER" bash -c "cd '$REPO' && npm ci && npm run build"
-else (cd "$REPO" && npm ci && npm run build); fi
 
 # 2. Minimal Debian in a plain directory (no disk image, so no loop devices or partitions are needed).
 REUSE=0; [ "${REUSE_ROOT:-0}" = 1 ] && [ -x "$ROOT/usr/bin/apt-get" ] && REUSE=1
@@ -42,57 +35,37 @@ SCRIPT=/usr/share/debootstrap/scripts/trixie; [ -e "$SCRIPT" ] || SCRIPT=/usr/sh
 debootstrap --variant=minbase trixie "$ROOT" http://deb.debian.org/debian "$SCRIPT"
 fi
 
-# 3. Same overlay and packages as the disk image, plus live-boot.
-cp -a "$HERE/overlay/." "$ROOT/"
-rm -rf "$ROOT/opt/mwx7/dist"; mkdir -p "$ROOT/opt/mwx7"; cp -a "$REPO/dist" "$ROOT/opt/mwx7/dist"
-cp "$HERE/chroot-setup.sh" "$ROOT/tmp/"
+# 3. MWX 7: the mwx7-desktop package (built inside the image, see desktop/setup.sh) plus the ISO-only files.
+rm -rf "$ROOT/tmp/mwx7-src"; mkdir -p "$ROOT/tmp/mwx7-src/distro" "$ROOT/tmp/mwx7-src/public/media/wallpapers"
+cp -a "$HERE/desktop" "$ROOT/tmp/mwx7-src/distro/"
+cp -a "$REPO/public/media/icons" "$REPO/public/media/avatars" "$REPO/public/media/pictures" "$ROOT/tmp/mwx7-src/public/media/"
+cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" "$ROOT/tmp/mwx7-src/public/media/wallpapers/"
+cp -a "$HERE/desktop/live/." "$ROOT/"
+# Installer pictures for the advanced path: the orb as its logo, MWX 7 wallpapers for the welcome page and the slides.
+B="$ROOT/etc/calamares/branding/mwx7"
+cp "$HERE/desktop/overlay/usr/share/mwx7/icons/orb.png" "$B/logo.png"
+cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/welcome.jpg"
+cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/slide1.jpg"
+cp "$REPO/public/media/wallpapers/sierra.jpg" "$B/slide2.jpg"
+cp "$REPO/public/media/pictures/alpine-lake.jpg" "$B/slide3.jpg"
 : > "$ROOT/etc/fstab"   # live-boot mounts the root itself
 for d in dev dev/pts proc sys; do mount --bind "/$d" "$ROOT/$d"; done
-[ $REUSE = 1 ] || chroot "$ROOT" env EXTRA_PKGS="live-boot shim-signed grub-efi-amd64-signed" /tmp/chroot-setup.sh
-if [ "$FLAVOR" = desktop ]; then
-  cp -a "$HERE/desktop/overlay/." "$ROOT/"
-  mkdir -p "$ROOT/usr/share/mwx7/icons"
-  cp -a "$REPO/public/media/icons/." "$ROOT/usr/share/mwx7/icons/"
-  cp "$REPO/public/media/wallpapers/meadow.jpg" "$ROOT/usr/share/mwx7/wallpaper.jpg"
-  rm -rf "$ROOT/usr/share/mwx7/avatars"; cp -a "$REPO/public/media/avatars" "$ROOT/usr/share/mwx7/avatars"
-  # Wallpapers for MWX 7 Settings (stills; the web version's videos are too large for the ISO for now).
-  rm -rf "$ROOT/usr/share/mwx7/wallpapers"; mkdir -p "$ROOT/usr/share/mwx7/wallpapers"
-  cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
-     "$REPO/public/media/pictures/"*.jpg "$ROOT/usr/share/mwx7/wallpapers/"
-  echo "$VERSION" > "$ROOT/usr/share/mwx7/version"
-  # Installer pictures: the orb as its logo, MWX 7 wallpapers for the welcome page and the slides.
-  B="$ROOT/etc/calamares/branding/mwx7"
-  cp "$HERE/desktop/overlay/usr/share/mwx7/icons/orb.png" "$B/logo.png"
-  cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/welcome.jpg"
-  cp "$REPO/public/media/wallpapers/meadow.jpg" "$B/slide1.jpg"
-  cp "$REPO/public/media/wallpapers/sierra.jpg" "$B/slide2.jpg"
-  cp "$REPO/public/media/pictures/alpine-lake.jpg" "$B/slide3.jpg"
-  # Selawik (OFL), the font MWX 7 uses on the web, as TTF: Pango loads fonts through HarfBuzz, which can't read WOFF2.
-  rm -rf "$ROOT/usr/share/fonts/selawik"; mkdir -p "$ROOT/usr/share/fonts/selawik"
-  cp -a "$HERE/desktop/fonts/selawik/." "$ROOT/usr/share/fonts/selawik/"
-  for p in mwx7-decor mwx7-animate; do rm -rf "$ROOT/tmp/$p"; cp -a "$HERE/desktop/$p" "$ROOT/tmp/$p"; done
-  cp "$HERE/desktop/setup.sh" "$ROOT/tmp/"
-  chroot "$ROOT" /tmp/setup.sh
-  rm -f "$ROOT/tmp/setup.sh"
-fi
-chown -R 1000:1000 "$ROOT/opt/mwx7"
-rm -f "$ROOT/tmp/chroot-setup.sh"
+chroot "$ROOT" env MWX7_VERSION="$VERSION" /tmp/mwx7-src/distro/desktop/setup.sh
+mkdir -p "$OUT/deb"; rm -f "$OUT/deb/"*.deb; cp "$ROOT/tmp/mwx7-deb/"*.deb "$OUT/deb/"
+rm -rf "$ROOT/tmp/mwx7-src" "$ROOT/tmp/mwx7-deb"
 for d in dev/pts dev proc sys; do umount "$ROOT/$d"; done
 
-# 4. Kernel + initrd next to the compressed root. xz keeps the download small; the root is read once into the page
-#    cache, so decompression cost is only paid at boot.
+# 4. Kernel + initrd next to the compressed root. zstd at its strongest level is nearly as small as xz but unpacks
+#    many times faster on every core, which is what makes starting and installing quick.
 cp -L "$ROOT/vmlinuz" "$ISO_DIR/live/vmlinuz"
 cp -L "$ROOT/initrd.img" "$ISO_DIR/live/initrd.img"
 echo "==> squashfs"
-# Development rebuilds trade size for speed (zstd); releases use xz.
-COMP=(-comp xz); [ $REUSE = 1 ] && COMP=(-comp zstd -Xcompression-level 3)
-mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" "${COMP[@]}" -noappend -quiet -e boot/initrd.img-* -e boot/vmlinuz-*
+LEVEL=19; [ $REUSE = 1 ] && LEVEL=3   # development rebuilds: fast to make, a bit bigger
+LEVEL=${SQUASH_LEVEL:-$LEVEL}
+mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" -comp zstd -Xcompression-level $LEVEL -noappend -quiet -wildcards \
+  -e boot/initrd.img-* -e boot/vmlinuz-* -e tmp/* -e var/cache/apt/*.bin
 
-LABEL=""; [ "$FLAVOR" = classic ] && LABEL=" Classic (kiosk)"
 # 5. Hybrid ISO: one file that boots on BIOS and UEFI, from optical media or written raw to USB.
-#    "persistence": a partition labelled mwx7-data (made by Settings → Keep settings) keeps /home and Wi-Fi; without
-#    one the system simply starts fresh.
-#    The second entry copies the whole system into RAM (needs ~4 GB), so a USB stick can be pulled out afterwards.
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
 # Straight to the splash: the menu stays hidden unless Esc (or Shift) is held while it waits a moment.
 set timeout_style=hidden
@@ -100,13 +73,8 @@ set timeout=1
 set default=0
 # console=ttyS0 last makes the serial port the system console, so boot messages stay off the screen (and CI can
 # read them); the kernel still logs to the screen too.
-menuentry "MWX 7 $VERSION$LABEL" {
-  linux /live/vmlinuz boot=live components persistence persistence-label=mwx7-data quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
-  initrd /live/initrd.img
-}
-menuentry "MWX 7 $VERSION$LABEL (copy to RAM)" {
-  echo "Copying MWX 7 into memory, this takes a minute ..."
-  linux /live/vmlinuz boot=live components toram persistence persistence-label=mwx7-data quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
+menuentry "Set up MWX 7 $VERSION" {
+  linux /live/vmlinuz boot=live components quiet splash plymouth.ignore-serial-consoles loglevel=3 vt.global_cursor_default=0 console=tty0 console=ttyS0,115200
   initrd /live/initrd.img
 }
 GRUB
@@ -114,7 +82,7 @@ echo "==> ISO"
 # UEFI, Secure Boot capable: Microsoft-signed shim -> Debian-signed GRUB (the CD build) -> Debian-signed kernel, the
 # same chain Debian's own live images use. The signed GRUB only runs its built-in modules, so grub.cfg sticks to basics.
 # Its early config finds the ISO through /.disk/info; the stub grub.cfg next to it covers firmware that sets a prefix.
-mkdir -p "$ISO_DIR/.disk"; echo "MWX 7 $VERSION live" > "$ISO_DIR/.disk/info"
+mkdir -p "$ISO_DIR/.disk"; echo "MWX 7 $VERSION setup" > "$ISO_DIR/.disk/info"
 EFI_IMG="$OUT/efi.img"; rm -f "$EFI_IMG"
 truncate -s 8M "$EFI_IMG"; mkfs.vfat -n MWX7_EFI "$EFI_IMG" >/dev/null
 export MTOOLS_SKIP_CHECK=1
@@ -142,4 +110,4 @@ xorriso -as mkisofs -iso-level 3 -full-iso9660-filenames -joliet -rational-rock 
   -o "$ISO" "$ISO_DIR" 2>&1 | grep -vE '^xorriso : (UPDATE|NOTE)' || true
 rm -f "$EFI_IMG" "$OUT/efi-stub.cfg"
 ls -lh "$ISO"
-echo "==> Done: $ISO  (how to try it on Windows: distro/RELEASE_NOTES.md)"
+echo "==> Done: $ISO"

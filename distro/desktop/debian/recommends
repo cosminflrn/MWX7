@@ -1,0 +1,5 @@
+# Wanted, but MWX 7 still works without them.
+google-chrome-stable
+firmware-amd-graphics firmware-intel-graphics firmware-misc-nonfree firmware-realtek firmware-iwlwifi
+open-vm-tools spice-vdagent qemu-guest-agent
+cryptsetup cryptsetup-initramfs

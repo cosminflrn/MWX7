@@ -1,0 +1,7 @@
+# MWX 7's own updates (Settings -> Updates): new builds of the mwx7-desktop package. GitHub Actions publishes them to
+# the "updates" release of github.com/cosminflrn/MWX7, signed with the MWX 7 update key; apt installs nothing that
+# key did not sign.
+Types: deb
+URIs: https://github.com/cosminflrn/MWX7/releases/download/updates/
+Suites: ./
+Signed-By: /usr/share/keyrings/mwx7-updates.gpg

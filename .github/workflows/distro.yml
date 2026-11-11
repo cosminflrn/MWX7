@@ -1,11 +1,10 @@
 name: Live ISO
 
 # Builds the bootable MWX 7 ISO, boot-tests it in QEMU and attaches it to a GitHub release.
-# Runs when a release bumps the version in package.json on main, on version tags, and by hand from the Actions tab.
+# Only by hand (Actions tab) or for a version tag: installed systems get changes through the update channel
+# (updates.yml), so a new ISO is only needed for new installs.
 on:
   push:
-    branches: [main]
-    paths: ['package.json', 'distro/**']
     tags: ['v*']
   workflow_dispatch:
 
@@ -14,10 +13,12 @@ permissions:
 
 jobs:
   iso:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the build number is the commit count
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -28,22 +29,25 @@ jobs:
           sudo apt-get install -y -qq debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin qemu-system-x86 ovmf
       - name: Build ISO
         run: sudo -E env "PATH=$PATH" ./distro/build-iso.sh
-      - name: Boot test in QEMU (BIOS, UEFI, Secure Boot; the MWX 7 shell must start)
+      - name: Boot test in QEMU (BIOS, UEFI, Secure Boot; the first-start setup must appear)
         run: |
           sudo chmod 666 /dev/kvm 2>/dev/null || true
           sudo ./distro/smoke-test.sh 1500
       - name: Publish release
-        # distro-only changes rebuild and test the ISO; a new release needs a new version number.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          V=$(node -p "require('./package.json').version")
-          TAG="v$V"; F="mwx7-$V.iso"
+          V="$(node -p "require('./package.json').version").$(git rev-list --count HEAD)"
+          TAG="v$(node -p "require('./package.json').version")"; F="mwx7-$V.iso"
           cp distro/out/mwx7.iso "$F"
           sha256sum "$F" > "$F.sha256"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            [ "${{ github.event_name }}" = workflow_dispatch ] || { echo "Release $TAG exists; bump the version to publish."; exit 0; }
+            # One ISO per release: a rebuild replaces the previous one.
+            for old in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -E '\.iso(\.sha256)?$'); do
+              gh release delete-asset "$TAG" "$old" -y
+            done
             gh release upload "$TAG" "$F" "$F.sha256" --clobber
+            gh release edit "$TAG" --notes-file distro/RELEASE_NOTES.md
           else
             gh release create "$TAG" "$F" "$F.sha256" --target "$GITHUB_SHA" \
               --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md

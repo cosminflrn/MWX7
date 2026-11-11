@@ -1,0 +1,16 @@
+#!/bin/sh
+# Settings -> Updates, run as root through pkexec: MWX 7's own updates (the MWX 7 update channel), Debian's and
+# Chrome's, all through apt. "check" lists what would change; "install" installs it.
+set -e
+export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+case "$1" in
+  check)
+    apt-get update -q >/dev/null
+    apt list --upgradable 2>/dev/null | sed -n 's|^\([^/]*\)/[^ ]* \([^ ]*\) .*|\1 \2|p' ;;
+  install)
+    # Our config files win over a package's new defaults (and nothing stops to ask).
+    apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 full-upgrade
+    apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
+    apt-get clean ;;
+  *) echo "usage: mwx7-update check|install" >&2; exit 2 ;;
+esac

@@ -1,0 +1,10 @@
+#!/bin/sh
+# The first-start setup, full screen in cage (like the logon screen). When it ends without restarting the PC (it only
+# does that once MWX 7 is on the disk), greetd simply starts it again.
+export XDG_SESSION_TYPE=wayland
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+export WLR_NO_HARDWARE_CURSORS=1
+export GSK_RENDERER=cairo
+export GDK_BACKEND=wayland
+export GTK_A11Y=none
+exec cage -s -d -- /usr/bin/python3 /usr/share/mwx7/oobe/oobe.py > /tmp/mwx7-oobe.log 2>&1

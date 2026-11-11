@@ -1,5 +1,5 @@
 #!/bin/sh
-# Locks the screen (live session password: mwx7). Looks like the MWX 7 logon screen: the background is drawn by
+# Locks the screen. Looks like the MWX 7 logon screen: the background is drawn by
 # mwx7-lock-image (wallpaper, picture, name); swaylock adds only the password ring where the logon's field is.
 pgrep -u "$(id -u)" -x swaylock >/dev/null && exit 0
 WP=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/wallpaper" 2>/dev/null)

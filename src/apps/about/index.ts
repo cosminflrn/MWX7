@@ -4,12 +4,13 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.8.3';
+export const VERSION = '1.9.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
+  'MWX 7 OS: first-start setup that puts MWX 7 on the disk in minutes, optional password',
+  'MWX 7 OS: updates from Settings, no new ISO needed',
   'MWX 7 OS: no status bar freezes, smaller and faster to start',
-  'MWX 7 OS: Keep settings — remembers everything without installing',
   'MWX 7 OS: installer with disk encryption, MWX 7 logon screen',
   'MWX 7 OS: genie minimize into the dock, running apps in the dock',
   'MWX 7 OS: boot splash, Aero glass window frames with traffic lights, Settings app',
