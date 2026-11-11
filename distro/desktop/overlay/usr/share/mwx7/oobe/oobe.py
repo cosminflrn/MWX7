@@ -3,9 +3,11 @@
 ISO's setup user with sudo). As soon as the disk is chosen, install.py starts copying in the background, so most of
 the copying happens while the person fills in the rest. With --preview it runs as a normal window on an installed
 MWX 7 (Settings -> Updates) and changes nothing."""
+import faulthandler
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ gi.require_version('Gdk', '4.0')
 gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 
+faulthandler.register(signal.SIGUSR1)  # kill -USR1 prints every thread's stack to the log (for hangs)
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHARE = '/usr/share/mwx7'
 INSTALL = os.path.join(HERE, 'install.py')

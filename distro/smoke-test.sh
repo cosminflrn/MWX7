@@ -51,8 +51,10 @@ def say(t, wait):
             pass
     return out
 say('\n', 3); say('root\n', 5); say('root\n', 8)
-print(say('echo ===; tail -40 /tmp/mwx7-oobe.log; journalctl -b --no-pager -u greetd | tail -25; '
-          'ls -l /dev/dri; systemctl --failed --no-pager | head\n', 25).decode(errors='replace'))
+print(say('echo ===; pkill -USR1 -f oobe.py; sleep 2; tail -60 /tmp/mwx7-oobe.log; '
+          'journalctl -b --no-pager -u greetd | tail -8; ls -l /etc/sudoers.d; '
+          'ps -eo pid,stat,etime,args | grep -E "python|sudo|cage|timedatectl|nmcli" | grep -v grep\n', 30)
+      .decode(errors='replace'))
 PY
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   echo "FAIL $name: no '$want' within ${LIMIT}s" >&2
