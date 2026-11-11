@@ -41,7 +41,9 @@ cp -a "$HERE/desktop" "$ROOT/tmp/mwx7-src/distro/"
 cp "$REPO/CHANGELOG.md" "$ROOT/tmp/mwx7-src/"
 cp -a "$REPO/public/media/icons" "$REPO/public/media/avatars" "$REPO/public/media/pictures" "$ROOT/tmp/mwx7-src/public/media/"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" "$ROOT/tmp/mwx7-src/public/media/wallpapers/"
-cp -a "$HERE/desktop/live/." "$ROOT/"
+# Owned by root whoever checked the repo out (on GitHub the files belong to the runner user, uid 1001, and sudo
+# ignores a sudoers file it does not own: the setup could not get root and never appeared).
+cp -a --no-preserve=ownership "$HERE/desktop/live/." "$ROOT/"
 # Installer pictures for the advanced path: the orb as its logo, MWX 7 wallpapers for the welcome page and the slides.
 B="$ROOT/etc/calamares/branding/mwx7"
 cp "$HERE/desktop/overlay/usr/share/mwx7/icons/orb.png" "$B/logo.png"
