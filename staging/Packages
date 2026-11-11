@@ -1,0 +1,20 @@
+Package: mwx7-desktop
+Architecture: amd64
+Version: 1.9.0.195
+Priority: optional
+Section: x11
+Maintainer: MWX 7 <noreply@github.com>
+Installed-Size: 5368
+Depends: linux-image-amd64, initramfs-tools, systemd-sysv, dbus, libpam-systemd, grub-efi-amd64, grub-efi-amd64-signed, shim-signed, grub-pc-bin, efibootmgr, os-prober, btrfs-progs, dosfstools, e2fsprogs, fdisk, zstd, libgl1-mesa-dri, xwayland, fonts-dejavu-core, pipewire, pipewire-pulse, wireplumber, rtkit, alsa-utils, pciutils, ca-certificates, wayfire, swaybg, greetd, cage, dbus-user-session, mako-notifier, libnotify-bin, swaylock, swayidle, wlr-randr, python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-gtk4layershell-1.0, libgtk4-layer-shell0, librsvg2-common, xdg-desktop-portal, xdg-desktop-portal-wlr, xdg-desktop-portal-gtk, xdg-user-dirs, adwaita-icon-theme, fonts-noto-color-emoji, gsettings-desktop-schemas, dconf-gsettings-backend, libglib2.0-bin, plymouth, plymouth-themes, thunar, foot, network-manager, network-manager-gnome, polkitd, pkexec, lxpolkit, sudo, nftables, systemd-zram-generator, unattended-upgrades, apt-utils, locales, util-linux-extra
+Recommends: google-chrome-stable, firmware-amd-graphics, firmware-intel-graphics, firmware-misc-nonfree, firmware-realtek, firmware-iwlwifi, open-vm-tools, spice-vdagent, qemu-guest-agent, cryptsetup, cryptsetup-initramfs
+Filename: ./mwx7-desktop_1.9.0.195_amd64.deb
+Size: 3569486
+MD5sum: 4d5a0fc6c55d38cbdad4b4457d86a4fa
+SHA1: 2cce56ef1bdbb8312086fbb6a2d7b895681d0973
+SHA256: 31c5067213b88e45eb70522a2edb681da37aa560dbcf555148bec949514ab01b
+SHA512: aec17cf666c90fbc52fff66124eb792dfaf5f04fbe04e5c1b03c2ffec6c4ca3c2761c32075f1df2eb958ec6a334df1eb14be7b2a0219b3fe4bf0c820586dc947
+Homepage: https://github.com/cosminflrn/MWX7
+Description: MWX 7 desktop
+ The MWX 7 desktop on Debian: shell, apps, settings, logon screen, first-start setup, window frames and animations,
+ theme, fonts and boot menu.
+

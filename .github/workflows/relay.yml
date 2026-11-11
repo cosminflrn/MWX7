@@ -1,0 +1,25 @@
+name: Updates relay
+
+# Publishes channel files signed elsewhere (distro/sign-updates.sh) to the "updates" release: everything in staging/
+# is uploaded as is. Used while the signing key is not stored as the MWX7_UPDATES_KEY secret.
+on:
+  push:
+    branches: [updates-staging]
+
+permissions:
+  contents: write
+
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la staging
+          # Packages first, the signed index last, so systems never see an index whose files aren't there yet.
+          files=$(ls staging/*.deb 2>/dev/null || true)
+          [ -z "$files" ] || gh release upload updates -R "$GITHUB_REPOSITORY" --clobber $files
+          gh release upload updates -R "$GITHUB_REPOSITORY" --clobber staging/Packages staging/Packages.gz \
+            staging/Release staging/Release.gpg staging/InRelease
