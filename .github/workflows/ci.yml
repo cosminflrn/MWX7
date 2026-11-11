@@ -16,5 +16,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # The browser's system libraries come from the runner's apt sources; if one of those sources is down (11 Nov 2026
+      # every run stopped there), the libraries already on the runner usually suffice, so carry on and let the tests
+      # decide.
+      - run: npx playwright install-deps chromium || echo "::warning::Installing browser libraries failed; trying without"
+      - run: npx playwright install chromium
       - run: npm test
