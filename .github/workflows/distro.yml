@@ -1,10 +1,11 @@
 name: Live ISO
 
 # Builds the bootable MWX 7 ISO, boot-tests it in QEMU and attaches it to a GitHub release.
-# Only by hand (Actions tab) or for a version tag: installed systems get changes through the update channel
-# (updates.yml), so a new ISO is only needed for new installs.
+# Only by hand (Actions tab), for a version tag, or by pushing to the "iso" branch: installed systems get changes
+# through the update channel (updates.yml), so a new ISO is only needed for new installs.
 on:
   push:
+    branches: [iso]
     tags: ['v*']
   workflow_dispatch:
 
