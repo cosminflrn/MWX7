@@ -15,7 +15,7 @@ permissions:
 jobs:
   iso:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7
         with:
