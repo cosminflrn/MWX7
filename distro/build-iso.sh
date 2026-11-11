@@ -55,12 +55,12 @@ mkdir -p "$OUT/deb"; rm -f "$OUT/deb/"*.deb; cp "$ROOT/tmp/mwx7-deb/"*.deb "$OUT
 rm -rf "$ROOT/tmp/mwx7-src" "$ROOT/tmp/mwx7-deb"
 for d in dev/pts dev proc sys; do umount "$ROOT/$d"; done
 
-# 4. Kernel + initrd next to the compressed root. zstd at its strongest level is nearly as small as xz but unpacks
+# 4. Kernel + initrd next to the compressed root. zstd at a high level is nearly as small as xz but unpacks
 #    many times faster on every core, which is what makes starting and installing quick.
 cp -L "$ROOT/vmlinuz" "$ISO_DIR/live/vmlinuz"
 cp -L "$ROOT/initrd.img" "$ISO_DIR/live/initrd.img"
 echo "==> squashfs"
-LEVEL=19; [ $REUSE = 1 ] && LEVEL=3   # development rebuilds: fast to make, a bit bigger
+LEVEL=15; [ $REUSE = 1 ] && LEVEL=3   # 15: nearly the size of 19 at a fraction of the build time; dev: 3
 LEVEL=${SQUASH_LEVEL:-$LEVEL}
 mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" -comp zstd -Xcompression-level $LEVEL -noappend -quiet -wildcards \
   -e boot/initrd.img-* -e boot/vmlinuz-* -e tmp/* -e var/cache/apt/*.bin
