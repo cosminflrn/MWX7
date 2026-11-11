@@ -30,6 +30,9 @@ cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sie
 # Selawik (OFL) as TTF: Pango loads fonts through HarfBuzz, which can't read the website's WOFF2.
 cp -a "$HERE/fonts/selawik/." "$PKG/usr/share/fonts/selawik/"
 echo "$V" > "$S/version"
+# What's new (Settings -> Updates): the newest section of CHANGELOG.md, bullets only.
+awk '/^## /{n++; next} n!=1{next} /^- /{if (b) print b; b=substr($0,3); next} /^  /{sub(/^ +/," "); b=b $0; next}
+     END{if (b) print b}' "$REPO/CHANGELOG.md" | sed 's/\*\*//g' > "$S/whats-new" 2>/dev/null || true
 
 # MWX 7's Wayfire plugins (forks of Wayfire's MIT plugins): window frames and animations with the genie minimize.
 for p in mwx7-decor mwx7-animate; do

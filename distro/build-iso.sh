@@ -38,6 +38,7 @@ fi
 # 3. MWX 7: the mwx7-desktop package (built inside the image, see desktop/setup.sh) plus the ISO-only files.
 rm -rf "$ROOT/tmp/mwx7-src"; mkdir -p "$ROOT/tmp/mwx7-src/distro" "$ROOT/tmp/mwx7-src/public/media/wallpapers"
 cp -a "$HERE/desktop" "$ROOT/tmp/mwx7-src/distro/"
+cp "$REPO/CHANGELOG.md" "$ROOT/tmp/mwx7-src/"
 cp -a "$REPO/public/media/icons" "$REPO/public/media/avatars" "$REPO/public/media/pictures" "$ROOT/tmp/mwx7-src/public/media/"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" "$ROOT/tmp/mwx7-src/public/media/wallpapers/"
 cp -a "$HERE/desktop/live/." "$ROOT/"
