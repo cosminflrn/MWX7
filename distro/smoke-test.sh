@@ -27,7 +27,8 @@ boot() {  # $1 = test name, $2 = machine type, $3 = vga, rest = extra qemu args
   local name="$1" machine="$2" vga="$3"; shift 3
   local log="$OUT/smoke-$name.log" want="$WANT"; rm -f "$log"
   qemu-system-x86_64 -machine "$machine",accel=$ACCEL -cpu $CPU -smp 2 -m 3072 -display none $vga \
-    -cdrom "$ISO" -boot d -serial file:"$log" -no-reboot "$@" &
+    -cdrom "$ISO" -boot d -chardev socket,id=s0,path="$OUT/smoke-$name.sock",server=on,wait=off,logfile="$log" \
+    -serial chardev:s0 -no-reboot "$@" &
   local pid=$! t
   for ((t = 0; t < LIMIT; t += 5)); do
     if grep -aqE "$want" "$log" 2>/dev/null; then
@@ -37,6 +38,22 @@ boot() {  # $1 = test name, $2 = machine type, $3 = vga, rest = extra qemu args
     kill -0 $pid 2>/dev/null || { echo "FAIL $name: the VM stopped" >&2; tail -c 3000 "$log" >&2; return 1; }
     sleep 5
   done
+  # Log in on the serial console (the ISO's root password is only for this) and collect what the setup said.
+  python3 - "$OUT/smoke-$name.sock" <<'PY' >&2 || true
+import socket, sys, time
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.settimeout(1)
+def say(t, wait):
+    s.sendall(t.encode()); end = time.time() + wait; out = b''
+    while time.time() < end:
+        try:
+            out += s.recv(65536)
+        except socket.timeout:
+            pass
+    return out
+say('\n', 3); say('root\n', 5); say('root\n', 8)
+print(say('echo ===; tail -40 /tmp/mwx7-oobe.log; journalctl -b --no-pager -u greetd | tail -25; '
+          'ls -l /dev/dri; systemctl --failed --no-pager | head\n', 25).decode(errors='replace'))
+PY
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   echo "FAIL $name: no '$want' within ${LIMIT}s" >&2
   tr -d '\r' < "$log" | grep -aiE 'error|fail|segfault|panic|denied|violation|display' | tail -30 >&2
