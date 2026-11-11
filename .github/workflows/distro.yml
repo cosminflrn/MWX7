@@ -26,8 +26,15 @@ jobs:
           cache: npm
       - name: Install build tools
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq debootstrap squashfs-tools xorriso mtools dosfstools grub-pc-bin qemu-system-x86 ovmf
+          # The runner's Ubuntu mirror failed on 11 Nov 2026 (apt exit 100): retry, then fall back to the main archive.
+          for i in 1 2 3; do
+            sudo apt-get update -qq -o Acquire::Retries=3 &&
+              sudo apt-get install -y -qq -o Acquire::Retries=3 debootstrap squashfs-tools xorriso mtools dosfstools \
+                grub-pc-bin qemu-system-x86 ovmf && break
+            sudo sed -i 's#azure.archive.ubuntu.com#archive.ubuntu.com#g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+            sleep 30
+          done
+          command -v debootstrap mksquashfs xorriso qemu-system-x86_64
       - name: Build ISO
         run: sudo -E env "PATH=$PATH" ./distro/build-iso.sh
       - name: Boot test in QEMU (BIOS, UEFI, Secure Boot; the first-start setup must appear)
