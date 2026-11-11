@@ -5,6 +5,7 @@ has its password field. Cached per wallpaper and size; prints the path."""
 import hashlib
 import os
 import pwd
+import subprocess
 import sys
 
 import gi
@@ -21,9 +22,15 @@ name = (user.pw_gecos or '').split(',')[0].strip() or user.pw_name.capitalize()
 pic = f'/var/lib/AccountsService/icons/{user.pw_name}'
 if not os.path.exists(pic):
     pic = '/usr/share/mwx7/avatars/03-guitar.jpg'
+# An account without a password unlocks with Enter alone; say so, since there is nothing to type.
+try:
+    nopass = subprocess.run(['passwd', '-S'], capture_output=True, text=True, timeout=3).stdout.split()[1] == 'NP'
+except (OSError, IndexError, subprocess.TimeoutExpired):
+    nopass = False
+status = 'Locked · press Enter to unlock' if nopass else 'Locked'
 cache = os.path.join(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache')), 'mwx7')
 os.makedirs(cache, exist_ok=True)
-key = hashlib.sha1(f'{wall}|{os.path.getmtime(wall)}|{pic}|{name}|{W}x{H}|2'.encode()).hexdigest()[:16]
+key = hashlib.sha1(f'{wall}|{os.path.getmtime(wall)}|{pic}|{name}|{status}|{W}x{H}|2'.encode()).hexdigest()[:16]
 out = os.path.join(cache, f'lock-{key}.png')
 if os.path.exists(out):
     print(out)
@@ -67,7 +74,7 @@ def text(t, y, px, alpha, weight='Regular'):
         PangoCairo.layout_path(c, lay); c.fill()
     c.move_to(cx - tw / 2, y); c.set_source_rgba(1, 1, 1, alpha); PangoCairo.show_layout(c, lay)
 text(name, top + size + 18, 24, 1.0)
-text('Locked', top + size + 52, 14, 0.85)
+text(status, top + size + 52, 14, 0.85)
 s.write_to_png(out + '.tmp')
 os.replace(out + '.tmp', out)
 print(out)

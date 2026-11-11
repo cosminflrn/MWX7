@@ -2,6 +2,21 @@
 
 Derived from the git history. Newest first.
 
+## v1.9.0
+- **Set up instead of install**: the ISO starts straight into the MWX 7 setup — language, keyboard and time zone, where
+  MWX 7 goes, Wi-Fi, your name, picture and password. MWX 7 copies itself to the disk in the background while you fill
+  that in (zstd compression unpacks on every core), then restarts into the logon screen
+- **The disk page says what is on each disk** ("Windows, files", "Empty"). Nothing is erased unless you tick exactly
+  what will be deleted; "Use the free space" keeps everything. "Advanced" opens the full installer (next to Windows,
+  encryption)
+- **No password, if you like**: tick it in the setup; the logon screen then has a Sign in button and Enter unlocks the
+  lock screen. Settings → Account adds, changes or removes the password, changes the picture, and can skip the logon
+  screen when the PC starts (off by default)
+- **Updates without a new ISO**: Settings → Updates installs the newest MWX 7 (from the project's signed update
+  channel) together with Debian's and Chrome's updates. Settings → Updates also previews the first-start setup
+- Lighter: the old website (MWX 7 Classic) and its local web server are gone from the OS, and the live-only "Keep
+  settings" is replaced by the setup
+
 ## v1.8.3
 - **MWX 7 boot menu** on an installed system: the splash's deep blue with the orb, a frosted-glass list and a glossy
   selection, in Selawik. Entries read "MWX 7" and "Windows" instead of "MWX 7 GNU/Linux" and "Windows Boot Manager

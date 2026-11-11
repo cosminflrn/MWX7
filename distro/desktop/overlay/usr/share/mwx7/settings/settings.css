@@ -39,7 +39,7 @@ button.light-close:hover { background: radial-gradient(circle at 50% 75%, #ff938
 button.light-min:hover { background: radial-gradient(circle at 50% 75%, #ffe07a, #eba51a 75%); }
 button.light-max:hover { background: radial-gradient(circle at 50% 75%, #93ea78, #2aaf2a 75%); }
 window.mwx7-settings:backdrop button.light { background: radial-gradient(circle at 50% 75%, #dfe2e8, #9ea8b6 75%); }
-/* Keep settings: the one button that does something lasting, in MWX 7's glossy blue. */
+/* The buttons that do something lasting (Updates, Account), in MWX 7's glossy blue. */
 window.mwx7-settings button.suggested-action {
   color: #ffffff; font-weight: 600; border: 1px solid #154a96; border-radius: 4px; padding: 3px 14px;
   background: linear-gradient(to bottom, #7fc1ff, #2f7fe0 50%, #1c62c4 51%, #3f93f0);

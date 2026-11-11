@@ -10,7 +10,6 @@ import struct
 import subprocess
 import threading
 import time
-import urllib.request
 
 import gi
 import pwd
@@ -30,17 +29,11 @@ PINNED = [
     ('Google Chrome', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], ('google-chrome',)),
     ('Files', 'computer', ['thunar'], ('thunar',)),
     ('Terminal', 'text', ['foot'], ('foot',)),
-    # An app window of Google Chrome (its own window, no tabs or address bar).
-    ('MWX 7 Classic', 'about', ['google-chrome-stable', '--ozone-platform=wayland', '--app=http://127.0.0.1:8080/'],
-     ('chrome-127.0.0.1',)),
 ]
-# Log Off ends the Wayfire session, which returns to the MWX 7 logon screen. (The live session's password is mwx7.)
+# Log Off ends the Wayfire session, which returns to the MWX 7 logon screen.
 POWER_ACTIONS = [('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']),
                  ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']),
                  ('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
-# On the live medium the installer sits in the dock; an installed system has no installer.
-if os.path.exists('/usr/local/bin/mwx7-install'):
-    PINNED.append(('Install MWX 7', 'drive', ['/usr/local/bin/mwx7-install'], ('calamares', 'io.calamares')))
 
 
 class Ipc:
@@ -114,7 +107,7 @@ def apps_windows(views):
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
     'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
-    'mwx7-classic': 'about', 'chromium': 'browser', 'mwx7-settings': 'settings',
+    'chromium': 'browser', 'mwx7-settings': 'settings',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
@@ -169,7 +162,9 @@ class StartMenu(Gtk.Popover):
         head.add_css_class('sm-head')
         # Scale the photo up front: a Gtk.Picture asks for its full natural size and ignores size requests.
         try:
-            buf = GdkPixbuf.Pixbuf.new_from_file_at_scale('/usr/share/mwx7/avatars/03-guitar.jpg', 48, 48, False)
+            own = f'/var/lib/AccountsService/icons/{pwd.getpwuid(os.getuid()).pw_name}'
+            path = own if os.path.exists(own) else '/usr/share/mwx7/avatars/03-guitar.jpg'
+            buf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 48, 48, False)
             pic = Gtk.Image.new_from_paintable(Gdk.Texture.new_for_pixbuf(buf))
         except GLib.Error:
             pic = Gtk.Image.new_from_icon_name('avatar-default')
@@ -286,18 +281,6 @@ class Shell(Gtk.Application):
         GLib.timeout_add(200, self.tick_clock)
         threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
         self.refresh()
-        threading.Thread(target=self.announce, daemon=True).start()
-
-    @staticmethod
-    def announce():
-        # Tells the boot test (and anyone watching the system log) that the desktop is up.
-        for _ in range(30):
-            try:
-                urllib.request.urlopen('http://127.0.0.1:8080/__mwx7-shell-ready', timeout=2)
-            except Exception as e:  # a 404 still proves the request reached the server
-                if getattr(e, 'code', None) == 404:
-                    return
-            time.sleep(2)
 
     # ---- layer surfaces -------------------------------------------------------------------------------------------
     def layer_window(self, name, edges, height):

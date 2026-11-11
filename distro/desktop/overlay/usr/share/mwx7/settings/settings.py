@@ -5,6 +5,7 @@ changes apply immediately. The wallpaper is a separate swaybg process that this 
 """
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -23,8 +24,10 @@ CONF_DIR = os.path.join(GLib.get_user_config_dir(), 'mwx7')
 WF_INI = os.path.join(CONF_DIR, 'wayfire.ini')
 WALL_FILE = os.path.join(CONF_DIR, 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
-LIVE = os.path.exists('/usr/local/bin/mwx7-install')
-KEEP_LABEL = 'mwx7-data'
+ADMIN = '/usr/share/mwx7/bin/mwx7-admin'
+UPDATE = '/usr/share/mwx7/bin/mwx7-update'
+GREETD = '/etc/greetd/config.toml'
+USER = pwd.getpwuid(os.getuid()).pw_name
 
 # Window colours: (name, active RGBA, inactive RGBA), MWX 7's glass tints.
 COLORS = [
@@ -137,14 +140,14 @@ class Settings(Gtk.Application):
         self.stack.set_hexpand(True)
         pages = [
             ('personalize', 'Personalize', 'desktop', self.page_personalize),
+            ('account', 'Account', 'user', self.page_account),
             ('display', 'Display', 'computer', self.page_display),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
             ('datetime', 'Date & time', 'about', self.page_datetime),
+            ('updates', 'Updates', 'drive', self.page_updates),
             ('about', 'About', 'about', self.page_about),
         ]
-        if LIVE:
-            pages.insert(0, ('keep', 'Keep settings', 'drive', self.page_keep))
         for pid, label, icon, build in pages:
             row = Gtk.ListBoxRow()
             row.pid = pid
@@ -160,7 +163,7 @@ class Settings(Gtk.Application):
             scroll.set_child(build())
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
-        nav.select_row(nav.get_row_at_index(0))  # Keep settings comes first on the live medium
+        nav.select_row(nav.get_row_at_index(0))
         root.append(nav)
         root.append(self.stack)
         w.set_child(root)
@@ -388,98 +391,241 @@ class Settings(Gtk.Application):
         p.append(note('The clock uses the 24-hour format with seconds.'))
         return p
 
-    # ---- Keep settings (live session only) --------------------------------------------------------------------------
+    # ---- Account ----------------------------------------------------------------------------------------------------
     @staticmethod
-    def disks():
+    def has_password():
         try:
-            tree = json.loads(run(['lsblk', '-J', '-b', '-o', 'NAME,SIZE,TYPE,PTTYPE,FSTYPE,LABEL,MODEL,MOUNTPOINTS']))
-        except ValueError:
-            return None, []
-        kept, blank = None, []
-        for d in tree.get('blockdevices', []):
-            for part in d.get('children') or []:
-                if part.get('label') == KEEP_LABEL:
-                    kept = d
-            if (d.get('type') == 'disk' and not d.get('children') and not d.get('pttype') and not d.get('fstype')
-                    and int(d.get('size') or 0) >= 2_000_000_000 and not d['name'].startswith(('zram', 'loop'))):
-                blank.append(d)
-        return kept, blank
+            return run(['passwd', '-S']).split()[1] != 'NP'
+        except IndexError:
+            return True
 
-    def page_keep(self):
+    @staticmethod
+    def autologin():
+        try:
+            text = open(GREETD).read()
+        except OSError:
+            return False
+        return '[initial_session]' in text and f'user = "{USER}"' in text.split('[initial_session]', 1)[1]
+
+    def admin(self, args, done, stdin=None):
+        """Runs mwx7-admin through pkexec (MWX 7 asks for the password if the account has one) off the UI thread."""
+        def work():
+            try:
+                r = subprocess.run(['pkexec', ADMIN] + args, input=stdin, capture_output=True, text=True, timeout=300)
+                ok, err = r.returncode == 0, (r.stderr.strip().splitlines() or [''])[-1]
+            except (OSError, subprocess.TimeoutExpired) as e:
+                ok, err = False, str(e)
+            GLib.idle_add(lambda: done(ok, 'Not allowed.' if not ok and not err else err) and False)
+        threading.Thread(target=work, daemon=True).start()
+
+    def page_account(self):
         p = page()
-        p.append(heading('Keep settings'))
-        p.append(note('MWX 7 is running from its ISO, so it starts fresh every time. Give it an empty disk and it '
-                      'remembers your wallpaper, settings, Chrome sign-in, files and Wi-Fi networks, with no installing. '
-                      'Starting a newer MWX 7 ISO with the same disk keeps all of it.'))
+        p.append(heading('Account'))
+        me = pwd.getpwuid(os.getuid())
+        head = Gtk.Box(spacing=14)
+        own = f'/var/lib/AccountsService/icons/{USER}'
+        self.account_pic = thumb(own if os.path.exists(own) else '/usr/share/mwx7/avatars/03-guitar.jpg', 64, 64)
+        head.append(self.account_pic)
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
+        name = Gtk.Label(label=(me.pw_gecos or '').split(',')[0] or USER, xalign=0)
+        name.add_css_class('section')
+        v.append(name)
+        v.append(note(f'Signs in as “{USER}” · Administrator'))
+        head.append(v)
+        p.append(head)
         status = note('')
         status.add_css_class('status')
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        p.append(box)
+
+        p.append(section('Picture'))
+        flow = Gtk.FlowBox(max_children_per_line=10, min_children_per_line=5, selection_mode=Gtk.SelectionMode.NONE,
+                           column_spacing=6, row_spacing=6)
+        for f in sorted(os.listdir('/usr/share/mwx7/avatars')):
+            path = os.path.join('/usr/share/mwx7/avatars', f)
+            b = Gtk.Button()
+            b.add_css_class('swatch')
+            b.set_child(thumb(path, 44, 44))
+            b.connect('clicked', lambda _b, pth=path: self.admin(
+                ['picture', pth], lambda ok, err, pth=pth: (status.set_label('Picture changed.' if ok else err),
+                                                          ok and head.remove(self.account_pic) is None and
+                                                          self.swap_pic(head, pth))))
+            flow.append(b)
+        p.append(flow)
+
+        p.append(section('Password'))
+        pw_note = note('')
+        p.append(pw_note)
+        row = Gtk.Box(spacing=8)
+        set_btn = Gtk.Button()
+        remove_btn = Gtk.Button(label='Remove password')
+        row.append(set_btn)
+        row.append(remove_btn)
+        p.append(row)
+
+        def refresh():
+            has = self.has_password()
+            pw_note.set_label('Your account has a password: the logon and lock screens ask for it.' if has else
+                              'Your account has no password: anyone at this PC can use it. Adding one is a good '
+                              'idea on a PC others can reach.')
+            set_btn.set_label('Change password' if has else 'Add a password')
+            remove_btn.set_visible(has)
+
+        def ask_password(*_):
+            dlg = Gtk.Window(title='Password', modal=True, transient_for=self.get_active_window())
+            dlg.add_css_class('mwx7-settings')
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16,
+                          margin_start=18, margin_end=18)
+            a = Gtk.PasswordEntry(placeholder_text='New password', show_peek_icon=True)
+            b = Gtk.PasswordEntry(placeholder_text='Type it again', show_peek_icon=True)
+            msg = note('')
+            btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+            cancel = Gtk.Button(label='Cancel')
+            ok = Gtk.Button(label='Save')
+            ok.add_css_class('suggested-action')
+            ok.set_sensitive(False)
+            for e in (a, b):
+                e.connect('changed', lambda *_: ok.set_sensitive(bool(a.get_text()) and a.get_text() == b.get_text()))
+            cancel.connect('clicked', lambda *_: dlg.close())
+
+            def save(*_):
+                ok.set_sensitive(False)
+                msg.set_label('Saving…')
+                self.admin(['password'], lambda good, err: (status.set_label('Password saved.' if good else err),
+                                                            refresh(), dlg.close()), stdin=a.get_text() + '\n')
+            ok.connect('clicked', save)
+            btns.append(cancel)
+            btns.append(ok)
+            for w in (a, b, msg, btns):
+                box.append(w)
+            dlg.set_child(box)
+            dlg.present()
+
+        set_btn.connect('clicked', ask_password)
+        remove_btn.connect('clicked', lambda *_: self.admin(
+            ['nopassword'], lambda ok, err: (status.set_label('Password removed.' if ok else err), refresh())))
+        refresh()
+
+        p.append(section('Starting the PC'))
+        auto = Gtk.CheckButton(label='Go straight to the desktop when the PC starts (skip the logon screen)')
+        auto.set_active(self.autologin())
+
+        def on_auto(c):
+            want = c.get_active()
+            if want == self.autologin():
+                return
+            self.admin(['autologin', 'on' if want else 'off'], lambda ok, err: (
+                status.set_label(('On: the desktop starts by itself after the PC starts.' if want else
+                                  'Off: the PC starts at the logon screen.') if ok else err),
+                ok or c.set_active(not want)))
+        auto.connect('toggled', on_auto)
+        p.append(auto)
+        p.append(note('Logging off or locking still shows the logon or lock screen.'))
         p.append(status)
-        mounted = os.path.isdir('/run/live/persistence') and bool(os.listdir('/run/live/persistence'))
+        return p
 
-        def fill():
-            while (c := box.get_first_child()):
-                box.remove(c)
-            kept, blank = self.disks()
-            if kept and mounted:
-                box.append(section('Your settings are kept'))
-                box.append(note(f"On {kept.get('model') or kept['name']} ({int(kept['size']) / 1e9:.0f} GB)."))
-                return
-            if kept:
-                box.append(section('Ready'))
-                box.append(note('The disk is set up. MWX 7 starts keeping your settings from the next start, so '
-                                'restart now: what you change before that is not kept.'))
-                b = Gtk.Button(label='Restart now')
-                b.add_css_class('suggested-action')
-                b.set_halign(Gtk.Align.START)
-                b.connect('clicked', lambda *_: subprocess.Popen(['systemctl', 'reboot']))
-                box.append(b)
-                return
-            box.append(section('Empty disks'))
-            if not blank:
-                box.append(note('There is no empty disk. In VMware or VirtualBox, give the virtual machine a new '
-                                '(empty) virtual disk of 4 GB or more and start again. Disks that hold anything are '
-                                'never touched here.'))
-            for d in blank:
-                row = Gtk.Box(spacing=12)
-                lbl = Gtk.Label(label=f"{d.get('model') or 'Disk'} — {int(d['size']) / 1e9:.0f} GB (/dev/{d['name']})",
-                                xalign=0, hexpand=True)
-                row.append(lbl)
-                b = Gtk.Button(label='Use this disk')
-                b.add_css_class('suggested-action')
-                b.connect('clicked', lambda _b, dev=d: ask(dev))
-                row.append(b)
-                box.append(row)
+    def swap_pic(self, head, path):
+        self.account_pic = thumb(path, 64, 64)
+        head.prepend(self.account_pic)
 
-        def ask(dev):
-            dlg = Gtk.AlertDialog()
-            dlg.set_message(f"Use /dev/{dev['name']} to keep your settings?")
-            dlg.set_detail('The disk is empty, so nothing is lost. It is set up for MWX 7 and cannot hold anything '
-                           'else afterwards (until it is erased again).')
-            dlg.set_buttons(['Cancel', 'Use this disk'])
-            dlg.set_cancel_button(0)
-            dlg.set_default_button(1)
-            dlg.choose(self.get_active_window(), None, lambda d, res: d.choose_finish(res) == 1 and go(dev))
+    # ---- Updates ----------------------------------------------------------------------------------------------------
+    def page_updates(self):
+        p = page()
+        p.append(heading('Updates'))
+        try:
+            version = open('/usr/share/mwx7/version').read().strip()
+        except OSError:
+            version = '?'
+        current = note(f'You have MWX 7 {version}.')
+        p.append(current)
+        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. Security fixes '
+                      'also install by themselves every day.'))
+        status = Gtk.Label(xalign=0, wrap=True)
+        status.add_css_class('status')
+        detail = note('')
+        row = Gtk.Box(spacing=8)
+        check = Gtk.Button(label='Check for updates')
+        check.add_css_class('suggested-action')
+        install = Gtk.Button(label='Install now')
+        install.add_css_class('suggested-action')
+        install.set_visible(False)
+        restart = Gtk.Button(label='Restart now')
+        restart.add_css_class('suggested-action')
+        restart.set_visible(False)
+        restart.connect('clicked', lambda *_: subprocess.Popen(['systemctl', 'reboot']))
+        for b in (check, install, restart):
+            row.append(b)
+        for w in (row, status, detail):
+            p.append(w)
 
-        def go(dev):
-            status.set_label('Setting up the disk…')
-            box.set_sensitive(False)
+        def busy(on):
+            check.set_sensitive(not on)
+            install.set_sensitive(not on)
+
+        def on_check(*_):
+            busy(True)
+            status.set_label('Checking…')
+            detail.set_label('')
 
             def work():
-                r = subprocess.run(['sudo', '-n', '/usr/share/mwx7/bin/mwx7-keep-settings', '/dev/' + dev['name']],
-                                   capture_output=True, text=True)
-                GLib.idle_add(done, r)
+                r = subprocess.run(['pkexec', UPDATE, 'check'], capture_output=True, text=True)
+                GLib.idle_add(checked, r)
             threading.Thread(target=work, daemon=True).start()
 
-        def done(r):
-            box.set_sensitive(True)
-            status.set_label('' if r.returncode == 0
-                             else 'That did not work: ' + (r.stderr.strip().splitlines() or ['unknown error'])[-1])
-            fill()
+        def checked(r):
+            busy(False)
+            if r.returncode != 0:
+                status.set_label('Could not check for updates. Is the PC online?')
+                detail.set_label((r.stderr.strip().splitlines() or [''])[-1])
+                return False
+            pkgs = [l.split() for l in r.stdout.splitlines() if l.strip()]
+            if not pkgs:
+                status.set_label('MWX 7 is up to date.')
+                install.set_visible(False)
+                return False
+            ours = next((v for n, v in pkgs if n == 'mwx7-desktop'), None)
+            others = len(pkgs) - (1 if ours else 0)
+            parts = ([f'MWX 7 {ours}'] if ours else []) + ([f'{others} other update' + ('s' if others != 1 else '')]
+                                                         if others else [])
+            status.set_label('Available: ' + ' and '.join(parts) + '.')
+            install.set_visible(True)
             return False
 
-        fill()
+        def on_install(*_):
+            busy(True)
+            status.set_label('Installing updates… You can keep working.')
+
+            def work():
+                proc = subprocess.Popen(['pkexec', UPDATE, 'install'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True)
+                for line in proc.stdout:
+                    line = line.strip()
+                    if line.startswith(('Unpacking', 'Setting up', 'Get:', 'Preparing')):
+                        GLib.idle_add(detail.set_label, line[:120])
+                GLib.idle_add(installed, proc.wait())
+            threading.Thread(target=work, daemon=True).start()
+
+        def installed(code):
+            busy(False)
+            install.set_visible(False)
+            if code == 0:
+                try:
+                    current.set_label(f"You have MWX 7 {open('/usr/share/mwx7/version').read().strip()}.")
+                except OSError:
+                    pass
+                status.set_label('Updates installed. Restart to use everything that changed.')
+                detail.set_label('')
+                restart.set_visible(True)
+            else:
+                status.set_label('Installing updates did not finish. Try again in a moment.')
+            return False
+
+        check.connect('clicked', on_check)
+        install.connect('clicked', on_install)
+
+        p.append(section('First-start setup'))
+        p.append(note('See the setup a new MWX 7 PC starts with. It is only a preview: nothing is changed.'))
+        prev = Gtk.Button(label='Preview the first-start setup', halign=Gtk.Align.START)
+        prev.connect('clicked', lambda *_: subprocess.Popen(['python3', '/usr/share/mwx7/oobe/oobe.py', '--preview']))
+        p.append(prev)
         return p
 
     # ---- About ------------------------------------------------------------------------------------------------------

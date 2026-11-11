@@ -18,7 +18,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SHARE = '/usr/share/mwx7'
 SESSION = ['/usr/local/bin/mwx7-session']
 LAST_USER = os.path.expanduser('~/last-user')
-LIVE = os.path.exists('/usr/local/bin/mwx7-install')  # the greeter's own home (/var/lib/greetd)
 
 
 def people():
@@ -51,6 +50,17 @@ class Greetd:
                 raise ConnectionError('greetd closed the connection')
             buf += chunk
         return buf
+
+
+def needs_password(username):
+    """Accounts set up with "No password" get straight in: PAM accepts them without asking anything."""
+    try:
+        g = Greetd()
+        r = g.ask(type='create_session', username=username)
+        g.ask(type='cancel_session')
+        return r.get('type') != 'success'
+    except (OSError, KeyError, ValueError):
+        return True
 
 
 def log_in(username, password):
@@ -121,6 +131,12 @@ class Greeter(Gtk.Application):
         self.go.connect('clicked', self.on_go)
         row.append(self.go)
         col.append(row)
+        self.pw_row = row
+        self.signin = Gtk.Button(label='Sign in')
+        self.signin.add_css_class('signin')
+        self.signin.set_halign(Gtk.Align.CENTER)
+        self.signin.connect('clicked', self.on_go)
+        col.append(self.signin)
         self.message = Gtk.Label()
         self.message.add_css_class('message')
         col.append(self.message)
@@ -181,7 +197,6 @@ class Greeter(Gtk.Application):
         self.choose(next((u for u in self.users if u[0] == last), self.users[0] if self.users else ('root', 'root')))
         win.fullscreen()
         win.present()
-        self.password.grab_focus()
 
     def picture_of(self, login, size):
         # A picture the person chose (same place other Linux desktops use), else MWX 7's default.
@@ -204,10 +219,12 @@ class Greeter(Gtk.Application):
             self.avatar.set_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 112, 112, False))
         except GLib.Error:
             pass
-        # On the live medium, say what the password is: nobody chose it.
-        self.message.set_label('Live session: the password is mwx7' if user[0] == 'mwx' and LIVE else '')
+        self.message.set_label('')
         self.password.set_text('')
-        self.password.grab_focus()
+        self.no_password = not needs_password(user[0])
+        self.pw_row.set_visible(not self.no_password)
+        self.signin.set_visible(self.no_password)
+        (self.signin if self.no_password else self.password).grab_focus()
 
     def tick(self):
         self.clock.set_label(time.strftime('%H:%M\n%A, %-d %B'))
@@ -215,9 +232,10 @@ class Greeter(Gtk.Application):
 
     def on_go(self, *_):
         password = self.password.get_text()
-        if not password or not self.go.get_sensitive():
+        if (not password and not self.no_password) or not self.go.get_sensitive():
             return
         self.go.set_sensitive(False)
+        self.signin.set_sensitive(False)
         self.password.set_sensitive(False)
         self.message.set_label('Welcome')
         login = self.user[0]
@@ -238,6 +256,7 @@ class Greeter(Gtk.Application):
             return False
         self.message.set_label(problem)
         self.go.set_sensitive(True)
+        self.signin.set_sensitive(True)
         self.password.set_sensitive(True)
         self.password.set_text('')
         self.password.grab_focus()

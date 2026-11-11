@@ -1,2 +1,0 @@
-# Live session only (removed by the installer): there is no password on a live medium.
-mwx ALL=(ALL) NOPASSWD:SETENV: ALL

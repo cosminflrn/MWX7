@@ -1,4 +1,3 @@
 #!/bin/sh
-# Locks after 10 idle minutes and before the PC sleeps. Not on the live medium: its user has no password to unlock with.
-[ -e /usr/local/bin/mwx7-install ] && exit 0
+# Locks after 10 idle minutes and before the PC sleeps.
 exec swayidle -w timeout 600 /usr/share/mwx7/bin/mwx7-lock before-sleep /usr/share/mwx7/bin/mwx7-lock

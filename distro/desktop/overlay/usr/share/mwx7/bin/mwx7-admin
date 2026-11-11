@@ -1,0 +1,51 @@
+#!/usr/bin/python3
+"""Settings -> Account, run as root through pkexec. Each action only ever changes the account of the person who asked
+(pkexec says who that is), never another one.
+  mwx7-admin autologin on|off      start straight to this person's desktop when the PC starts (off: logon screen)
+  mwx7-admin password              set a new password, read from standard input
+  mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
+  mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
+"""
+import os
+import pwd
+import shutil
+import subprocess
+import sys
+
+GREETD = '/etc/greetd/config.toml'
+
+
+def main():
+    uid = os.environ.get('PKEXEC_UID')
+    if os.geteuid() != 0 or not uid:
+        sys.exit('run through pkexec')
+    user = pwd.getpwuid(int(uid)).pw_name
+    cmd = sys.argv[1:]
+    if cmd[:1] == ['autologin'] and cmd[1:] in (['on'], ['off']):
+        text = ('# Written by MWX 7 (first-start setup, Settings -> Account).\n[terminal]\nvt = 1\n\n'
+                '[default_session]\ncommand = "/usr/local/bin/mwx7-greeter-session"\nuser = "_greetd"\n')
+        if cmd[1] == 'on':
+            text += f'\n[initial_session]\ncommand = "/usr/local/bin/mwx7-session"\nuser = "{user}"\n'
+        with open(GREETD + '.tmp', 'w') as f:
+            f.write(text)
+        os.chmod(GREETD + '.tmp', 0o644)
+        os.replace(GREETD + '.tmp', GREETD)
+    elif cmd == ['password']:
+        new = sys.stdin.readline().rstrip('\n')
+        if not new:
+            sys.exit('empty password')
+        subprocess.run(['chpasswd'], input=f'{user}:{new}\n', text=True, check=True)
+    elif cmd == ['nopassword']:
+        subprocess.run(['passwd', '-d', user], check=True, capture_output=True)
+    elif cmd[:1] == ['picture'] and len(cmd) == 2:
+        src = os.path.realpath(cmd[1])
+        if not (src.startswith('/usr/share/mwx7/avatars/') or src.startswith(pwd.getpwnam(user).pw_dir + '/')):
+            sys.exit('pictures come from MWX 7 or your own folders')
+        os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
+        shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
+        os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
+    else:
+        sys.exit(__doc__)
+
+
+main()

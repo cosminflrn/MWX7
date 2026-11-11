@@ -1,0 +1,32 @@
+---
+componentName:   mwx7
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 900px,620px
+windowPlacement: center
+strings:
+    productName:         MWX 7
+    shortProductName:    MWX 7
+    version:             "@VERSION@"
+    shortVersion:        "@VERSION@"
+    versionedName:       MWX 7 @VERSION@
+    shortVersionedName:  MWX 7
+    bootloaderEntryName: MWX 7
+    productUrl:          https://github.com/cosminflrn/MWX7
+    supportUrl:          https://github.com/cosminflrn/MWX7/issues
+    knownIssuesUrl:      https://github.com/cosminflrn/MWX7/issues
+    releaseNotesUrl:     https://github.com/cosminflrn/MWX7/releases
+sidebar: widget
+navigation: widget
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+    productWelcome:      "welcome.jpg"
+slideshow:               "show.qml"
+slideshowAPI: 2
+style:
+   SidebarBackground:        "#dcebfa"
+   SidebarText:              "#1e3a5f"
+   SidebarTextCurrent:       "#0b2a4d"
+   SidebarBackgroundCurrent: "#a9d0f5"

@@ -1,0 +1,2 @@
+# ISO only (never on an installed system): the first-start setup runs as this user and needs root to set up the disk.
+mwx ALL=(ALL) NOPASSWD:SETENV: ALL
