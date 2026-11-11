@@ -3,6 +3,8 @@
 Derived from the git history. Newest first.
 
 ## v1.9.0
+- **"Updates available" notification**: a few minutes after you sign in (and every few hours), MWX 7 says when an
+  update is waiting; click it to open Settings → Updates
 - **What's new in Settings → Updates**: after an update, the Updates page lists what changed (the first update
   delivered through the new update channel)
 - **Set up instead of install**: the ISO starts straight into the MWX 7 setup — language, keyboard and time zone, where
