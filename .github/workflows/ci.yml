@@ -7,7 +7,8 @@ on:
 # added a second chance for GitHub to fail to start a runner (a "No jobs were run" email on 9 Nov 2026).
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: "ubuntu-latest" is moving to the Ubuntu 26 beta, where the browser test setup fails.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

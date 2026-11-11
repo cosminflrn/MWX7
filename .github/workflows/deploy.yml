@@ -18,7 +18,7 @@ jobs:
   # A version that fails the end-to-end checks never goes live. `npm test` builds first, so the tested dist/ is the one
   # that is published (one job instead of two: fewer runners that GitHub can fail to start).
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -34,7 +34,7 @@ jobs:
 
   deploy:
     needs: e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.retry.outputs.page_url || steps.deployment.outputs.page_url }}
