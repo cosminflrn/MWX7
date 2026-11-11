@@ -44,8 +44,11 @@ jobs:
         run: |
           sudo chmod 666 /dev/kvm 2>/dev/null || true
           # Failures are also reported as annotations (readable without the job log).
-          sudo ./distro/smoke-test.sh 1500 > smoke.log 2>&1 || { cat smoke.log
-            echo "::error::Boot test failed: $(grep -a 'FAIL\|PASS' smoke.log | tr '\n' ' ' | tail -c 400)"; exit 1; }
+          sudo ./distro/smoke-test.sh 900 > smoke.log 2>&1 || { cat smoke.log
+            echo "::error::Boot test failed: $(tr -d '\r' < smoke.log | grep -av '^\s*$' | tail -40 | tr '\n' '|' | tail -c 3500)"
+            for t in bios uefi secureboot; do
+              echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
+            done; exit 1; }
           cat smoke.log
       - name: Publish release
         env:
