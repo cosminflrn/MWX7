@@ -36,17 +36,24 @@ jobs:
           done
           command -v debootstrap mksquashfs xorriso qemu-system-x86_64
       - name: Build ISO
-        run: sudo -E env "PATH=$PATH" ./distro/build-iso.sh
+        run: |
+          sudo -E env "PATH=$PATH" ./distro/build-iso.sh > build.log 2>&1 || { tail -50 build.log
+            echo "::error::ISO build failed: $(tail -5 build.log | tr '\n' ' ' | tail -c 400)"; exit 1; }
+          tail -5 build.log
       - name: Boot test in QEMU (BIOS, UEFI, Secure Boot; the first-start setup must appear)
         run: |
           sudo chmod 666 /dev/kvm 2>/dev/null || true
-          sudo ./distro/smoke-test.sh 1500
+          # Failures are also reported as annotations (readable without the job log).
+          sudo ./distro/smoke-test.sh 1500 > smoke.log 2>&1 || { cat smoke.log
+            echo "::error::Boot test failed: $(grep -a 'FAIL\|PASS' smoke.log | tr '\n' ' ' | tail -c 400)"; exit 1; }
+          cat smoke.log
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="$(node -p "require('./package.json').version").$(git rev-list --count HEAD)"
           TAG="v$(node -p "require('./package.json').version")"; F="mwx7-$V.iso"
+          trap 'echo "::error::Publishing failed at line $LINENO"' ERR
           cp distro/out/mwx7.iso "$F"
           sha256sum "$F" > "$F.sha256"
           if gh release view "$TAG" >/dev/null 2>&1; then
