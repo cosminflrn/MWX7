@@ -3,6 +3,8 @@
 Derived from the git history. Newest first.
 
 ## v1.9.0
+- **What's new in Settings → Updates**: after an update, the Updates page lists what changed (the first update
+  delivered through the new update channel)
 - **Set up instead of install**: the ISO starts straight into the MWX 7 setup — language, keyboard and time zone, where
   MWX 7 goes, Wi-Fi, your name, picture and password. MWX 7 copies itself to the disk in the background while you fill
   that in (zstd compression unpacks on every core), then restarts into the logon screen

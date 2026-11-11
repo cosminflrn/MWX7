@@ -541,6 +541,21 @@ class Settings(Gtk.Application):
         status = Gtk.Label(xalign=0, wrap=True)
         status.add_css_class('status')
         detail = note('')
+        news = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+
+        def show_news():
+            while (c := news.get_first_child()):
+                news.remove(c)
+            try:
+                lines = [l.strip() for l in open('/usr/share/mwx7/whats-new') if l.strip()]
+            except OSError:
+                lines = []
+            if lines:
+                news.append(section('What’s new in this version'))
+                for l in lines[:6]:
+                    # The first sentence is enough here; the rest stays in the changelog.
+                    short = l.split(': ', 1)[0] if len(l) > 140 else l
+                    news.append(note('• ' + (short if len(short) <= 160 else short[:157] + '…')))
         row = Gtk.Box(spacing=8)
         check = Gtk.Button(label='Check for updates')
         check.add_css_class('suggested-action')
@@ -553,8 +568,9 @@ class Settings(Gtk.Application):
         restart.connect('clicked', lambda *_: subprocess.Popen(['systemctl', 'reboot']))
         for b in (check, install, restart):
             row.append(b)
-        for w in (row, status, detail):
+        for w in (row, status, detail, news):
             p.append(w)
+        show_news()
 
         def busy(on):
             check.set_sensitive(not on)
@@ -612,6 +628,7 @@ class Settings(Gtk.Application):
                 except OSError:
                     pass
                 status.set_label('Updates installed. Restart to use everything that changed.')
+                show_news()
                 detail.set_label('')
                 restart.set_visible(True)
             else:
