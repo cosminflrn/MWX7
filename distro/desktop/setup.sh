@@ -44,6 +44,8 @@ rm -f /etc/apt/sources.list.d/google-chrome.sources
 # The live user that runs the first-start setup (the setup replaces it with the person's own account).
 id mwx >/dev/null 2>&1 || useradd -m -s /bin/bash -c 'MWX 7 Setup' -G video,render,input,audio,netdev mwx
 chmod 0440 /etc/sudoers.d/mwx7-live
+chown root:root /etc/sudoers.d/mwx7-live
+visudo -c >/dev/null  # stop the build if sudo would reject its configuration
 chmod 0755 /usr/local/bin/mwx7-install /usr/local/bin/mwx7-oobe-session
 sed -i "s/@VERSION@/$(cat /usr/share/mwx7/version)/g" /etc/calamares/branding/mwx7/branding.desc
 # Only for debugging the ISO from its serial console; the first-start setup locks root on the installed system.
