@@ -222,3 +222,8 @@ menubutton.app-btn > button:hover, menubutton.app-btn > button:checked {
 .bar-wc button.wc-max { background-image: radial-gradient(circle at 50% 25%, #ffdf8a 0, #febc2e 55%, #df9c12 100%); }
 .bar-wc button.wc-close { background-image: radial-gradient(circle at 50% 25%, #ff8d86 0, #ff5f57 55%, #e0443a 100%); }
 .bar-wc button.wc:hover { filter: brightness(1.12); }
+
+/* Logging off / Shutting down: MWX 7 blue, as the concept's screens. */
+window.goodbye { background: radial-gradient(circle at 50% 40%, #2d6fc4, #123f7e 55%, #071e45); }
+window.goodbye .goodbye-text { color: #ffffff; font-size: 22px; font-weight: 300; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+window.goodbye spinner { color: #ffffff; }

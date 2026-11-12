@@ -1,0 +1,2 @@
+MWX 7's startup, log-off, notification and error sounds, recorded from the concept's own sound engine (src/core/sound.ts),
+which plays original phrases on FluidR3 GM instrument samples (MIT licence, see public/audio/system/LICENSE.txt).

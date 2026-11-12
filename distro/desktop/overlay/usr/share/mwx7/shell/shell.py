@@ -62,12 +62,52 @@ def pending_updates():
         return 0, ''
 
 
+SOUND = '/usr/share/mwx7/bin/mwx7-sound'
+
+
+def goodbye(cmd):
+    """Log Off, Restart and Shut Down as in the concept: the screen fades to MWX 7 blue with "Logging off…", the log-off
+    chime plays, then the session ends. Anything else (Lock) just runs."""
+    text = {'reboot': 'Restarting\u2026', 'poweroff': 'Shutting down\u2026'}.get(cmd[-1]) if cmd[:1] == ['systemctl'] \
+        else ('Logging off\u2026' if 'wayfire' in cmd else None)
+    if not text:
+        subprocess.Popen(cmd)
+        return
+    w = Gtk.Window(title='MWX 7')
+    Layer.init_for_window(w)
+    Layer.set_layer(w, Layer.Layer.OVERLAY)
+    Layer.set_namespace(w, 'mwx7-goodbye')
+    for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+        Layer.set_anchor(w, e, True)
+    Layer.set_exclusive_zone(w, -1)
+    Layer.set_keyboard_mode(w, Layer.KeyboardMode.EXCLUSIVE)
+    w.add_css_class('goodbye')
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+    spin = Gtk.Spinner(spinning=True)
+    spin.set_size_request(28, 28)
+    label = Gtk.Label(label=text)
+    label.add_css_class('goodbye-text')
+    box.append(spin)
+    box.append(label)
+    w.set_child(box)
+    w.present()
+
+    def go():
+        try:
+            subprocess.run([SOUND, 'logoff'], timeout=6)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        time.sleep(0.6)
+        subprocess.Popen(cmd)
+    threading.Thread(target=go, daemon=True).start()
+
+
 def power(cmd):
     """Restart and Shut Down offer to install waiting updates first (never on their own): the person chooses."""
     action = {'reboot': 'restart', 'poweroff': 'shut down'}.get(cmd[-1]) if cmd[:1] == ['systemctl'] else None
     count, version = pending_updates()
     if not action or not count:
-        subprocess.Popen(cmd)
+        goodbye(cmd)
         return
     dlg = Gtk.Window(title='Updates', modal=True, resizable=False)
     dlg.add_css_class('mwx7-power')
@@ -90,7 +130,7 @@ def power(cmd):
     box.append(btns)
     dlg.set_child(box)
     cancel.connect('clicked', lambda *_: dlg.close())
-    plain.connect('clicked', lambda *_: (dlg.close(), subprocess.Popen(cmd)))
+    plain.connect('clicked', lambda *_: (dlg.close(), goodbye(cmd)))
 
     def update(*_):
         # The machine restarts into the update screen (systemd offline update) and installs there, outside this

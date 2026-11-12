@@ -1,0 +1,9 @@
+#!/bin/sh
+# mwx7-sound startup|logoff|notify|error: MWX 7's sounds (recorded from the concept's own sound engine). Off when the
+# person turned sounds off in Settings -> Sound. Waits until the sound has played (Log Off relies on that).
+f="/usr/share/mwx7/sounds/$1.ogg"
+[ -f "$f" ] || exit 0
+[ -e "${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/sounds-off" ] && exit 0
+# At sign-in the sound server may still be starting.
+[ "$1" = startup ] && sleep 1.5
+exec pw-play --media-role=Notification "$f" 2>/dev/null
