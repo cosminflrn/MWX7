@@ -227,3 +227,8 @@ menubutton.app-btn > button:hover, menubutton.app-btn > button:checked {
 window.goodbye { background: radial-gradient(circle at 50% 40%, #2d6fc4, #123f7e 55%, #071e45); }
 window.goodbye .goodbye-text { color: #ffffff; font-size: 22px; font-weight: 300; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
 window.goodbye spinner { color: #ffffff; }
+
+/* Aero Peek: a picture per window, its title above it. */
+button.peek-item { padding: 6px 8px 8px; }
+.peek-title { font-size: 12px; color: #0b2440; }
+.peek-pic { border-radius: 3px; }

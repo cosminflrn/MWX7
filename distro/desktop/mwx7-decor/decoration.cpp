@@ -18,6 +18,9 @@
 #include "wayfire/signal-provider.hpp"
 #include "wayfire/toplevel-view.hpp"
 #include "wayfire/toplevel.hpp"
+#include <wayfire/opengl.hpp>
+#include <cairo.h>
+#include <vector>
 
 class wayfire_decoration : public wf::plugin_interface_t
 {
@@ -108,6 +111,80 @@ class wayfire_decoration : public wf::plugin_interface_t
         return wf::ipc::json_ok();
     };
 
+    /**
+     * Aero Peek thumbnails: the shell asks for a window's picture (minimized ones too) and gets a small PNG. Wayfire
+     * renders the window with its frame into a framebuffer; we read it back, scale it down with cairo and save it.
+     */
+    wf::ipc::method_callback ipc_thumbnail = [=] (const nlohmann::json& data)
+    {
+        WFJSON_EXPECT_FIELD(data, "id", number_unsigned);
+        WFJSON_EXPECT_FIELD(data, "path", string);
+        auto view = wf::ipc::find_view_by_id(data["id"]);
+        if (!view || !view->get_output())
+        {
+            return wf::ipc::json_error("view id not found!");
+        }
+
+        int max = data.contains("size") && data["size"].is_number_unsigned() ? (int)data["size"] : 200;
+        wf::render_target_t fb;
+        view->take_snapshot(fb);
+        const int w = fb.viewport_width, h = fb.viewport_height;
+        if ((w <= 0) || (h <= 0) || (w > 16384) || (h > 16384))
+        {
+            OpenGL::render_begin();
+            fb.release();
+            OpenGL::render_end();
+            return wf::ipc::json_error("nothing to show");
+        }
+
+        std::vector<uint8_t> px((size_t)w * h * 4);
+        OpenGL::render_begin();
+        GL_CALL(glBindFramebuffer(GL_FRAMEBUFFER, fb.fb));
+        GL_CALL(glPixelStorei(GL_PACK_ALIGNMENT, 1));
+        GL_CALL(glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data()));
+        fb.release();
+        OpenGL::render_end();
+
+        // GL rows run bottom-up and RGBA; cairo wants top-down, native-endian ARGB (both premultiplied).
+        cairo_surface_t *full = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+        unsigned char *dst = cairo_image_surface_get_data(full);
+        const int stride = cairo_image_surface_get_stride(full);
+        for (int y = 0; y < h; y++)
+        {
+            const uint8_t *src = px.data() + (size_t)(h - 1 - y) * w * 4;
+            uint32_t *row = (uint32_t*)(dst + (size_t)y * stride);
+            for (int x = 0; x < w; x++)
+            {
+                const uint8_t *p = src + x * 4;
+                row[x] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+            }
+        }
+
+        cairo_surface_mark_dirty(full);
+        const double k = std::min(1.0, (double)max / std::max(w, h));
+        const int tw = std::max(1, (int)(w * k)), th = std::max(1, (int)(h * k));
+        cairo_surface_t *thumb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
+        cairo_t *cr = cairo_create(thumb);
+        cairo_scale(cr, k, k);
+        cairo_set_source_surface(cr, full, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        std::string path = data["path"];
+        const bool ok = cairo_surface_write_to_png(thumb, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        cairo_surface_destroy(thumb);
+        cairo_surface_destroy(full);
+        if (!ok)
+        {
+            return wf::ipc::json_error("could not write the picture");
+        }
+
+        auto res = wf::ipc::json_ok();
+        res["width"]  = tw;
+        res["height"] = th;
+        return res;
+    };
+
   public:
     // Settings changes the frame colour by rewriting the config; repaint every frame so it shows at once (otherwise a
     // window kept its old colour until something else redrew it).
@@ -123,6 +200,7 @@ class wayfire_decoration : public wf::plugin_interface_t
     {
         ipc_repo->register_method("mwx7/set-icon", ipc_set_icon);
         ipc_repo->register_method("mwx7/toggle-maximize", ipc_toggle_maximize);
+        ipc_repo->register_method("mwx7/thumbnail", ipc_thumbnail);
         wf::get_core().connect(&on_config_reload);
         wf::get_core().connect(&on_decoration_state_changed);
         wf::get_core().tx_manager->connect(&on_new_tx);
@@ -138,6 +216,7 @@ class wayfire_decoration : public wf::plugin_interface_t
     {
         ipc_repo->unregister_method("mwx7/set-icon");
         ipc_repo->unregister_method("mwx7/toggle-maximize");
+        ipc_repo->unregister_method("mwx7/thumbnail");
         for (auto view : wf::get_core().get_all_views())
         {
             if (auto toplevel = wf::toplevel_cast(view))
