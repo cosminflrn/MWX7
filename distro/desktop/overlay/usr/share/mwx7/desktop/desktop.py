@@ -667,22 +667,31 @@ class DesktopIcon(Gtk.Box):
         lab = Gtk.Label(label=label, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
                         max_width_chars=11)
         self.append(lab)
-        g = Gtk.GestureClick()
-        g.set_button(1)
-        g.connect('pressed', lambda gest, n, _x, _y: self.pressed(gest, n, on_select, on_open))
-        self.add_controller(g)
+        # One drag gesture for the left button does it all: select on press, move on drag, open on a double click.
+        # (A separate click gesture claimed the press and stopped the drag.)
+        self.on_select, self.on_open, self.last_click = on_select, on_open, 0
+        self.drag = Gtk.GestureDrag(button=1)
+        self.drag.connect('drag-begin', self.pressed)
+        self.add_controller(self.drag)
+        self.key = label
         # Right-click selects too, then bubbles up to the desktop's menu.
         r = Gtk.GestureClick()
         r.set_button(3)
         r.connect('pressed', lambda *_a: on_select(self))
         self.add_controller(r)
 
-    def pressed(self, gest, n_press, on_select, on_open):
+    def pressed(self, gest, _x, _y):
         # Claimed so the desktop's "click on empty space deselects" handler does not also fire.
         gest.set_state(Gtk.EventSequenceState.CLAIMED)
-        on_select(self)
-        if n_press == 2:
-            on_open()
+        self.on_select(self)
+
+    def released(self, moved):
+        now = GLib.get_monotonic_time()
+        if not moved and now - self.last_click < 450_000:
+            self.last_click = 0
+            self.on_open()
+        else:
+            self.last_click = 0 if moved else now
 
 
 class Desktop(Gtk.Application):
@@ -694,6 +703,8 @@ class Desktop(Gtk.Application):
         self.timers = []
         self.cfg = load_json(CONFIG)
         self.gadgets_on = self.cfg.get('gadgets', True) is not False
+        self.cells = {}
+        self.height = 0
         self.set_sizes()
 
     def set_sizes(self):
@@ -776,6 +787,7 @@ class Desktop(Gtk.Application):
     def put_fixed_icons(self):
         for label, icon, cmd, fallback in ITEMS:
             item = DesktopIcon(label, icon, self.select, lambda c=cmd, f=fallback: launch(c, f), self.icon_px, self.cell_w)
+            self.draggable(item, 'item:' + icon)
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
         self.fixed_count = len(self.icons)
@@ -791,6 +803,8 @@ class Desktop(Gtk.Application):
 
     def set_view(self, key, value):
         self.cfg[key] = value
+        if key == 'sort':
+            self.cfg.pop('positions', None)  # sorting lines the icons up again, as Windows does
         save_json(CONFIG, self.cfg)
         self.set_sizes()
         self.rebuild_icons()
@@ -801,9 +815,57 @@ class Desktop(Gtk.Application):
         if rows == self.rows and not force:
             return
         self.rows = rows
-        # Column-major like Windows: fill a column top to bottom, then the next one.
-        for i, item in enumerate(self.icons):
-            self.fixed.move(item, ORIGIN + (i // rows) * self.cell_w, ORIGIN + (i % rows) * self.cell_h)
+        # Icons the person moved keep their cell; the rest fill the free cells column by column, like Windows.
+        saved = self.cfg.get('positions') if isinstance(self.cfg.get('positions'), dict) else {}
+        taken, place = set(), {}
+        for item in self.icons:
+            pos = saved.get(item.key)
+            if isinstance(pos, list) and len(pos) == 2 and 0 <= pos[1] < rows and tuple(pos) not in taken:
+                place[item] = tuple(pos)
+                taken.add(tuple(pos))
+        cell = 0
+        for item in self.icons:
+            if item in place:
+                continue
+            while (cell // rows, cell % rows) in taken:
+                cell += 1
+            place[item] = (cell // rows, cell % rows)
+            taken.add(place[item])
+        self.cells = place
+        for item, (c, r) in place.items():
+            self.fixed.move(item, ORIGIN + c * self.cell_w, ORIGIN + r * self.cell_h)
+
+    # -- moving icons by dragging them, as on Windows: they snap to the grid and keep their place
+    def draggable(self, item, key):
+        item.key = key
+        item.drag.connect('drag-update', lambda _g, dx, dy, it=item: self.icon_drag(it, dx, dy))
+        item.drag.connect('drag-end', lambda _g, dx, dy, it=item: self.icon_drop(it, dx, dy))
+
+    def icon_drag(self, item, dx, dy):
+        if abs(dx) < 5 and abs(dy) < 5 and not getattr(item, 'moving', False):
+            return
+        item.moving = True
+        c, r = self.cells.get(item, (0, 0))
+        self.fixed.move(item, ORIGIN + c * self.cell_w + dx, ORIGIN + r * self.cell_h + dy)
+
+    def icon_drop(self, item, dx, dy):
+        moved = getattr(item, 'moving', False)
+        item.released(moved)
+        if not moved:
+            return
+        item.moving = False
+        c, r = self.cells.get(item, (0, 0))
+        nc = max(0, round((c * self.cell_w + dx) / self.cell_w))
+        nr = max(0, min(self.rows - 1, round((r * self.cell_h + dy) / self.cell_h)))
+        positions = self.cfg.get('positions') if isinstance(self.cfg.get('positions'), dict) else {}
+        # Dropping on another icon swaps the two.
+        for other, cell in self.cells.items():
+            if other is not item and cell == (nc, nr):
+                positions[other.key] = [c, r]
+        positions[item.key] = [nc, nr]
+        self.cfg['positions'] = positions
+        save_json(CONFIG, self.cfg)
+        self.relayout(self.height, force=True)
 
     def files_later(self):
         # A burst of changes (a copy of many files) reloads once.
@@ -837,6 +899,7 @@ class Desktop(Gtk.Application):
                 img, label = Gtk.Image.new_from_icon_name('text-x-generic'), name
             item = DesktopIcon(label, img, self.select,
                                lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None), self.icon_px, self.cell_w)
+            self.draggable(item, 'file:' + name)
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
         if getattr(self, 'height', 0):
