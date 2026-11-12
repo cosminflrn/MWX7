@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Task Manager
+Comment=See what is running and how the system is doing
+Exec=/usr/share/mwx7/bin/mwx7-app taskmgr
+Icon=/usr/share/mwx7/icons/taskmgr.png
+Categories=System;Monitor;
+Keywords=processes;performance;cpu;memory;end task;monitor;
+StartupWMClass=org.mwx7.taskmgr
