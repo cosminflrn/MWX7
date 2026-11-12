@@ -33,8 +33,8 @@ PINNED = [
     ('My Computer', 'computer', ['thunar'], ('thunar',)),
     ('Internet', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], ('google-chrome',)),
     ('Media Player', 'mediaplayer', [APP, 'mediaplayer'], ('mwx7-mediaplayer', 'mediaplayer.html', 'mediaplayer_html')),
-    ('Notepad', 'notepad', [APP, 'notepad'], ('mwx7-notepad', 'notepad.html', 'notepad_html')),
-    ('Calculator', 'calculator', [APP, 'calculator'], ('mwx7-calculator', 'calculator.html', 'calculator_html')),
+    ('Notepad', 'notepad', [APP, 'notepad'], ('org.mwx7.notepad', 'mwx7-notepad', 'notepad.html', 'notepad_html')),
+    ('Calculator', 'calculator', [APP, 'calculator'], ('org.mwx7.calculator', 'mwx7-calculator', 'calculator.html', 'calculator_html')),
     ('Settings', 'settings', [SETTINGS], ('org.mwx7.settings', 'mwx7-settings')),
 ]
 ABOUT = [APP, 'about']
