@@ -1238,6 +1238,23 @@ class Shell(Gtk.Application):
             b.connect('clicked', lambda *_: (pop.popdown(), fn()))
             col.append(b)
 
+        # Jump list, as in Windows 7: the files (or folders) this app opened lately; one click opens one again.
+        app = next((a for a in (app_for_id(i) for i in ids) if a), None)
+        names = {i.lower() for i in ids} | ({(app.get_id() or '').removesuffix('.desktop').lower()} if app else set())
+        recent = []
+        for info in Gtk.RecentManager.get_default().get_items():
+            if any(a.lower() in names for a in info.get_applications()) and info.exists():
+                recent.append(info)
+        recent.sort(key=lambda r: -r.get_modified().to_unix())
+        if recent and app:
+            sub = Gtk.Label(label='Recent', xalign=0)
+            sub.add_css_class('menu-head')
+            col.append(sub)
+            for info in recent[:7]:
+                item(info.get_display_name(), lambda u=info.get_uri(), a=app: a.launch_uris([u], None))
+            sep = Gtk.Box()
+            sep.add_css_class('menu-sep')
+            col.append(sep)
         if launch:
             item('New window', launch)
         wins = self.windows_of(ids)

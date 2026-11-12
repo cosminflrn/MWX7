@@ -122,6 +122,7 @@ class Photos:
         return b
 
     def open_path(self, path):
+        mwx7ui.remember(path)
         self.pics = list_images(os.path.dirname(path)) or [path]
         self.show(self.pics.index(path) if path in self.pics else 0)
         return False

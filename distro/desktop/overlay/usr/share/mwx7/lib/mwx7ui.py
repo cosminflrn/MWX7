@@ -21,6 +21,15 @@ import settings as base  # noqa: E402
 ICONS = base.ICONS
 
 
+def remember(path):
+    """Adds a file or folder to the recent list under this app's name: the dock's right-click menu lists them (jump
+    lists, as in Windows 7)."""
+    try:
+        Gtk.RecentManager.get_default().add_item(Gio.File.new_for_path(path).get_uri())
+    except (GLib.Error, TypeError):
+        pass
+
+
 def css(text, priority=1):
     p = Gtk.CssProvider()
     p.load_from_data(text.encode())

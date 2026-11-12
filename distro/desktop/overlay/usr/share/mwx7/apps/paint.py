@@ -780,6 +780,7 @@ class Paint:
         self.replace(s)
         self.path, self.dirty = path, False
         self.retitle()
+        mwx7ui.remember(path)
         return True
 
     def write(self, path):
@@ -799,6 +800,7 @@ class Paint:
             return False
         self.path, self.dirty = path, False
         self.retitle()
+        mwx7ui.remember(path)
         return True
 
     def open(self):

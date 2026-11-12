@@ -235,3 +235,4 @@ button.peek-item { padding: 6px 8px 8px; }
 
 /* "All Programs" / "Back" at the foot of the Start menu's program list, as in Windows 7. */
 list.sm-list row.sm-allprogs { margin-top: 4px; border-top: 1px solid #d8e0ea; border-radius: 0 0 3px 3px; font-weight: 600; color: #1e3f66; }
+.menu-sep { min-height: 1px; margin: 4px 8px; background: #d8e0ea; }
