@@ -2,8 +2,9 @@
 Type=Application
 Name=Paint
 Comment=Draw and edit pictures
-Exec=/usr/share/mwx7/bin/mwx7-app paint
+Exec=/usr/share/mwx7/bin/mwx7-app paint %f
 Icon=/usr/share/mwx7/icons/paint.png
 Categories=Graphics;
 Keywords=draw;image;picture;brush;
-StartupWMClass=mwx7-paint
+StartupWMClass=org.mwx7.paint
+MimeType=image/png;image/jpeg;image/bmp;
