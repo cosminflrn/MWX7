@@ -4,6 +4,7 @@ plugins, new options); a copy made by an older release would hide them. When the
 rebuilt from the current defaults, keeping what the person chose in MWX 7 Settings."""
 import os
 import re
+import subprocess
 import sys
 
 SYSTEM = '/etc/mwx7/wayfire.ini'
@@ -50,8 +51,39 @@ def main(user):
     except FileNotFoundError:
         old = None
     if old is not None and old.startswith(stamp):
+        new = old
+    else:
+        new = merged(stamp + system, old)
+    new = for_this_machine(new, system)
+    if new == old:
         return
-    new = stamp + system
+    os.makedirs(os.path.dirname(user), exist_ok=True)
+    tmp = user + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(new)
+    os.replace(tmp, user)
+
+
+def in_vm():
+    try:
+        return subprocess.run(['systemd-detect-virt', '--vm'], capture_output=True, text=True,
+                              timeout=5).stdout.strip() not in ('', 'none')
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def for_this_machine(text, system):
+    """In a virtual machine only the bar, dock and notifications get blurred glass: blurring behind every window made
+    dragging windows and hovering title bars lag in VMware (each frame re-blurred the whole window area). Real
+    graphics cards get the full glass."""
+    full = get(sections(system).get('blur', ''), 'blur_by_default')
+    if not full:
+        return text
+    want = re.sub(r'\s*\|\s*type is "toplevel"', '', full) if in_vm() else full
+    return put(text, 'blur', 'blur_by_default', want)
+
+
+def merged(new, old):
     if old is not None:
         mine = sections(old)
         for sec, keys in KEPT.items():
@@ -65,11 +97,7 @@ def main(user):
                     if '=' in line and not line.lstrip().startswith('#'):
                         k, v = line.split('=', 1)
                         new = put(new, sec, k.strip(), v.strip())
-    os.makedirs(os.path.dirname(user), exist_ok=True)
-    tmp = user + '.tmp'
-    with open(tmp, 'w') as f:
-        f.write(new)
-    os.replace(tmp, user)
+    return new
 
 
 if __name__ == '__main__':

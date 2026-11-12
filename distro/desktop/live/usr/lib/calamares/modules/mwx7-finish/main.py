@@ -64,7 +64,7 @@ def run():
 # Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
 # ("error: sparse file not allowed" on every start).
 GRUB_DEFAULT=0
-GRUB_TIMEOUT=5
+GRUB_TIMEOUT=0
 GRUB_DISTRIBUTOR="MWX 7"
 # loglevel=3 after "quiet" (which sets 4): only critical kernel messages may cover the splash.
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 vt.global_cursor_default=0"
@@ -75,6 +75,6 @@ GRUB_DISABLE_RECOVERY=true
 GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
 GRUB_GFXMODE=1920x1080,1280x800,auto
 GRUB_GFXPAYLOAD_LINUX=keep
-GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT_STYLE=hidden
 ''')
     return None

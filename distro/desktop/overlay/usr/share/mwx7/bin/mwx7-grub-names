@@ -20,4 +20,6 @@ patch() {  # patch FILE MARKER SED-SCRIPT
 patch /etc/grub.d/10_linux '"MWX 7"|Ubuntu' 's/^    Ubuntu|Kubuntu|\*GNU\/Linux)$/    "MWX 7"|Ubuntu|Kubuntu|*GNU\/Linux)/'
 # 30_os-prober: Windows gets a plain name and no "(on /dev/...)" suffix.
 patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name' 's|^  LONGNAME="`echo \${OS} \| cut -d .:. -f 2 \| tr .\^. . .`"$|&\n  # MWX 7: short Windows name\n  onstr_off=; case "${LONGNAME}" in Windows*) LONGNAME=Windows; onstr_off=1 ;; esac|; s|^\t  onstr="\$(gettext_printf "(on %s)" "\${DEVICE}")"$|\t  onstr="$(gettext_printf "(on %s)" "${DEVICE}")"; [ -n "${onstr_off:-}" ] \&\& onstr=""|'
+# 30_os-prober: when it finds another system it switches the hidden menu on (5 s); without one MWX 7 starts directly.
+patch /etc/grub.d/30_os-prober 'MWX 7: menu with other systems' 's|^quick_boot="0"$|quick_boot="1"  # MWX 7: menu with other systems|; s|^  set timeout=10$|  set timeout=5|'
 exit 0

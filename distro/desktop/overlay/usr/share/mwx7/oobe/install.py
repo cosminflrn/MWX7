@@ -6,6 +6,7 @@
                                     "STEP <text>" and "PROGRESS <0-100>" lines for the setup's progress bar
   install.py finish ANSWERS.json    the person's choices: account, language, keyboard, time zone; then unmounts
   install.py finish ANSWERS --here  the same on the running system (first start after Settings -> Reset MWX 7)
+  install.py factory                makes the factory copy on a system set up before Reset existed (package update)
   install.py update                 installs the newest updates (that first start, before the setup's pages)
   install.py ready                  tells the serial console the setup is on screen (for the automated boot tests)
 
@@ -320,26 +321,72 @@ FIRSTBOOT_SUDOERS = ('# MWX 7 first start after a reset: the setup runs as this 
                      'mwx ALL=(root) NOPASSWD: /usr/bin/python3 /usr/share/mwx7/oobe/install.py *\n')
 
 
-def make_factory(root):
+def make_factory(root, from_running=False):
     """The fresh system as a read-only snapshot, so Settings -> Reset can bring it back in seconds, no ISO needed.
-    It shares all its data with the running system, so it only takes space for what updates replace later."""
+    It shares all its data with the running system, so it only takes space for what updates replace later.
+    from_running: a system set up before Reset existed. Its @ is snapshotted and made fresh again: the accounts and
+    their pictures are removed and the setup's own user comes back (people's files live in @home, which reset renews)."""
     write('etc/mwx7/factory', 'This system has a factory copy (Settings -> Updates -> Reset MWX 7).\n')
     top = STATE + '/top'
     os.makedirs(top, exist_ok=True)
     sh('mount', '-o', 'subvolid=5', root, top)
     try:
-        sh('btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@', f'{top}/@factory')
         f = top + '/@factory'
+        if os.path.exists(f):
+            return
+        work = top + '/@factory-new'
+        if os.path.exists(work):
+            sh('btrfs', '-q', 'subvolume', 'delete', work)
+        sh('btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@', work)
+        if from_running:
+            for line in open(f'{work}/etc/passwd').read().splitlines():
+                name, _x, uid = line.split(':')[:3]
+                if 1000 <= int(uid) < 60000:
+                    subprocess.run(['userdel', '-R', work, name], capture_output=True)
+            for d in ('var/lib/AccountsService/icons', 'var/lib/AccountsService/users'):
+                shutil.rmtree(f'{work}/{d}', ignore_errors=True)
+            groups = [g for g in ('video', 'render', 'input', 'audio', 'netdev')
+                      if subprocess.run(['chroot', work, 'getent', 'group', g], capture_output=True).returncode == 0]
+            sh('useradd', '-R', work, '-s', '/bin/bash', '-c', 'MWX 7 Setup', '-G', ','.join(groups), 'mwx')
         # Started from the factory copy, MWX 7 goes straight into the first-start setup (without the disk page).
-        for rel, text, mode in (('etc/mwx7/firstboot', 'Start into the first-start setup.\n', 0o644),
+        for rel, text, mode in (('etc/mwx7/factory', 'This system has a factory copy.\n', 0o644),
+                                ('etc/mwx7/firstboot', 'Start into the first-start setup.\n', 0o644),
                                 ('etc/sudoers.d/mwx7-firstboot', FIRSTBOOT_SUDOERS, 0o440),
                                 ('etc/greetd/config.toml', greetd_config(None, firstboot=True), 0o644)):
-            with open(f'{f}/{rel}', 'w') as out:
+            with open(f'{work}/{rel}', 'w') as out:
                 out.write(text)
-            os.chmod(f'{f}/{rel}', mode)
-        sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'true')
+            os.chmod(f'{work}/{rel}', mode)
+        sh('btrfs', 'property', 'set', '-ts', work, 'ro', 'true')
+        os.rename(work, f)
     finally:
         sh('umount', top)
+
+
+def factory_here():
+    """For systems set up before 1.9.0.207 (run by the package update): their own factory copy, so Reset appears."""
+    global TARGET
+    source = sh('findmnt', '-no', 'SOURCE', '/').strip()  # /dev/sda2[/@] on MWX 7's layout
+    if sh('findmnt', '-no', 'FSTYPE', '/').strip() != 'btrfs' or not source.endswith('[/@]'):
+        return
+    TARGET = '/'
+    # Only between package installs: a snapshot taken mid-update would start with half-configured packages. Holding
+    # dpkg's locks also keeps the next update waiting until the snapshot is done.
+    import fcntl
+    locks = [open(p, 'a') for p in ('/var/lib/dpkg/lock-frontend', '/var/lib/dpkg/lock')]
+    for _ in range(1800):
+        try:
+            for f in locks:
+                fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            for f in locks:
+                fcntl.lockf(f, fcntl.LOCK_UN)
+            time.sleep(1)
+    else:
+        return
+    if subprocess.run(['dpkg', '--audit'], capture_output=True, text=True).stdout.strip():
+        return  # something is half-installed: try again after the next update
+    make_factory(source.split('[')[0], from_running=True)
 
 
 def update():
@@ -366,18 +413,19 @@ GRUB_DEFAULTS = '''# MWX 7 boot menu settings. Run "sudo update-grub" after chan
 # Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
 # ("error: sparse file not allowed" on every start).
 GRUB_DEFAULT=0
-GRUB_TIMEOUT=5
+GRUB_TIMEOUT=0
 GRUB_DISTRIBUTOR="MWX 7"
 # loglevel=3 after "quiet" (which sets 4): only critical kernel messages may cover the splash.
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 vt.global_cursor_default=0"
 GRUB_CMDLINE_LINUX=""
 GRUB_DISABLE_OS_PROBER=false
 GRUB_DISABLE_RECOVERY=true
-# The menu in MWX 7's look; it only shows when Esc is held or another system (Windows) is there to choose.
+# The menu in MWX 7's look. Hidden (straight into MWX 7) unless another system such as Windows is there to choose:
+# then it shows for 5 seconds (mwx7-grub-names turns that on in GRUB's os-prober script).
 GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
 GRUB_GFXMODE=1920x1080,1280x800,auto
 GRUB_GFXPAYLOAD_LINUX=keep
-GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT_STYLE=hidden
 '''
 
 
@@ -513,6 +561,9 @@ if __name__ == '__main__':
             finish(args[0])
         elif cmd == 'finish' and args[1:] == ['--here'] and os.path.exists('/etc/mwx7/firstboot'):
             finish(args[0], here=True)
+        elif cmd == 'factory' and os.path.exists('/etc/mwx7/installed') and not os.path.exists('/etc/mwx7/factory') \
+                and not os.path.exists('/etc/mwx7/firstboot'):
+            factory_here()
         elif cmd == 'update' and os.path.exists('/etc/mwx7/firstboot'):
             update()
         elif cmd == 'ready':
