@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Snipping Tool
+Comment=Capture a part of the screen
+Exec=/usr/share/mwx7/snip/mwx7-snip
+Icon=/usr/share/mwx7/icons/snip.png
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;screen;crop;snip;
+StartupWMClass=org.mwx7.snip

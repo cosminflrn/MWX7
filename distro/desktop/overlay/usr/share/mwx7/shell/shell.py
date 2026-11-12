@@ -174,7 +174,7 @@ def apps_windows(views):
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
     'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
-    'chromium': 'browser', 'mwx7-settings': 'settings',
+    'chromium': 'browser', 'mwx7-settings': 'settings', 'org.mwx7.snip': 'snip',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
@@ -501,7 +501,7 @@ class Shell(Gtk.Application):
         orb_img.set_pixel_size(22)
         orb.set_child(orb_img)
         orb.set_popover(self.build_system_menu())
-        self.orb_button = orb
+        self.orb_button, self.orb_img = orb, orb_img
         left.append(orb)
         # The focused app's name, a menu as on the web: Minimize, Full Screen, Close (Personalize and About on the desktop).
         self.title = Gtk.Label(label='Desktop')
@@ -586,6 +586,19 @@ class Shell(Gtk.Application):
         clock_btn.set_popover(self.build_calendar())
         self.clock_btn = clock_btn
         right.append(clock_btn)
+        # A full-screen (maximized) window has no frame: its traffic lights move into the bar, as in the concept.
+        self.wc = Gtk.Box(spacing=7, visible=False, valign=Gtk.Align.CENTER)
+        self.wc.add_css_class('bar-wc')
+        for cls, tip, fn in (('wc-min', 'Minimize', lambda v: self.act('wm-actions/set-minimized',
+                                                                        {'view_id': v['id'], 'state': True})),
+                             ('wc-max', 'Exit full screen', lambda v: self.act('mwx7/toggle-maximize', {'id': v['id']})),
+                             ('wc-close', 'Close', lambda v: self.act('window-rules/close-view', {'id': v['id']}))):
+            b = Gtk.Button(tooltip_text=tip, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+            b.add_css_class('wc')
+            b.add_css_class(cls)
+            b.connect('clicked', lambda _b, fn=fn: (v := getattr(self, 'focused_view', None)) and fn(v))
+            self.wc.append(b)
+        right.append(self.wc)
         box.set_start_widget(left)
         box.set_end_widget(right)
         box.set_hexpand(True)
@@ -1162,6 +1175,15 @@ class Shell(Gtk.Application):
         focused = next((v for v in apps_windows(self.views) if v.get('activated') and not v.get('minimized')), None)
         self.focused_view = focused
         self.title.set_label(self.app_label(focused) if focused else 'Desktop')
+        full = bool(focused and (focused.get('tiled-edges') == 15 or focused.get('maximized')))
+        self.wc.set_visible(full)
+        self.bar.add_css_class('fs') if full else self.bar.remove_css_class('fs')
+        # ...and its icon takes the orb's place, as the concept's full-screen bar does.
+        icon = self.icon_path((focused.get('app-id') or '').lower()) if full else None
+        icon = icon if icon and os.path.exists(icon) else os.path.join(ICONS, 'orb.png')
+        if getattr(self, 'orb_icon', None) != icon:
+            self.orb_icon = icon
+            self.orb_img.set_from_file(icon)
         return False
 
     def fill_app_menu(self):
