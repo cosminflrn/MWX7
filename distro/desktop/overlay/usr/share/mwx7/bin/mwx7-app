@@ -14,6 +14,38 @@ case "$id" in
 esac
 page=$id.html
 [ -e "/usr/share/mwx7/web/$page" ] || page=index.html
+query="app=$id"
+# About shows this PC (processor, memory, disk) and the installed release, which a web page cannot find out itself.
+if [ "$id" = about ]; then
+  query=$(python3 - <<'PY'
+import json, os, shutil, urllib.parse
+def cpu():
+    try:
+        for line in open('/proc/cpuinfo'):
+            if line.startswith('model name'):
+                name = line.split(':', 1)[1]
+                for junk in ('(R)', '(TM)', '(tm)', ' CPU', ' Processor'):
+                    name = name.replace(junk, '')
+                return ' '.join(name.split()) + f' ({os.cpu_count()} threads)'
+    except OSError:
+        pass
+    return f'{os.cpu_count()} threads'
+def mem():
+    for line in open('/proc/meminfo'):
+        if line.startswith('MemTotal'):
+            return f'{int(line.split()[1]) / 1048576:.1f} GB'
+    return ''
+d = shutil.disk_usage('/')
+try:
+    version = open('/usr/share/mwx7/version').read().strip()
+except OSError:
+    version = ''
+info = {'version': version, 'cpu': cpu(), 'memory': mem(),
+        'disk': f'{d.free / 1e9:.0f} GB free of {d.total / 1e9:.0f} GB'}
+print(urllib.parse.urlencode({'app': 'about', 'args': json.dumps({'os': info})}))
+PY
+) || query="app=$id"
+fi
 # Served over http from this PC only (127.0.0.1): Chrome runs a web app's modules and storage reliably there, which it
 # does not promise for file:// pages. The server is the session's (autostart), started here too if it isn't up yet.
 PORT=47677
@@ -24,5 +56,5 @@ if ! python3 -c "import socket; socket.create_connection(('127.0.0.1', $PORT), 0
   done
 fi
 exec google-chrome-stable --ozone-platform=wayland \
-  --app="http://127.0.0.1:$PORT/$page?app=$id" --class="mwx7-$id" --window-size="$size" \
+  --app="http://127.0.0.1:$PORT/$page?$query" --class="mwx7-$id" --window-size="$size" \
   --no-first-run --no-default-browser-check

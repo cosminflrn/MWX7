@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=About MWX 7
+Comment=Version and credits
+Exec=/usr/share/mwx7/bin/mwx7-app about
+Icon=/usr/share/mwx7/icons/about.png
+NoDisplay=true
+StartupWMClass=mwx7-about

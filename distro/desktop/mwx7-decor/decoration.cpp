@@ -10,6 +10,7 @@
 #include "deco-subsurface.hpp"
 #include "deco-theme.hpp"
 #include <wayfire/plugins/common/shared-core-data.hpp>
+#include <wayfire/window-manager.hpp>
 #include <wayfire/plugins/ipc/ipc-method-repository.hpp>
 #include <wayfire/plugins/ipc/ipc-helpers.hpp>
 #include "wayfire/core.hpp"
@@ -92,6 +93,21 @@ class wayfire_decoration : public wf::plugin_interface_t
         return wf::ipc::json_ok();
     };
 
+    // The bar's app menu: Full Screen / Exit Full Screen (Wayfire's own IPC has no maximize).
+    wf::ipc::method_callback ipc_toggle_maximize = [=] (const nlohmann::json& data)
+    {
+        WFJSON_EXPECT_FIELD(data, "id", number_unsigned);
+        auto view = wf::toplevel_cast(wf::ipc::find_view_by_id(data["id"]));
+        if (!view)
+        {
+            return wf::ipc::json_error("toplevel view id not found!");
+        }
+
+        const bool maxed = view->pending_tiled_edges() == wf::TILED_EDGES_ALL;
+        wf::get_core().default_wm->tile_request(view, maxed ? 0 : wf::TILED_EDGES_ALL);
+        return wf::ipc::json_ok();
+    };
+
   public:
     // Settings changes the frame colour by rewriting the config; repaint every frame so it shows at once (otherwise a
     // window kept its old colour until something else redrew it).
@@ -106,6 +122,7 @@ class wayfire_decoration : public wf::plugin_interface_t
     void init() override
     {
         ipc_repo->register_method("mwx7/set-icon", ipc_set_icon);
+        ipc_repo->register_method("mwx7/toggle-maximize", ipc_toggle_maximize);
         wf::get_core().connect(&on_config_reload);
         wf::get_core().connect(&on_decoration_state_changed);
         wf::get_core().tx_manager->connect(&on_new_tx);
@@ -120,6 +137,7 @@ class wayfire_decoration : public wf::plugin_interface_t
     void fini() override
     {
         ipc_repo->unregister_method("mwx7/set-icon");
+        ipc_repo->unregister_method("mwx7/toggle-maximize");
         for (auto view : wf::get_core().get_all_views())
         {
             if (auto toplevel = wf::toplevel_cast(view))
