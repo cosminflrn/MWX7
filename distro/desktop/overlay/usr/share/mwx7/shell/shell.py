@@ -306,6 +306,7 @@ class StartMenu(Gtk.Popover):
     def __init__(self, shell):
         super().__init__()
         self.shell = shell
+        self.mode = 'freq'  # the most-used programs; 'all' is All Programs
         self.add_css_class('startmenu')
         self.set_has_arrow(False)
         self.set_position(Gtk.PositionType.TOP)
@@ -685,7 +686,13 @@ class Shell(Gtk.Application):
         show_desktop.set_child(Gtk.Image.new_from_file(os.path.join(ICONS, '16', 'desktop.png')) if os.path.exists(
             os.path.join(ICONS, '16', 'desktop.png')) else Gtk.Image.new_from_icon_name('user-desktop'))
         show_desktop.set_tooltip_text('Show desktop')
-        show_desktop.connect('clicked', lambda *_: self.act('wm-actions/toggle_showdesktop'))
+        show_desktop.connect('clicked', lambda *_: (self.unpeek(), self.act('wm-actions/toggle_showdesktop')))
+        # Aero Peek at the desktop: resting on the button turns every window to glass outlines until the pointer leaves.
+        self.peek_timer = 0
+        hover = Gtk.EventControllerMotion()
+        hover.connect('enter', lambda *_: self.peek_later(None))
+        hover.connect('leave', lambda *_: self.unpeek())
+        show_desktop.add_controller(hover)
         right.append(show_desktop)
         # The clock opens the web concept's calendar flyout: the time large, the date, the month, Today.
         self.clock = Gtk.Label()
@@ -1131,6 +1138,29 @@ class Shell(Gtk.Application):
                 self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.act('window-rules/focus-view', {'id': w['id']})
 
+    def peek_later(self, keep):
+        """Aero Peek: after a short rest, every window but `keep` (None: all of them) fades to a faint outline."""
+        if self.peek_timer:
+            GLib.source_remove(self.peek_timer)
+        self.peek_timer = GLib.timeout_add(450, lambda: (self.peek(keep), False)[1])
+
+    def peek(self, keep):
+        self.peek_timer = 0
+        self.peeked = []
+        for v in apps_windows(self.views):
+            if not v.get('minimized'):
+                a = 1.0 if v['id'] == keep else 0.06
+                self.act('wf/alpha/set-view-alpha', {'view-id': v['id'], 'alpha': a})
+                self.peeked.append(v['id'])
+
+    def unpeek(self):
+        if self.peek_timer:
+            GLib.source_remove(self.peek_timer)
+            self.peek_timer = 0
+        for vid in getattr(self, 'peeked', []):
+            self.act('wf/alpha/set-view-alpha', {'view-id': vid, 'alpha': 1.0})
+        self.peeked = []
+
     def load_thumbnail(self, vid, pic):
         """Asks the frames plugin for a small picture of the window (off the main thread) and shows it when ready."""
         if not hasattr(self, 'thumb_ipc'):
@@ -1183,8 +1213,13 @@ class Shell(Gtk.Application):
                 cell.append(pic)
                 b.set_child(cell)
                 self.load_thumbnail(w['id'], pic)
+                th = Gtk.EventControllerMotion()
+                th.connect('enter', lambda *_a, v=w: None if v.get('minimized') else self.peek_later(v['id']))
+                th.connect('leave', lambda *_a: self.unpeek())
+                b.add_controller(th)
 
                 def pick(_b, v=w):
+                    self.unpeek()
                     close()
                     if v.get('minimized'):
                         self.act('wm-actions/set-minimized', {'view_id': v['id'], 'state': False})
@@ -1201,7 +1236,7 @@ class Shell(Gtk.Application):
             state['pop'] = pop
             # The list already names the app: no tooltip on top of it while it is open.
             button.set_has_tooltip(False)
-            pop.connect('closed', lambda *_: button.set_has_tooltip(True))
+            pop.connect('closed', lambda *_: (button.set_has_tooltip(True), self.unpeek()))
             pop.popup()
             return False
 
