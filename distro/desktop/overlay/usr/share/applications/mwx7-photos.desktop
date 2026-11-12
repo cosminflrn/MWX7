@@ -2,8 +2,9 @@
 Type=Application
 Name=Photo Viewer
 Comment=View your pictures
-Exec=/usr/share/mwx7/bin/mwx7-app photos
+Exec=/usr/share/mwx7/bin/mwx7-app photos %f
 Icon=/usr/share/mwx7/icons/photos.png
 Categories=Graphics;Viewer;
 Keywords=photos;pictures;images;gallery;
-StartupWMClass=mwx7-photos
+StartupWMClass=org.mwx7.photos
+MimeType=image/jpeg;image/png;image/gif;image/webp;image/bmp;image/tiff;image/svg+xml;

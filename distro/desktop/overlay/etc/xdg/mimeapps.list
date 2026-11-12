@@ -1,2 +1,15 @@
 [Default Applications]
 text/plain=mwx7-notepad.desktop
+image/jpeg=mwx7-photos.desktop
+image/png=mwx7-photos.desktop
+image/gif=mwx7-photos.desktop
+image/webp=mwx7-photos.desktop
+image/bmp=mwx7-photos.desktop
+image/tiff=mwx7-photos.desktop
+audio/ogg=mwx7-mediaplayer.desktop
+audio/mpeg=mwx7-mediaplayer.desktop
+audio/flac=mwx7-mediaplayer.desktop
+audio/x-wav=mwx7-mediaplayer.desktop
+audio/mp4=mwx7-mediaplayer.desktop
+audio/x-vorbis+ogg=mwx7-mediaplayer.desktop
+audio/opus=mwx7-mediaplayer.desktop
