@@ -630,6 +630,22 @@ class Settings(Gtk.Application):
             p.append(dd)
         elif not sinks:
             p.append(note('No sound output was found.'))
+        # MWX 7's own sounds: the startup and log-off chimes and the notification sound.
+        p.append(section('MWX 7 sounds'))
+        off = os.path.join(CONF_DIR, 'sounds-off')
+        chimes = Gtk.CheckButton(label='Play sounds (startup, log off, notifications)')
+        chimes.set_active(not os.path.exists(off))
+
+        def toggled(c):
+            if c.get_active():
+                if os.path.exists(off):
+                    os.remove(off)
+                subprocess.Popen(['/usr/share/mwx7/bin/mwx7-sound', 'notify'])
+            else:
+                os.makedirs(CONF_DIR, exist_ok=True)
+                open(off, 'w').close()
+        chimes.connect('toggled', toggled)
+        p.append(chimes)
         return p
 
     # ---- Date & time ------------------------------------------------------------------------------------------------
