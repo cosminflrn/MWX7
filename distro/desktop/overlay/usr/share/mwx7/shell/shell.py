@@ -772,6 +772,7 @@ class Shell(Gtk.Application):
         b.set_child(v)
         b.connect('clicked', lambda *_: self.dock_click(launch, ids))
         self.hover_zoom(b, img)
+        self.peek_on_hover(b, label, ids)
         right_click = Gtk.GestureClick(button=3)
         # Capture phase: the button's own click handling would otherwise swallow the secondary button.
         right_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -825,6 +826,80 @@ class Shell(Gtk.Application):
             if w.get('minimized'):
                 self.ipc.call('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.ipc.call('window-rules/focus-view', {'id': w['id']})
+
+    def peek_on_hover(self, button, label, ids):
+        """Aero Peek, as on the web: resting the pointer on a running app's dock icon lists its windows above it
+        (pick one to bring it forward). Shown after a short pause so passing over the dock opens nothing."""
+        state = {'timer': 0, 'pop': None}
+
+        def close():
+            if state['timer']:
+                GLib.source_remove(state['timer'])
+                state['timer'] = 0
+            if state['pop']:
+                state['pop'].popdown()
+
+        def show():
+            state['timer'] = 0
+            wins = self.windows_of(ids)
+            if not wins:
+                return False
+            pop = Gtk.Popover()
+            pop.add_css_class('peek')
+            pop.set_has_arrow(False)
+            pop.set_autohide(False)
+            pop.set_parent(button)
+            pop.set_position(Gtk.PositionType.TOP)
+            pop.set_offset(0, -6)
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            head = Gtk.Label(label=label, xalign=0)
+            head.add_css_class('peek-head')
+            col.append(head)
+            for w in wins:
+                b = Gtk.Button()
+                b.add_css_class('peek-item')
+                row = Gtk.Box(spacing=8)
+                t = Gtk.Label(label=(w.get('title') or label)[:60], xalign=0, hexpand=True)
+                t.set_ellipsize(3)  # end
+                row.append(t)
+                if w.get('minimized'):
+                    m = Gtk.Label(label='minimized')
+                    m.add_css_class('peek-min')
+                    row.append(m)
+                b.set_child(row)
+
+                def pick(_b, v=w):
+                    close()
+                    if v.get('minimized'):
+                        self.ipc.call('wm-actions/set-minimized', {'view_id': v['id'], 'state': False})
+                    self.ipc.call('window-rules/focus-view', {'id': v['id']})
+                b.connect('clicked', pick)
+                col.append(b)
+            hover = Gtk.EventControllerMotion()
+            hover.connect('enter', lambda *_: state['timer'] and (GLib.source_remove(state['timer']),
+                                                                  state.update(timer=0)))
+            hover.connect('leave', lambda *_: leave())
+            col.add_controller(hover)
+            pop.set_child(col)
+            pop.connect('closed', lambda p: (GLib.idle_add(p.unparent), state.update(pop=None)))
+            state['pop'] = pop
+            pop.popup()
+            return False
+
+        def enter(*_):
+            if state['pop'] is None and not state['timer']:
+                state['timer'] = GLib.timeout_add(450, show)
+
+        def leave(*_):
+            # A moment to move from the icon onto the list without it closing.
+            if state['timer']:
+                GLib.source_remove(state['timer'])
+            state['timer'] = GLib.timeout_add(350, lambda: (close(), False)[1])
+        motion = Gtk.EventControllerMotion()
+        motion.connect('enter', enter)
+        motion.connect('leave', leave)
+        button.add_controller(motion)
+        button.connect('clicked', lambda *_: close())
 
     def dock_menu(self, button, label, launch, ids):
         # Right-click on a dock icon: open another window, or close the app's windows.

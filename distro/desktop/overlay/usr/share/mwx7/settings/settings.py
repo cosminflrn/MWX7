@@ -178,8 +178,10 @@ class Settings(Gtk.Application):
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=120)
         self.stack.set_hexpand(True)
         pages = [
-            ('personalize', 'Personalize', 'desktop', self.page_personalize),
-            ('account', 'Account', 'user', self.page_account),
+            ('themes', 'Themes', 'desktop', self.page_themes),
+            ('wallpapers', 'Wallpapers', 'image', self.page_wallpapers),
+            ('account', 'User account', 'user', self.page_account),
+            ('wincolor', 'Window Color', 'paint', self.page_wincolor),
             ('display', 'Display', 'computer', self.page_display),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
@@ -206,8 +208,10 @@ class Settings(Gtk.Application):
         # opens Date & time, the desktop's menu Personalize).
         want = 'updates' if '--updates' in sys.argv else (sys.argv[sys.argv.index('--page') + 1]
                                                          if '--page' in sys.argv[:-1] else '')
+        want = {'personalize': 'wallpapers'}.get(want, want)  # the desktop menu's old "Personalize" page id
         start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
+        self.sync_personalize()  # mark the current theme and wallpaper
         root.append(nav)
         root.append(self.stack)
         w.set_child(root)
@@ -220,6 +224,10 @@ class Settings(Gtk.Application):
         bar = Gtk.HeaderBar()
         bar.add_css_class('mwx7-titlebar')
         bar.set_show_title_buttons(False)
+        icon = Gtk.Image.new_from_file(os.path.join(ICONS, 'settings.png'))
+        icon.set_pixel_size(16)
+        icon.set_margin_end(6)
+        bar.pack_start(icon)
         label = Gtk.Label(label=title)
         label.add_css_class('mwx7-title')
         bar.pack_start(label)
@@ -235,31 +243,96 @@ class Settings(Gtk.Application):
             bar.pack_end(b)
         return bar
 
-    # ---- Personalize ------------------------------------------------------------------------------------------------
-    def page_personalize(self):
+    # ---- Themes, Wallpapers, Window Color (the web Settings' three Personalization pages) ----------------------------
+    # Only themes whose wallpaper ships in the package are offered: the web's Aurora and Dusk are drawn gradients, not
+    # pictures, so there is nothing for swaybg to show.
+    THEMES = [('MWX 7', 'meadow.jpg', '#1e64dc', 0), ('Sierra', 'sierra.jpg', '#5f6b78', 45)]
+
+    @staticmethod
+    def tile(preview, name, strip=None):
+        """A selectable tile as in the web Settings: thumbnail, optional colour strip under it, then the name."""
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        v.append(preview)
+        if strip:
+            bar = Gtk.Box()
+            bar.set_size_request(150, 8)
+            bar.set_halign(Gtk.Align.CENTER)
+            bar.add_css_class('theme-strip')
+            prov = Gtk.CssProvider()
+            prov.load_from_data(f'box {{ background: {strip}; }}'.encode())
+            bar.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+            v.append(bar)
+        v.append(Gtk.Label(label=name))
+        return v
+
+    def sync_personalize(self):
+        """Re-select the tiles that match the current wallpaper and colour: a theme click changes both pages' state."""
+        # The default wallpaper (/usr/share/mwx7/wallpaper.jpg) is the meadow picture.
+        name = lambda p: 'meadow.jpg' if os.path.basename(p) == 'wallpaper.jpg' else os.path.basename(p)
+        wall = name(self.current_wallpaper())
+        rgb, level = glass_now()
+        for flow, match in ((getattr(self, 'wall_flow', None), lambda c: name(c.path) == wall),
+                            (getattr(self, 'theme_flow', None),
+                             lambda c: name(c.path) == wall and (c.rgb.lower(), c.level) == (rgb, level))):
+            if not flow:
+                continue
+            flow.unselect_all()
+            child = flow.get_child_at_index(0)
+            while child:
+                if match(child):
+                    flow.select_child(child)
+                child = child.get_next_sibling()
+
+    def page_themes(self):
         p = page()
-        p.append(heading('Personalize'))
-        p.append(section('Wallpaper'))
+        p.append(heading('Change the visuals and sounds on your computer'))
+        p.append(note('Click a theme to set the desktop background and window color together.'))
         flow = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
-                           row_spacing=10, homogeneous=True)
+                           row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
         flow.add_css_class('walls')
-        current = self.current_wallpaper()
-        files = sorted(f for f in os.listdir(WALLPAPERS) if f.lower().endswith(('.jpg', '.png')))
-        for f in files:
+        for name, f, rgb, level in self.THEMES:
+            path = os.path.join(WALLPAPERS, f)
+            if not os.path.exists(path):
+                continue
+            child = Gtk.FlowBoxChild()
+            child.path, child.rgb, child.level = path, rgb, level
+            child.set_child(self.tile(thumb(path, 150, 94), name, rgb))
+            flow.append(child)
+
+        def chosen(_f, c):
+            self.set_wallpaper(c.path)
+            self.set_glass(c.rgb, c.level)
+            self.sync_personalize()
+        flow.connect('child-activated', chosen)
+        self.theme_flow = flow
+        p.append(flow)
+        return p
+
+    def page_wallpapers(self):
+        p = page()
+        p.append(heading('Choose your desktop background'))
+        p.append(note('Click a picture to use it as your desktop background.'))
+        flow = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
+                           row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
+        flow.add_css_class('walls')
+        for f in sorted(f for f in os.listdir(WALLPAPERS) if f.lower().endswith(('.jpg', '.png'))):
             path = os.path.join(WALLPAPERS, f)
             child = Gtk.FlowBoxChild()
             child.path = path
-            v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            v.append(thumb(path, 150, 94))
-            v.append(Gtk.Label(label=os.path.splitext(f)[0].replace('-', ' ').capitalize()))
-            child.set_child(v)
+            child.set_child(self.tile(thumb(path, 150, 94), os.path.splitext(f)[0].replace('-', ' ').capitalize()))
             flow.append(child)
-            if path == current:
-                flow.select_child(child)
-        flow.connect('child-activated', lambda _f, c: self.set_wallpaper(c.path))
-        p.append(flow)
 
-        p.append(section('Window color'))
+        def chosen(_f, c):
+            self.set_wallpaper(c.path)
+            self.sync_personalize()
+        flow.connect('child-activated', chosen)
+        self.wall_flow = flow
+        p.append(flow)
+        return p
+
+    def page_wincolor(self):
+        p = page()
+        p.append(heading('Change the color of your window borders, Start menu and taskbar'))
         p.append(note('The tint of the glass on window frames, the status bar and the dock.'))
         flow = Gtk.FlowBox(max_children_per_line=8, min_children_per_line=8, selection_mode=Gtk.SelectionMode.NONE,
                            column_spacing=6, row_spacing=6, halign=Gtk.Align.START)
@@ -277,7 +350,7 @@ class Settings(Gtk.Application):
             b.set_child(sw)
             if hexc == cur:
                 b.add_css_class('chosen')
-            b.connect('clicked', lambda _b, h=hexc: self.set_glass(h, None))
+            b.connect('clicked', lambda _b, h=hexc: (self.set_glass(h, None), self.sync_personalize()))
             self.swatches.append((hexc, b))
             flow.append(b)
         p.append(flow)
@@ -294,7 +367,8 @@ class Settings(Gtk.Application):
             if self.intensity_timer:
                 GLib.source_remove(self.intensity_timer)
             self.intensity_timer = GLib.timeout_add(250, lambda: (setattr(self, 'intensity_timer', 0),
-                                                                  self.set_glass(None, self.intensity.get_value()))
+                                                                  self.set_glass(None, self.intensity.get_value()),
+                                                                  self.sync_personalize())
                                                     and False)
         self.intensity.connect('value-changed', moved)
         row.append(self.intensity)
