@@ -1,22 +1,55 @@
 #!/bin/sh
 # Settings -> Updates, run as root through pkexec: MWX 7's own updates (the MWX 7 update channel), Debian's and
-# Chrome's, all through apt. "check" lists what would change; "install" installs it; "install-then reboot|poweroff"
-# installs, then restarts or shuts down (Restart / Shut Down with "Update and ...").
+# Chrome's, all through apt. "check" lists what would change; "install" installs it and records what was upgraded;
+# "needs-restart" says whether the last install needs a restart; "offline reboot|poweroff" restarts into the update
+# screen (system-update.target, see mwx7-offline-update), like "Update and restart" on Windows.
 set -e
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+STATE=/var/lib/mwx7
+
+# Package versions now installed, one "name version" per line (for the before/after diff of an install).
+snapshot() { dpkg-query -W -f '${Package} ${Version}\n' | sort; }
+
+# Our config files win over a package's new defaults (and nothing stops to ask).
+do_install() {
+  mkdir -p "$STATE"
+  before=$(mktemp)
+  after=$(mktemp)
+  snapshot >"$before"
+  rc=0
+  apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 full-upgrade || rc=$?
+  # Recorded even when apt failed half way: what did get upgraded still decides whether a restart is needed.
+  snapshot >"$after"
+  # Upgraded = the name was installed before and its name+version line changed (new packages are not upgrades).
+  comm -13 "$before" "$after" | awk 'NR==FNR { old[$1]=1; next } ($1 in old) { print $1 }' "$before" - >"$STATE/last-upgraded"
+  rm -f "$before" "$after"
+  [ "$rc" = 0 ] || return "$rc"
+  apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
+  apt-get clean
+}
+
 case "$1" in
   check)
     apt-get update -q >/dev/null
     apt list --upgradable 2>/dev/null | sed -n 's|^\([^/]*\)/[^ ]* \([^ ]*\) .*|\1 \2|p' ;;
   install)
-    # Our config files win over a package's new defaults (and nothing stops to ask).
-    apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 full-upgrade
-    apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
-    apt-get clean ;;
-  install-then)
-    # Restart / Shut Down with "Update and ...": install, then do it (whatever the install's outcome).
-    case "$2" in reboot|poweroff) ;; *) echo "usage: mwx7-update install-then reboot|poweroff" >&2; exit 2 ;; esac
-    "$0" install >/var/log/mwx7-update.log 2>&1 || true
-    systemctl "$2" ;;
-  *) echo "usage: mwx7-update check|install|install-then reboot|poweroff" >&2; exit 2 ;;
+    do_install ;;
+  needs-restart)
+    # Only what a running session cannot pick up by itself: the kernel, the C library, init, the graphics stack,
+    # the compositor, the login screen and the splash; everything else is fine until the next restart.
+    if [ -e /run/reboot-required ]; then echo yes; exit 0; fi
+    newest=$(ls /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -n 1)
+    if [ -n "$newest" ] && [ "$newest" != "$(uname -r)" ]; then echo yes; exit 0; fi
+    if [ -s "$STATE/last-upgraded" ] && grep -Eq \
+      '^(libc6|systemd|udev|dbus|libgl1-mesa-dri|libegl-mesa0|wayfire|libwlroots.*|linux-image.*|greetd|plymouth|firmware-.*)$' \
+      "$STATE/last-upgraded"; then echo yes; exit 0; fi
+    echo no ;;
+  offline)
+    # Windows-style: updates install before the session starts, so nothing runs on files that change underneath it.
+    case "$2" in reboot|poweroff) ;; *) echo "usage: mwx7-update offline reboot|poweroff" >&2; exit 2 ;; esac
+    mkdir -p "$STATE"
+    echo "$2" >"$STATE/offline-update"
+    ln -sfn "$STATE" /system-update
+    systemctl reboot ;;
+  *) echo "usage: mwx7-update check|install|needs-restart|offline reboot|poweroff" >&2; exit 2 ;;
 esac

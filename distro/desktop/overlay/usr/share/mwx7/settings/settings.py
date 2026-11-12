@@ -664,14 +664,26 @@ class Settings(Gtk.Application):
                     current.set_label(f"You have MWX 7 {open('/usr/share/mwx7/version').read().strip()}.")
                 except OSError:
                     pass
-                status.set_label('Updates installed. Restart to use everything that changed.')
+                # Restart only when something that a running session can't pick up changed (kernel, libc, graphics...).
+                r = subprocess.run(['pkexec', UPDATE, 'needs-restart'], capture_output=True, text=True)
+                restart_needed = r.returncode != 0 or r.stdout.strip() != 'no'
+                if restart_needed:
+                    status.set_label('Updates installed. Restart to use everything that changed.')
+                else:
+                    status.set_label('Updates installed. Nothing to restart.')
+                    try:
+                        if 'mwx7-desktop' in open('/var/lib/mwx7/last-upgraded').read().split():
+                            # mwx7-shell restarts the shell when it exits, so this loads the new one without a logout.
+                            subprocess.run(['pkill', '-u', str(os.getuid()), '-f', '/usr/share/mwx7/shell/shell.py'])
+                    except OSError:
+                        pass
                 try:  # the status bar's "updates ready" icon goes away now rather than at its next check
                     os.unlink(os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-updates'))
                 except OSError:
                     pass
                 show_news()
                 detail.set_label('')
-                restart.set_visible(True)
+                restart.set_visible(restart_needed)
             else:
                 status.set_label('Installing updates did not finish. Try again in a moment.')
             return False
