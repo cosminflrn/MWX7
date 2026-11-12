@@ -1,6 +1,8 @@
 #pragma once
 #include <wayfire/render-manager.hpp>
 #include "deco-button.hpp"
+#include <wayfire/plugins/common/simple-texture.hpp>
+#include <wayfire/plugins/common/cairo-util.hpp>
 
 namespace wf
 {
@@ -67,6 +69,13 @@ class decoration_theme_t
         const button_state_t& state) const;
 
   private:
+    // The title band's glass (sheen, light streaks, edge highlights) drawn once with cairo and reused until the frame's
+    // size, focus or colour changes: per frame it is one texture draw, which keeps dragging cheap.
+    mutable wf::simple_texture_t band_texture;
+    mutable int band_key_w = -1, band_key_h = -1, band_key_band = -1;
+    mutable bool band_key_active = false;
+    void update_band(int width, int height, int band, bool active) const;
+
     wf::option_wrapper_t<std::string> font{"decoration/font"};
     wf::option_wrapper_t<int> title_height{"decoration/title_height"};
     wf::option_wrapper_t<int> border_size{"decoration/border_size"};
