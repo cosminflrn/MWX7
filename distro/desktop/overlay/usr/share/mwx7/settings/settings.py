@@ -211,6 +211,7 @@ class Settings(Gtk.Application):
         want = {'personalize': 'wallpapers'}.get(want, want)  # the desktop menu's old "Personalize" page id
         start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
+        self.sync_personalize()  # mark the current theme and wallpaper
         root.append(nav)
         root.append(self.stack)
         w.set_child(root)
@@ -254,7 +255,8 @@ class Settings(Gtk.Application):
         v.append(preview)
         if strip:
             bar = Gtk.Box()
-            bar.set_size_request(-1, 8)
+            bar.set_size_request(150, 8)
+            bar.set_halign(Gtk.Align.CENTER)
             bar.add_css_class('theme-strip')
             prov = Gtk.CssProvider()
             prov.load_from_data(f'box {{ background: {strip}; }}'.encode())
@@ -265,9 +267,13 @@ class Settings(Gtk.Application):
 
     def sync_personalize(self):
         """Re-select the tiles that match the current wallpaper and colour: a theme click changes both pages' state."""
-        wall = self.current_wallpaper()
-        for flow, match in ((getattr(self, 'wall_flow', None), lambda c: c.path == wall),
-                            (getattr(self, 'theme_flow', None), lambda c: c.path == wall and (c.rgb, c.level) == glass_now())):
+        # The default wallpaper (/usr/share/mwx7/wallpaper.jpg) is the meadow picture.
+        name = lambda p: 'meadow.jpg' if os.path.basename(p) == 'wallpaper.jpg' else os.path.basename(p)
+        wall = name(self.current_wallpaper())
+        rgb, level = glass_now()
+        for flow, match in ((getattr(self, 'wall_flow', None), lambda c: name(c.path) == wall),
+                            (getattr(self, 'theme_flow', None),
+                             lambda c: name(c.path) == wall and (c.rgb.lower(), c.level) == (rgb, level))):
             if not flow:
                 continue
             flow.unselect_all()
