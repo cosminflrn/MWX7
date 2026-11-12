@@ -19,6 +19,7 @@ const FILES: string[] = [
   '10-snowboard.jpg',
   '11-beach.jpg',
   '12-horse.jpg',
+  '13-piglet.jpg',
 ];
 
 const BASE = import.meta.env.BASE_URL;

@@ -669,13 +669,19 @@ class Settings(Gtk.Application):
             version = open('/usr/share/mwx7/version').read().strip()
         except OSError:
             version = '?'
+        # /usr/lib/os-release is MWX 7's own; the diverted Debian original says what the system is built on.
         os_name = ''
         try:
-            for line in open('/etc/os-release'):
+            for line in open('/usr/lib/os-release.debian'):
                 if line.startswith('PRETTY_NAME='):
                     os_name = line.split('=', 1)[1].strip().strip('"')
         except OSError:
             pass
+        if not os_name:
+            try:
+                os_name = 'Debian ' + open('/etc/debian_version').read().strip()
+            except OSError:
+                os_name = 'Debian'
         cpu = next((l.split(':', 1)[1].strip() for l in open('/proc/cpuinfo') if l.startswith('model name')), '?')
         mem_kb = next((int(l.split()[1]) for l in open('/proc/meminfo') if l.startswith('MemTotal')), 0)
         gpu = ''
