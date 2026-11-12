@@ -32,6 +32,22 @@ export const impl: Pick<AppManifest, 'mount'> = {
       );
       return;
     }
+    // On MWX 7 OS the launcher passes what the browser cannot see: the release, the real processor, memory and disk.
+    const os = (args.os ?? null) as { version?: string; cpu?: string; memory?: string; disk?: string } | null;
+    const specs: [string, string][] = os
+      ? [
+          ['Version', `${os.version || VERSION} \u201cLuna\u201d`],
+          ['Processor', os.cpu ?? 'Unknown'],
+          ['Memory', os.memory ?? 'Unknown'],
+          ['Storage', os.disk ?? 'Unknown'],
+          ['Built by', 'Cosmin & Claude'],
+        ]
+      : [
+          ['Version', `${VERSION} \u201cLuna\u201d`],
+          ['Processor', navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'],
+          ['Storage', 'Memory \u2014 this session only'],
+          ['Built by', 'Cosmin & Claude'],
+        ];
     win.body.append(
       h('div', { class: 'about-logo', html: icons.orb }),
       h('h1', {}, 'MWX ', h('span', { class: 'about-seven' }, '7')),
@@ -39,14 +55,7 @@ export const impl: Pick<AppManifest, 'mount'> = {
       h(
         'dl',
         { class: 'about-specs' },
-        h('dt', {}, 'Version'),
-        h('dd', {}, `${VERSION} “Luna”`),
-        h('dt', {}, 'Processor'),
-        h('dd', {}, navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency} browser threads` : 'Your browser'),
-        h('dt', {}, 'Storage'),
-        h('dd', {}, 'Memory — this session only'),
-        h('dt', {}, 'Built by'),
-        h('dd', {}, 'Cosmin & Claude'),
+        ...specs.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]),
       ),
       h('a', { class: 'about-link', href: 'https://github.com/cosminflrn/MWX7', target: '_blank', rel: 'noopener' }, 'github.com/cosminflrn/MWX7'),
       h(
