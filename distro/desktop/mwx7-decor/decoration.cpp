@@ -66,8 +66,19 @@ class wayfire_decoration : public wf::plugin_interface_t
     };
 
   public:
+    // Settings changes the frame colour by rewriting the config; repaint every frame so it shows at once (otherwise a
+    // window kept its old colour until something else redrew it).
+    wf::signal::connection_t<wf::reload_config_signal> on_config_reload = [=] (wf::reload_config_signal*)
+    {
+        for (auto& view : wf::get_core().get_all_views())
+        {
+            view->damage();
+        }
+    };
+
     void init() override
     {
+        wf::get_core().connect(&on_config_reload);
         wf::get_core().connect(&on_decoration_state_changed);
         wf::get_core().tx_manager->connect(&on_new_tx);
         wf::get_core().connect(&on_view_tiled);

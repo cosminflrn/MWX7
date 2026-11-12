@@ -69,10 +69,19 @@ def ini_set(section, key, value):
         else:
             body = '\n' + line + body if body.startswith('\n') else '\n' + line + '\n' + body
         text = text[:m.start(1)] + body + text[m.end(1):]
-    tmp = WF_INI + '.tmp'
-    with open(tmp, 'w') as f:
-        f.write(text)
-    os.replace(tmp, WF_INI)  # atomic, so Wayfire never reads half a file
+    # Wayfire reloads its config when the file is modified in place (inotify IN_MODIFY); a new file renamed over it
+    # is never noticed, which is why changes (window colour) did not apply. One write() of the whole file, never
+    # shorter than before (a padding comment fills the rest), so Wayfire can't read a truncated or half-written file.
+    text = re.sub(r'\n#PAD *\n?\Z', '\n', text)
+    data = text.encode()
+    old = os.path.getsize(WF_INI)
+    if len(data) < old:
+        data += b'#PAD' + b' ' * max(0, old - len(data) - 4)
+    fd = os.open(WF_INI, os.O_WRONLY)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
 
 
 def run(cmd):

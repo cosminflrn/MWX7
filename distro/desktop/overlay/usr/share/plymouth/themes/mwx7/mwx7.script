@@ -4,45 +4,54 @@
 Window.SetBackgroundTopColor(0.02, 0.06, 0.16);
 Window.SetBackgroundBottomColor(0.05, 0.17, 0.36);
 
-sw = Window.GetWidth();
-sh = Window.GetHeight();
-
-# Scale with the screen: the orb is about a fifth of the screen height, never upscaled past its 200 px source.
 orb_src = Image("orb.png");
-size = Math.Min(200, Math.Int(sh / 5));
-orb = orb_src.Scale(size, size);
-orb_sprite = Sprite(orb);
-orb_sprite.SetX(sw / 2 - size / 2);
-orb_sprite.SetY(sh / 2 - size / 2 - sh / 14);
-orb_sprite.SetZ(10);
-
-title = Image("title.png");
-tw = Math.Int(title.GetWidth() * size / 200);
-th = Math.Int(title.GetHeight() * size / 200);
-title = title.Scale(tw, th);
-title_sprite = Sprite(title);
-title_sprite.SetX(sw / 2 - tw / 2);
-title_sprite.SetY(orb_sprite.GetY() + size + sh / 40);
-title_sprite.SetZ(10);
-
+title_src = Image("title.png");
 dot = Image("dot.png");
+orb_sprite = Sprite();
+orb_sprite.SetZ(10);
+title_sprite = Sprite();
+title_sprite.SetZ(10);
 dots = 5;
 gap = 22;
-y = title_sprite.GetY() + th + sh / 18;
 for (i = 0; i < dots; i++)
 {
   d[i] = Sprite(dot);
-  d[i].SetX(sw / 2 - (dots - 1) * gap / 2 + i * gap - 6);
-  d[i].SetY(y);
   d[i].SetZ(10);
   d[i].SetOpacity(0.2);
 }
+
+# Everything is placed from the current screen size, and placed again whenever it changes: in VMs the screen often
+# switches resolution while the splash runs (the graphics driver or VMware's window fitting), which used to leave
+# the splash stuck in the top-left corner. (Script variables are local to a function unless written as global.)
+fun layout()
+{
+  global.sw = Window.GetWidth();
+  global.sh = Window.GetHeight();
+  # Scale with the screen: the orb is about a fifth of the screen height, never upscaled past its 200 px source.
+  global.size = Math.Min(200, Math.Int(sh / 5));
+  orb_sprite.SetImage(orb_src.Scale(size, size));
+  orb_sprite.SetX(sw / 2 - size / 2);
+  orb_sprite.SetY(sh / 2 - size / 2 - sh / 14);
+  global.tw = Math.Int(title_src.GetWidth() * size / 200);
+  global.th = Math.Int(title_src.GetHeight() * size / 200);
+  title_sprite.SetImage(title_src.Scale(tw, th));
+  title_sprite.SetX(sw / 2 - tw / 2);
+  title_sprite.SetY(orb_sprite.GetY() + size + sh / 40);
+  global.y = title_sprite.GetY() + th + sh / 18;
+  for (i = 0; i < dots; i++)
+  {
+    d[i].SetX(sw / 2 - (dots - 1) * gap / 2 + i * gap - 6);
+    d[i].SetY(y);
+  }
+}
+layout();
 
 t = 0;
 fun refresh_callback()
 {
   # About 50 refreshes a second: a soft wave travels left to right every ~1.6 s.
   t++;
+  if (Window.GetWidth() != sw || Window.GetHeight() != sh) layout();
   for (i = 0; i < dots; i++)
   {
     phase = (t / 80 - i / dots) % 1;

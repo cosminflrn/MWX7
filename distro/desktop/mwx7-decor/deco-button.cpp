@@ -1,3 +1,4 @@
+#include <cmath>
 #include "deco-button.hpp"
 #include "deco-theme.hpp"
 #include <wayfire/opengl.hpp>
@@ -30,6 +31,13 @@ button_type_t button_t::get_button_type() const
 
 void button_t::set_hover(bool is_hovered)
 {
+    // Called for every pointer motion over the title bar: only a real change may repaint (each repaint also redoes
+    // the blur behind the frame, which made dragging and hovering laggy in VMs).
+    if (is_hovered == this->is_hovered)
+    {
+        return;
+    }
+
     this->is_hovered = is_hovered;
     if (!this->is_pressed)
     {
@@ -89,6 +97,16 @@ void button_t::render(const wf::render_target_t& fb, wf::geometry_t geometry,
 
 void button_t::update_texture()
 {
+    // Redraw the icon only when it would look different: the hover fade in 12 steps, plus active and type. Drawing
+    // with cairo and uploading the texture on every animation frame was the costly part of hovering.
+    const int key = theme.get_title_height() * 100000 + (int)std::lround(double(hover) * 12) * 64 +
+        (is_active ? 32 : 0) + (int)type % 32;
+    if ((key == last_texture_key) && (button_texture.tex != (GLuint)-1))
+    {
+        return;
+    }
+
+    last_texture_key = key;
     /**
      * We render at 100% resolution
      * When uploading the texture, this gets scaled

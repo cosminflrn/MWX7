@@ -83,6 +83,7 @@ class button_t
     /* Whether the button needs repaint */
     button_type_t type;
     wf::simple_texture_t button_texture;
+    int last_texture_key = -1;
 
     /* Whether the button is currently being hovered */
     bool is_hovered = false;

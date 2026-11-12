@@ -46,7 +46,7 @@ id mwx >/dev/null 2>&1 || useradd -m -s /bin/bash -c 'MWX 7 Setup' -G video,rend
 chmod 0440 /etc/sudoers.d/mwx7-live
 chown root:root /etc/sudoers.d/mwx7-live
 visudo -c >/dev/null  # stop the build if sudo would reject its configuration
-chmod 0755 /usr/local/bin/mwx7-install /usr/local/bin/mwx7-oobe-session
+chmod 0755 /usr/local/bin/mwx7-install
 sed -i "s/@VERSION@/$(cat /usr/share/mwx7/version)/g" /etc/calamares/branding/mwx7/branding.desc
 # Only for debugging the ISO from its serial console; the first-start setup locks root on the installed system.
 echo 'root:root' | chpasswd

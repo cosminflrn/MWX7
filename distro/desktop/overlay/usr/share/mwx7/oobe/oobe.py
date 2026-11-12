@@ -25,6 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SHARE = '/usr/share/mwx7'
 INSTALL = os.path.join(HERE, 'install.py')
 PREVIEW = '--preview' in sys.argv
+# First start after Settings -> Reset MWX 7: MWX 7 is already on the disk, so newest updates instead of the disk page.
+FIRSTBOOT = '--firstboot' in sys.argv
 AVATARS = os.path.join(SHARE, 'avatars')
 
 LANGUAGES = [  # (shown, locale, keyboard layout, variant, time zone)
@@ -113,7 +115,7 @@ class Setup(Gtk.Application):
         self.disk = None
         self.mode = None
         self.picture = os.path.join(AVATARS, '03-guitar.jpg')
-        self.copy_state = 'idle'  # idle | running | done | failed
+        self.copy_state = 'done' if FIRSTBOOT else 'idle'  # idle | running | done | failed
         self.copy_error = ''
         self.progress = 0
         self.step = ''
@@ -172,11 +174,12 @@ class Setup(Gtk.Application):
         overlay.add_overlay(card)
         win.set_child(overlay)
 
-        for pid, title, build in (('welcome', 'Hi! Let’s set up MWX 7', self.page_welcome),
-                                  ('disk', 'Where should MWX 7 go?', self.page_disk),
-                                  ('wifi', 'Connect to the internet', self.page_wifi),
-                                  ('account', 'Who’s going to use this PC?', self.page_account),
-                                  ('done', 'Getting everything ready', self.page_done)):
+        first = (('update', 'Getting the newest MWX 7', self.page_update),) if FIRSTBOOT else ()
+        disk = () if FIRSTBOOT else (('disk', 'Where should MWX 7 go?', self.page_disk),)
+        for pid, title, build in first + (('welcome', 'Hi! Let’s set up MWX 7', self.page_welcome),) + disk + (
+                ('wifi', 'Connect to the internet', self.page_wifi),
+                ('account', 'Who’s going to use this PC?', self.page_account),
+                ('done', 'Getting everything ready', self.page_done)):
             self.stack.add_named(build(), pid)
             self.pages.append((pid, title))
         self.index = 0
@@ -186,7 +189,8 @@ class Setup(Gtk.Application):
         else:
             win.set_decorated(False)
             win.fullscreen()
-            subprocess.Popen(sudo('ready'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if not FIRSTBOOT:
+                subprocess.Popen(sudo('ready'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         win.present()
         GLib.timeout_add(400, self.tick)
 
@@ -197,6 +201,8 @@ class Setup(Gtk.Application):
         self.back.set_visible(self.target(-1) is not None and pid != 'done')
         self.next.set_visible(pid != 'done')
         self.next.set_label('Next')
+        if pid == 'update':
+            self.start_update()
         if pid == 'disk':
             self.refresh_disks()
         if pid == 'wifi':
@@ -210,7 +216,8 @@ class Setup(Gtk.Application):
         i = self.index + step
         if 0 <= i < len(self.pages) and self.pages[i][0] == 'wifi' and self.online():
             i += step  # nothing to do there: a cable or a known network is already connected
-        if not 0 <= i < len(self.pages) or (step < 0 and self.copy_state != 'idle' and i <= 1):
+        barrier = next((n for n, (pid, _t) in enumerate(self.pages) if pid in ('disk', 'update')), -1)
+        if not 0 <= i < len(self.pages) or (step < 0 and self.copy_state != 'idle' and i <= barrier):
             return None
         return i
 
@@ -228,7 +235,9 @@ class Setup(Gtk.Application):
             return
         pid = self.pages[self.index][0]
         ok = True
-        if pid == 'disk':
+        if pid == 'update':
+            ok = self.update_state in ('done', 'failed')
+        elif pid == 'disk':
             ok = self.disk is not None and self.mode is not None and (self.mode != 'erase' or self.disk['empty'] or
                                                                       self.erase_ok.get_active())
         elif pid == 'account':
@@ -251,6 +260,50 @@ class Setup(Gtk.Application):
             self.bar.set_fraction(self.progress / 100)
             self.done_step.set_label(f'{self.step} · {self.progress}%' if self.copy_state == 'running' else '')
         return True
+
+    # ---- 0. newest updates (first start after a reset) ------------------------------------------------------------
+    def page_update(self):
+        p = self.page()
+        p.set_valign(Gtk.Align.CENTER)
+        self.update_text = Gtk.Label(label='MWX 7 was reset. First it gets the newest version, so you start up to date.',
+                                     wrap=True, max_width_chars=60, justify=Gtk.Justification.CENTER)
+        self.update_text.add_css_class('big')
+        p.append(self.update_text)
+        self.update_bar = Gtk.ProgressBar(margin_top=18)
+        p.append(self.update_bar)
+        self.update_step = Gtk.Label(wrap=True, max_width_chars=70)
+        self.update_step.add_css_class('hint')
+        p.append(self.update_step)
+        self.update_state = 'idle'
+        return p
+
+    def start_update(self):
+        if self.update_state != 'idle':
+            return
+        self.update_state = 'running'
+        GLib.timeout_add(120, lambda: self.update_state == 'running' and (self.update_bar.pulse() or True))
+
+        def work():
+            p = subprocess.Popen(sudo('update'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            err = ''
+            for line in p.stdout:
+                kind, _, value = line.strip().partition(' ')
+                if kind == 'STEP':
+                    GLib.idle_add(self.update_step.set_label, value)
+                elif kind == 'ERROR':
+                    err = value
+            ok = p.wait() == 0
+            GLib.idle_add(self.updated, ok, err)
+        threading.Thread(target=work, daemon=True).start()
+
+    def updated(self, ok, err):
+        self.update_state = 'done' if ok else 'failed'
+        self.update_bar.set_fraction(1 if ok else 0)
+        self.update_text.set_label('MWX 7 is up to date.' if ok else err or 'Updates could not be installed now.')
+        self.validate()
+        if ok:
+            GLib.timeout_add(1200, lambda: (self.pages[self.index][0] == 'update' and self.go(1)) and False)
+        return False
 
     # ---- 1. language, keyboard, time zone ----------------------------------------------------------------------
     def page_welcome(self):
@@ -302,7 +355,7 @@ class Setup(Gtk.Application):
         self.installed_note.append(b)
         self.installed_note.set_visible(False)
         p.append(self.installed_note)
-        if not PREVIEW:
+        if not PREVIEW and not FIRSTBOOT:
             def look():
                 try:
                     found = any(d.get('has_mwx7') for d in json.loads(subprocess.run(
@@ -626,7 +679,7 @@ class Setup(Gtk.Application):
             fd, path = tempfile.mkstemp(prefix='mwx7-answers-', suffix='.json')
             with os.fdopen(fd, 'w') as f:
                 json.dump(self.answers, f)
-            r = subprocess.run(sudo('finish', path), capture_output=True, text=True)
+            r = subprocess.run(sudo('finish', path, *(['--here'] if FIRSTBOOT else [])), capture_output=True, text=True)
             err = next((l[6:] for l in r.stdout.splitlines() if l.startswith('ERROR ')), r.stderr.strip()[-200:])
             GLib.idle_add(self.all_done, None if r.returncode == 0 else err or 'unknown error')
         threading.Thread(target=work, daemon=True).start()
@@ -640,6 +693,11 @@ class Setup(Gtk.Application):
         elif PREVIEW:
             self.done_text.set_label('That was the whole setup. In a real setup, MWX 7 now restarts into the logon screen.')
             self.restart.set_label('Close')
+        elif FIRSTBOOT:
+            self.done_text.set_label('MWX 7 is ready. It restarts in a moment; then click your picture to sign in.')
+            self.done_step.set_label('')
+            self.status.set_label('')
+            return False  # install.py restarts the PC itself (this setup's user no longer exists)
         else:
             self.done_text.set_label('MWX 7 is ready. It restarts in a moment; then click your picture to sign in.')
             self.restart.set_label('Restart now')
