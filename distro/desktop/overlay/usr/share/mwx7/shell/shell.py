@@ -13,6 +13,7 @@ import time
 
 import gi
 import pwd
+import re
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
@@ -23,6 +24,7 @@ from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ICONS = '/usr/share/mwx7/icons'
+WF_INI = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wayfire.ini')
 
 # Pinned dock apps: (label, icon, command, app-ids that count as "this app is running").
 PINNED = [
@@ -274,6 +276,12 @@ class Shell(Gtk.Application):
         css = Gtk.CssProvider()
         css.load_from_path(os.path.join(HERE, 'style.css'))
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        # The bar and dock glass take the window colour chosen in Settings, and follow it when it changes.
+        self.tint = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.tint, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+        self.apply_tint()
+        self.tint_monitor = Gio.File.new_for_path(WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
+        self.tint_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, lambda: self.apply_tint() and False))
         self.bar = self.build_bar()
         self.dock = self.build_dock()
         self.bar.present()
@@ -281,6 +289,21 @@ class Shell(Gtk.Application):
         GLib.timeout_add(200, self.tick_clock)
         threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
         self.refresh()
+
+    def apply_tint(self):
+        rgb = [156, 196, 236]
+        try:
+            m = re.search(r'^active_color\s*=\s*\\?#([0-9A-Fa-f]{6})', open(WF_INI).read(), re.M)
+            if m:
+                rgb = [int(m.group(1)[i:i + 2], 16) for i in (0, 2, 4)]
+        except OSError:
+            pass
+        mix = 'rgba({}, {}, {}, {{}})'.format(*(round(v + (255 - v) * 0.55) for v in rgb))
+        self.tint.load_from_data(
+            ('window.bar .bar-plate { background: linear-gradient(to bottom, rgba(255, 255, 255, 0.62), %s); }\n'
+             '.dock-shelf { background: linear-gradient(to bottom, rgba(255, 255, 255, 0.72), %s); }\n'
+             % (mix.format(0.5), mix.format(0.58))).encode())
+        return False
 
     # ---- layer surfaces -------------------------------------------------------------------------------------------
     def layer_window(self, name, edges, height):

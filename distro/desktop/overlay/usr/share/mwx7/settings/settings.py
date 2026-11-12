@@ -674,13 +674,7 @@ class Settings(Gtk.Application):
         check.connect('clicked', on_check)
         install.connect('clicked', on_install)
 
-        p.append(section('First-start setup'))
-        p.append(note('See the setup a new MWX 7 PC starts with. It is only a preview: nothing is changed.'))
-        prev = Gtk.Button(label='Preview the first-start setup', halign=Gtk.Align.START)
-        prev.connect('clicked', lambda *_: subprocess.Popen(['python3', '/usr/share/mwx7/oobe/oobe.py', '--preview']))
-        p.append(prev)
-
-        if os.path.exists('/etc/mwx7/factory'):
+        if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Reset MWX 7'))
             p.append(note('Back to a fresh MWX 7, like just after setup: all accounts, files, apps and settings on this '
                           'PC are deleted. It restarts into the first-start setup, which installs the newest version '
@@ -689,6 +683,20 @@ class Settings(Gtk.Application):
             reset.add_css_class('destructive-action')
             reset.connect('clicked', self.confirm_reset)
             p.append(reset)
+            # Systems set up before Reset existed make their fresh copy in the background right after the update.
+            waiting = note('Getting Reset ready. This takes a minute after an update.')
+            p.append(waiting)
+
+            tries = [120]  # checks every 5 s for 10 minutes
+
+            def ready():
+                ok = os.path.exists('/etc/mwx7/factory')
+                reset.set_sensitive(ok)
+                waiting.set_visible(not ok)
+                tries[0] -= 1
+                return not ok and tries[0] > 0
+            if ready():
+                GLib.timeout_add_seconds(5, ready)
         return p
 
     def confirm_reset(self, *_):

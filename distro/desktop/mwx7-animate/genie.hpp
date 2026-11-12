@@ -197,7 +197,7 @@ class genie_animation : public animation_base
     // Driven by the clock rather than a wf duration so a reversal mid-way continues from where the window is.
     uint32_t last = 0;
     int direction = 1; // +1 = into the icon, -1 = out of it
-    // 380 ms by default: long enough to read as a pour, short enough to never feel like waiting.
+    // 300 ms by default: long enough to read as a pour, short enough to never feel slow.
     wf::option_wrapper_t<int> duration{"mwx7-animate/genie_duration"};
 
   public:

@@ -6,7 +6,7 @@
 		<option name="genie_duration" type="int">
 			<_short>Genie duration</_short>
 			<_long>How long minimizing into the dock and restoring from it take, in milliseconds.</_long>
-			<default>380</default>
+			<default>300</default>
 			<min>50</min>
 		</option>
 	</plugin>
