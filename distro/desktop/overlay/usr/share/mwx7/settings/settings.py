@@ -572,9 +572,9 @@ class Settings(Gtk.Application):
             version = '?'
         current = note(f'You have MWX 7 {version}.')
         p.append(current)
-        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. They never install '
-                      'by themselves: an icon in the status bar says when some are ready, and Shut Down and Restart '
-                      'offer to install them first.'))
+        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. Security fixes '
+                      'install by themselves; everything else waits for you: an icon in the status bar says when '
+                      'updates are ready, and Shut Down and Restart offer to install them first.'))
         status = Gtk.Label(xalign=0, wrap=True)
         status.add_css_class('status')
         detail = note('')
@@ -681,26 +681,12 @@ class Settings(Gtk.Application):
 
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Reset MWX 7'))
-            p.append(note('Back to a fresh MWX 7, no ISO needed. You choose: reinstall MWX 7 and keep everything, or '
-                          'delete everything and start clean.'))
+            p.append(note('MWX 7 installed again from GitHub, at the version you have now. You choose: keep everything '
+                          '(repairs a broken system) or delete everything and start clean.'))
             reset = Gtk.Button(label='Reset MWX 7…', halign=Gtk.Align.START)
             reset.add_css_class('destructive-action')
             reset.connect('clicked', self.confirm_reset)
             p.append(reset)
-            # Systems set up before Reset existed make their fresh copy in the background right after the update.
-            waiting = note('Getting Reset ready. This takes a minute after an update.')
-            p.append(waiting)
-
-            tries = [120]  # checks every 5 s for 10 minutes
-
-            def ready():
-                ok = os.path.exists('/etc/mwx7/factory')
-                reset.set_sensitive(ok)
-                waiting.set_visible(not ok)
-                tries[0] -= 1
-                return not ok and tries[0] > 0
-            if ready():
-                GLib.timeout_add_seconds(5, ready)
         return p
 
     def confirm_reset(self, *_):
@@ -727,18 +713,47 @@ class Settings(Gtk.Application):
         cancel.connect('clicked', lambda *_: dlg.close())
         go = Gtk.Button(label='Reset and restart')
         go.add_css_class('destructive-action')
-        msg = Gtk.Label(xalign=0, wrap=True)
+        msg = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        bar = Gtk.ProgressBar(visible=False)
+        box.append(Gtk.Label(label='It downloads MWX 7 (about 900 MB) and takes 10–20 minutes; you can keep working '
+                                   'until it restarts. Nothing changes if it stops on the way.', xalign=0, wrap=True,
+                             max_width_chars=60, css_classes=['dim-label']))
 
         def do_reset(*_):
             go.set_sensitive(False)
             cancel.set_sensitive(False)
-            msg.set_label('Resetting… MWX 7 restarts in a moment.')
-            self.admin(['reset'] + (['keep'] if keep.get_active() else []),
-                       lambda ok, err: ok or (msg.set_label(err or 'Reset did not work.'), cancel.set_sensitive(True)))
+            keep.set_sensitive(False)
+            wipe.set_sensitive(False)
+            bar.set_visible(True)
+            msg.set_label('Starting…')
+
+            def work():
+                p = subprocess.Popen(['pkexec', ADMIN, 'reset'] + (['keep'] if keep.get_active() else []),
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                err = ''
+                for line in p.stdout:
+                    kind, _, value = line.strip().partition(' ')
+                    if kind == 'STEP':
+                        GLib.idle_add(msg.set_label, value + '…')
+                    elif kind == 'PROGRESS' and value.isdigit():
+                        GLib.idle_add(bar.set_fraction, int(value) / 100)
+                    elif kind == 'ERROR':
+                        err = value
+                ok = p.wait() == 0
+
+                def done():
+                    if not ok:
+                        msg.set_label(err or 'Reset did not work. Nothing was changed.')
+                        cancel.set_sensitive(True)
+                        bar.set_visible(False)
+                    return False
+                GLib.idle_add(done)
+            threading.Thread(target=work, daemon=True).start()
         go.connect('clicked', do_reset)
         btns.append(cancel)
         btns.append(go)
         box.append(msg)
+        box.append(bar)
         box.append(btns)
         dlg.set_child(box)
         dlg.present()

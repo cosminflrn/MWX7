@@ -6,12 +6,14 @@
                                     "STEP <text>" and "PROGRESS <0-100>" lines for the setup's progress bar
   install.py finish ANSWERS.json    the person's choices: account, language, keyboard, time zone; then unmounts
   install.py finish ANSWERS --here  the same on the running system (first start after Settings -> Reset MWX 7)
-  install.py factory                makes the factory copy on a system set up before Reset existed (package update)
+  install.py reinstall keep|clean   Settings -> Reset MWX 7 (through mwx7-admin): MWX 7 again from the newest ISO on
+                                    GitHub at the version this PC has; keep: accounts, files, apps and settings come
+                                    along; clean: nothing does, the first-start setup runs. Then a restart.
   install.py update check|install   after a reset, before the setup's pages: what is new, then (if wanted) install
   install.py ready                  tells the serial console the setup is on screen (for the automated boot tests)
 
-Reset: right after copying, the fresh system is kept as the read-only btrfs snapshot @factory, set to start into the
-first-start setup. Settings -> Reset MWX 7 (mwx7-admin reset) swaps it in for @ and gives @home a fresh start.
+Reset: the system is unpacked again from the newest MWX 7 ISO published on GitHub into a new subvolume, brought to the
+version this PC runs, and swapped in for @ on the next start. No snapshots are kept.
 
 Nothing is ever erased unless the setup passes "erase", which it only does after the person confirmed it. "free" only
 adds partitions in space no partition uses. Layout: GPT, a 512 MB EFI partition (UEFI) or a 1 MB BIOS boot partition
@@ -309,8 +311,6 @@ def copy(mode, disk):
     else:
         chroot('grub-install', '--target=i386-pc', disk)
     chroot('update-grub')
-    say('STEP', 'Keeping a factory copy')
-    make_factory(root)
     with open(STATE + '/state.json', 'w') as f:
         json.dump({'disk': disk, 'root': root, 'esp': esp}, f)
     say('PROGRESS', 100)
@@ -321,138 +321,257 @@ FIRSTBOOT_SUDOERS = ('# MWX 7 first start after a reset: the setup runs as this 
                      'mwx ALL=(root) NOPASSWD: /usr/bin/python3 /usr/share/mwx7/oobe/install.py *\n')
 
 
-def make_factory(root, from_running=False):
-    """The fresh system as a read-only snapshot, so Settings -> Reset can bring it back in seconds, no ISO needed.
-    It shares all its data with the running system, so it only takes space for what updates replace later.
-    from_running: a system set up before Reset existed. Its @ is snapshotted and made fresh again: the accounts and
-    their pictures are removed and the setup's own user comes back (people's files live in @home, which reset renews)."""
-    write('etc/mwx7/factory', 'This system has a factory copy (Settings -> Updates -> Reset MWX 7).\n')
-    top = STATE + '/top'
-    os.makedirs(top, exist_ok=True)
-    sh('mount', '-o', 'subvolid=5', root, top)
+RELEASES = 'https://api.github.com/repos/cosminflrn/MWX7/releases'
+ISO_CACHE = '/var/cache/mwx7/reset.iso'
+# Keep everything: this PC's accounts, logon, network, language, keyboard and time zone come along whole...
+KEEP = ('etc/passwd', 'etc/shadow', 'etc/group', 'etc/gshadow', 'etc/subuid', 'etc/subgid', 'etc/greetd/config.toml',
+        'etc/hostname', 'etc/hosts', 'etc/default/locale', 'etc/default/keyboard', 'etc/timezone', 'etc/localtime',
+        'etc/machine-id', 'etc/NetworkManager/system-connections', 'etc/sudoers.d', 'var/lib/AccountsService',
+        'var/lib/flatpak', 'var/lib/bluetooth')
+# ...and from these, whatever the new system doesn't have (apps put in /opt or /usr/local, extra app sources).
+ADD = ('opt', 'usr/local', 'etc/apt/sources.list.d', 'etc/apt/keyrings', 'etc/apt/trusted.gpg.d', 'usr/share/keyrings')
+FINISH = '''#!/bin/sh
+# Once, on the first start after "Reset MWX 7 - keep everything" (removes itself when done): installs again the apps
+# that were added to the replaced system, then deletes it. Without internet it tries again on the next start.
+if [ -s /var/lib/mwx7/reinstall ]; then
+  for i in $(seq 1 60); do getent hosts deb.debian.org >/dev/null && break; sleep 5; done
+  apt-get update -q || exit 0
+  # One by one: an app that no longer exists must not hold back the others.
+  for p in $(cat /var/lib/mwx7/reinstall); do DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$p" || true; done
+fi
+d=$(findmnt -no SOURCE / | cut -d[ -f1)
+mkdir -p /run/mwx7-finish && mount -o subvolid=5 "$d" /run/mwx7-finish && {
+  btrfs -q subvolume delete /run/mwx7-finish/@old 2>/dev/null; umount /run/mwx7-finish; }
+rm -f /var/lib/mwx7/reinstall /etc/systemd/system/multi-user.target.wants/mwx7-reset-finish.service \\
+  /etc/systemd/system/mwx7-reset-finish.service /usr/local/sbin/mwx7-reset-finish
+'''
+FINISH_UNIT = '''[Unit]
+Description=MWX 7: finish "Reset MWX 7 - keep everything" (added apps installed again, old system deleted)
+After=network-online.target
+
+[Service]
+# exec, not oneshot: the logon screen never waits for it.
+Type=exec
+ExecStart=/usr/local/sbin/mwx7-reset-finish
+
+[Install]
+WantedBy=multi-user.target
+'''
+
+
+def newest_iso():
+    """(iso url, sha256 url, version) of the newest MWX 7 ISO on GitHub."""
+    import urllib.request
+    req = urllib.request.Request(RELEASES + '?per_page=20', headers={'Accept': 'application/vnd.github+json'})
+    for rel in json.load(urllib.request.urlopen(req, timeout=30)):
+        assets = {a['name']: a['browser_download_url'] for a in rel.get('assets', [])}
+        for name, url in assets.items():
+            if name.endswith('.iso') and name + '.sha256' in assets:
+                return url, assets[name + '.sha256'], name
+    raise RuntimeError('No MWX 7 ISO found on GitHub.')
+
+
+def download_iso():
+    import hashlib
+    import urllib.request
+    say('STEP', 'Looking for MWX 7 on GitHub')
     try:
-        f = top + '/@factory'
-        if os.path.exists(f):
-            # It already exists: only its first-start setup is brought up to date, so a reset starts with this
-            # version's setup (the rest of the copy stays as it was; the setup then offers the newest version).
-            sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'false')
-            try:
-                shutil.copytree('/usr/share/mwx7/oobe', f'{f}/usr/share/mwx7/oobe', dirs_exist_ok=True)
-                make_clean(f)  # copies made by 1.9.0.207 kept Wi-Fi, apps and this PC's name: cleaned now
-            finally:
-                sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'true')
-            return
-        work = top + '/@factory-new'
-        if os.path.exists(work):
-            sh('btrfs', '-q', 'subvolume', 'delete', work)
-        sh('btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@', work)
-        if from_running:
-            make_clean(work)
-        # Started from the factory copy, MWX 7 goes straight into the first-start setup (without the disk page).
-        for rel, text, mode in (('etc/mwx7/factory', 'This system has a factory copy.\n', 0o644),
-                                ('etc/mwx7/firstboot', 'Start into the first-start setup.\n', 0o644),
-                                ('etc/sudoers.d/mwx7-firstboot', FIRSTBOOT_SUDOERS, 0o440),
-                                ('etc/greetd/config.toml', greetd_config(None, firstboot=True), 0o644)):
-            with open(f'{work}/{rel}', 'w') as out:
-                out.write(text)
-            os.chmod(f'{work}/{rel}', mode)
-        sh('btrfs', 'property', 'set', '-ts', work, 'ro', 'true')
-        os.rename(work, f)
-    finally:
-        sh('umount', top)
+        url, sha_url, name = newest_iso()
+        want = urllib.request.urlopen(sha_url, timeout=30).read().decode().split()[0].lower()
+    except OSError as e:
+        raise RuntimeError(f'GitHub could not be reached ({e}). Check the internet connection.')
+    os.makedirs(os.path.dirname(ISO_CACHE), exist_ok=True)
+
+    def sha(path):
+        h = hashlib.sha256()
+        with open(path, 'rb') as f:
+            for block in iter(lambda: f.read(1 << 20), b''):
+                h.update(block)
+        return h.hexdigest()
+    if os.path.exists(ISO_CACHE) and sha(ISO_CACHE) == want:
+        return  # downloaded by an earlier reset that didn't finish
+    say('STEP', f'Downloading {name}')
+    with urllib.request.urlopen(url, timeout=60) as r, open(ISO_CACHE + '.part', 'wb') as out:
+        total, done = int(r.headers.get('Content-Length') or 0), 0
+        while True:
+            block = r.read(1 << 20)
+            if not block:
+                break
+            out.write(block)
+            done += len(block)
+            if total:
+                say('PROGRESS', 2 + done * 43 // total)
+    if sha(ISO_CACHE + '.part') != want:
+        os.unlink(ISO_CACHE + '.part')
+        raise RuntimeError('The download was damaged. Try again.')
+    os.replace(ISO_CACHE + '.part', ISO_CACHE)
 
 
-def user_installed():
-    """Apps a person installed with apt (sudo apt install ...): apt's history marks those with Requested-By.
-    MWX 7's own build and its updates never are, so this is exactly what was added after the setup."""
-    import gzip
-    pkgs = set()
-    for path in sorted(glob.glob('/var/log/apt/history.log*')):
-        try:
-            text = (gzip.open(path, 'rt') if path.endswith('.gz') else open(path)).read()
-        except OSError:
+def keep_everything(new):
+    """The new system gets this PC's accounts and settings and, on its first start, the apps added here (their
+    settings live in the homes, which stay). Only MWX 7 and Debian's own files come back new: that repairs a broken
+    system."""
+    def cp(src, dst):
+        sh('cp', '-a', '--reflink=auto', src, dst)
+    for rel in KEEP:
+        src, dst = '/' + rel, f'{new}/{rel}'
+        if not os.path.lexists(src):
             continue
-        for entry in text.split('\n\n'):
-            if 'Requested-By:' not in entry:
-                continue
-            m = re.search(r'^Install: (.*)$', entry, re.M)
-            if m:
-                for item in re.findall(r'([^ ,()]+):[a-z0-9]+ \(([^)]*)\)', m.group(1)):
-                    if 'automatic' not in item[1]:
-                        pkgs.add(item[0])
-    return sorted(pkgs)
+        if os.path.isdir(dst) and not os.path.islink(dst):
+            shutil.rmtree(dst)
+        elif os.path.lexists(dst):
+            os.unlink(dst)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        cp(src, dst)
+    for rel in ADD:
+        if os.path.isdir('/' + rel):
+            for name in os.listdir('/' + rel):
+                if not os.path.lexists(f'{new}/{rel}/{name}'):
+                    os.makedirs(f'{new}/{rel}', exist_ok=True)
+                    cp(f'/{rel}/{name}', f'{new}/{rel}/{name}')
+    mine = set(sh('apt-mark', 'showmanual').split())
+    fresh = set(sh('chroot', new, 'apt-mark', 'showmanual').split())
+    os.makedirs(f'{new}/var/lib/mwx7', exist_ok=True)
+    with open(f'{new}/var/lib/mwx7/reinstall', 'w') as f:
+        f.write('\n'.join(sorted(mine - fresh)) + '\n')
+    os.makedirs(f'{new}/usr/local/sbin', exist_ok=True)
+    with open(f'{new}/usr/local/sbin/mwx7-reset-finish', 'w') as f:
+        f.write(FINISH)
+    os.chmod(f'{new}/usr/local/sbin/mwx7-reset-finish', 0o755)
+    with open(f'{new}/etc/systemd/system/mwx7-reset-finish.service', 'w') as f:
+        f.write(FINISH_UNIT)
+    os.makedirs(f'{new}/etc/systemd/system/multi-user.target.wants', exist_ok=True)
+    os.symlink('/etc/systemd/system/mwx7-reset-finish.service',
+               f'{new}/etc/systemd/system/multi-user.target.wants/mwx7-reset-finish.service')
 
 
-def make_clean(f):
-    """Makes a factory copy taken from a running system as clean as a new install: no accounts, pictures, Wi-Fi,
-    machine identity, PC name or apps a person installed; the setup's own user back in place. Safe to repeat."""
-    for line in open(f'{f}/etc/passwd').read().splitlines():
-        name, _x, uid = line.split(':')[:3]
-        if 1000 <= int(uid) < 60000 and name != 'mwx':
-            subprocess.run(['userdel', '-R', f, name], capture_output=True)
-    for d in ('var/lib/AccountsService/icons', 'var/lib/AccountsService/users', 'var/lib/NetworkManager',
-              'var/lib/bluetooth', 'var/lib/flatpak', 'root'):
-        shutil.rmtree(f'{f}/{d}', ignore_errors=True)
-    os.makedirs(f'{f}/root', mode=0o700, exist_ok=True)
-    for c in glob.glob(f'{f}/etc/NetworkManager/system-connections/*'):
-        os.unlink(c)
-    with open(f'{f}/etc/machine-id', 'w'):
-        pass  # empty: the next start makes a new identity
-    with open(f'{f}/etc/hostname', 'w') as out:
-        out.write('mwx7\n')
-    hosts = [l for l in open(f'{f}/etc/hosts').read().splitlines() if not l.startswith('127.0.1.1')]
-    with open(f'{f}/etc/hosts', 'w') as out:
-        out.write('\n'.join(hosts + ['127.0.1.1\tmwx7']) + '\n')
-    if not re.search(r'^mwx:', open(f'{f}/etc/passwd').read(), re.M):
-        groups = [g for g in ('video', 'render', 'input', 'audio', 'netdev')
-                  if subprocess.run(['chroot', f, 'getent', 'group', g], capture_output=True).returncode == 0]
-        sh('useradd', '-R', f, '-s', '/bin/bash', '-c', 'MWX 7 Setup', '-G', ','.join(groups), 'mwx')
-    added = [p for p in user_installed()
-             if subprocess.run(['chroot', f, 'dpkg-query', '-W', p], capture_output=True).returncode == 0]
-    if added:
-        binds = [d for d in ('proc', 'sys', 'dev') if os.path.isdir(f'{f}/{d}')]
-        for d in binds:
-            subprocess.run(['mount', '--bind', f'/{d}', f'{f}/{d}'], capture_output=True)
-        try:
-            env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
-            plan = subprocess.run(['chroot', f, 'apt-get', 'purge', '-s', '--autoremove', *added], capture_output=True,
-                                  text=True, env=env).stdout
-            # Never if it would take MWX 7 itself along (someone reinstalled one of its parts by hand).
-            if not re.search(r'^(Remv|Purg) mwx7-desktop ', plan, re.M):
-                subprocess.run(['chroot', f, 'apt-get', 'purge', '-y', '-q', '--autoremove', *added],
-                               capture_output=True, env=env)
-        finally:
-            for d in reversed(binds):
-                subprocess.run(['umount', '-l', f'{f}/{d}'], capture_output=True)
-
-
-def factory_here():
-    """Run by every package update: systems set up before 1.9.0.207 get their own factory copy (so Reset appears);
-    systems that have one get its first-start setup brought up to date."""
+def reinstall(keep):
+    """Settings -> Reset MWX 7. Everything happens beside the running system (in @new); only the very end swaps it in,
+    so a failure on the way changes nothing."""
     global TARGET
-    source = sh('findmnt', '-no', 'SOURCE', '/').strip()  # /dev/sda2[/@] on MWX 7's layout
+    source = sh('findmnt', '-no', 'SOURCE', '/').strip()  # /dev/sda2[/@]
     if sh('findmnt', '-no', 'FSTYPE', '/').strip() != 'btrfs' or not source.endswith('[/@]'):
-        return
-    TARGET = '/'
-    # Only between package installs: a snapshot taken mid-update would start with half-configured packages. Holding
-    # dpkg's locks also keeps the next update waiting until the snapshot is done.
-    import fcntl
-    locks = [open(p, 'a') for p in ('/var/lib/dpkg/lock-frontend', '/var/lib/dpkg/lock')]
-    for _ in range(1800):
+        raise RuntimeError('Reset needs the disk layout MWX 7 sets up.')
+    root = source.split('[')[0]
+    version = open('/usr/share/mwx7/version').read().strip()
+    top, iso = STATE + '/top', STATE + '/iso'
+    for d in (top, iso):
+        os.makedirs(d, exist_ok=True)
+    sh('mount', '-o', 'subvolid=5', root, top)
+    TARGET = top + '/@new'
+    try:
+        for old in ('@new', '@old', '@home-old', '@log-old', '@cache-old', '@factory'):
+            if os.path.isdir(f'{top}/{old}'):
+                subprocess.run(['btrfs', 'property', 'set', '-ts', f'{top}/{old}', 'ro', 'false'], capture_output=True)
+                sh('btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}')
+        free = shutil.disk_usage(top).free
+        if free < 6 << 30:
+            raise RuntimeError(f'Reset needs about 6 GB free on the disk; there are {free / (1 << 30):.1f} GB.')
+        download_iso()
+        sh('mount', '-o', 'loop,ro', ISO_CACHE, iso)
         try:
-            for f in locks:
-                fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
-        except OSError:
-            for f in locks:
-                fcntl.lockf(f, fcntl.LOCK_UN)
-            time.sleep(1)
-    else:
-        return
-    if subprocess.run(['dpkg', '--audit'], capture_output=True, text=True).stdout.strip():
-        return  # something is half-installed: try again after the next update
-    make_factory(source.split('[')[0], from_running=not os.path.exists('/etc/mwx7/factory'))
+            say('STEP', 'Unpacking MWX 7')
+            sh('btrfs', '-q', 'subvolume', 'create', TARGET)
+            p = subprocess.Popen(['unsquashfs', '-f', '-d', TARGET, '-p', str(os.cpu_count() or 2), '-percentage',
+                                  iso + '/live/filesystem.squashfs'], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True)
+            for line in p.stdout:
+                if line.strip().isdigit():
+                    say('PROGRESS', 45 + int(line) * 30 // 100)
+            if p.wait() != 0:
+                raise RuntimeError('Unpacking MWX 7 failed. Try again.')
+            kver = os.listdir(TARGET + '/lib/modules')[0]
+            shutil.copyfile(iso + '/live/vmlinuz', f'{TARGET}/boot/vmlinuz-{kver}')
+            shutil.copyfile(iso + '/live/initrd.img', f'{TARGET}/boot/initrd.img-{kver}')
+        finally:
+            subprocess.run(['umount', iso])
 
+        say('STEP', 'Setting up MWX 7')
+        shutil.copyfile('/etc/fstab', TARGET + '/etc/fstab')  # same disk, same subvolumes
+        for f in ('etc/sudoers.d/mwx7-live', 'usr/local/bin/mwx7-install', 'usr/local/bin/mwx7-oobe-session',
+                  'var/lib/dbus/machine-id'):
+            if os.path.lexists(os.path.join(TARGET, f)):
+                os.unlink(os.path.join(TARGET, f))
+        for d in ('etc/calamares', 'usr/lib/calamares'):
+            shutil.rmtree(os.path.join(TARGET, d), ignore_errors=True)
+        write('etc/machine-id', '')
+        write('etc/mwx7/installed', 'Installed by Reset MWX 7.\n')
+        write('etc/default/grub', GRUB_DEFAULTS)
+        if keep:
+            keep_everything(TARGET)
+        else:
+            # Absolutely clean: the first-start setup runs (it offers the newest version) as the ISO's setup user.
+            write('etc/mwx7/firstboot', 'Start into the first-start setup.\n')
+            write('etc/sudoers.d/mwx7-firstboot', FIRSTBOOT_SUDOERS, 0o440)
+            write('etc/greetd/config.toml', greetd_config(None, firstboot=True))
+        bind_system()
+        try:
+            if os.path.isdir('/boot/efi') and os.path.ismount('/boot/efi'):
+                sh('mount', '--bind', '/boot/efi', TARGET + '/boot/efi')
+            say('PROGRESS', 78)
+            chroot('apt-get', 'purge', '-y', '-qq', '--autoremove', '-o', 'Dpkg::Use-Pty=0', 'live-boot',
+                   'live-boot-initramfs-tools', 'calamares', 'qt6-wayland', 'qml6-module-qtquick',
+                   'qml6-module-qtquick-window')
+            # The MWX 7 version this PC had (the ISO may be older): the person chooses when to go newer.
+            iso_version = open(TARGET + '/usr/share/mwx7/version').read().strip()
+            if iso_version != version:
+                say('STEP', f'Bringing MWX 7 to {version}')
+                # Name lookups inside: a plain copy of this PC's resolv.conf while it works (NetworkManager's link
+                # comes back right after).
+                rc = TARGET + '/etc/resolv.conf'
+                link = os.readlink(rc) if os.path.islink(rc) else None
+                if os.path.lexists(rc):
+                    os.unlink(rc)
+                with open('/etc/resolv.conf') as src, open(rc, 'w') as dst:
+                    dst.write(src.read())
+                chroot('apt-get', 'update', '-q')
+                r = subprocess.run(['chroot', TARGET, 'apt-get', 'install', '-y', '-q', '-o', 'Dpkg::Use-Pty=0',
+                                    '-o', 'Dpkg::Options::=--force-confold', f'mwx7-desktop={version}'],
+                                   capture_output=True, text=True, env=dict(os.environ, DEBIAN_FRONTEND='noninteractive'))
+                if r.returncode != 0:  # that version is no longer on the update channel: the newest instead
+                    chroot('apt-get', 'install', '-y', '-q', '-o', 'Dpkg::Use-Pty=0', '-o',
+                           'Dpkg::Options::=--force-confold', 'mwx7-desktop')
+                if link:
+                    os.unlink(rc)
+                    os.symlink(link, rc)
+            say('PROGRESS', 90)
+            say('STEP', 'Installing the boot menu')
+            if uefi():
+                chroot('grub-install', '--target=x86_64-efi', '--efi-directory=/boot/efi', '--bootloader-id=MWX7',
+                       '--uefi-secure-boot')
+                stub = f'{TARGET}/boot/efi/EFI/MWX7/grub.cfg'
+                os.makedirs(f'{TARGET}/boot/efi/EFI/debian', exist_ok=True)
+                shutil.copyfile(stub, f'{TARGET}/boot/efi/EFI/debian/grub.cfg')
+            else:
+                disk = '/dev/' + sh('lsblk', '-no', 'PKNAME', root).strip()
+                chroot('grub-install', '--target=i386-pc', disk)
+            chroot('update-grub')
+        finally:
+            subprocess.run(['umount', '-R', TARGET + '/boot/efi'], capture_output=True)
+            for d in ('run', 'sys', 'proc', 'dev'):
+                subprocess.run(['umount', '-R', '-l', f'{TARGET}/{d}'], capture_output=True)
+
+        say('STEP', 'Restarting')
+        os.rename(f'{top}/@', f'{top}/@old')
+        os.rename(TARGET, f'{top}/@')
+        if not keep:
+            for sub in ('@home', '@log', '@cache'):
+                if os.path.isdir(f'{top}/{sub}'):
+                    os.rename(f'{top}/{sub}', f'{top}/{sub}-old')
+                sh('btrfs', '-q', 'subvolume', 'create', f'{top}/{sub}')
+    except BaseException:
+        if os.path.isdir(TARGET):
+            subprocess.run(['umount', '-R', '-l', TARGET], capture_output=True)
+            subprocess.run(['btrfs', '-q', 'subvolume', 'delete', TARGET], capture_output=True)
+        raise
+    finally:
+        subprocess.run(['umount', top], capture_output=True)
+    try:
+        os.unlink(ISO_CACHE)
+    except OSError:
+        pass
+    say('PROGRESS', 100)
+    subprocess.Popen(['systemctl', 'reboot'])
 
 def update(action):
     """After a reset, before the setup's pages: "check" says what is new (NEWEST <version>, COUNT <n>), "install"
@@ -630,8 +749,8 @@ if __name__ == '__main__':
             finish(args[0])
         elif cmd == 'finish' and args[1:] == ['--here'] and os.path.exists('/etc/mwx7/firstboot'):
             finish(args[0], here=True)
-        elif cmd == 'factory' and os.path.exists('/etc/mwx7/installed') and not os.path.exists('/etc/mwx7/firstboot'):
-            factory_here()
+        elif cmd == 'reinstall' and args in (['keep'], ['clean']) and os.path.exists('/etc/mwx7/installed'):
+            reinstall(args[0] == 'keep')
         elif cmd == 'update' and args in (['check'], ['install']) and os.path.exists('/etc/mwx7/firstboot'):
             update(args[0])
         elif cmd == 'ready':

@@ -1,6 +1,6 @@
-// Besides Debian's security updates, keep the browser current: it is the program that faces the internet.
+// Only security fixes install by themselves: Debian's security updates and Chrome's (the browser faces the internet
+// and Google ships its security fixes as new versions). New MWX 7 versions and Debian's other updates wait for you.
 Unattended-Upgrade::Origins-Pattern {
-        "origin=Debian,codename=${distro_codename},label=Debian";
         "origin=Debian,codename=${distro_codename},label=Debian-Security";
         "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
         "origin=Google LLC";

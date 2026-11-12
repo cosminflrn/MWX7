@@ -63,12 +63,16 @@ fi
 if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_TIMEOUT_STYLE=menu' /etc/default/grub 2>/dev/null; then
   sed -i -e 's/^GRUB_TIMEOUT_STYLE=menu$/GRUB_TIMEOUT_STYLE=hidden/' -e 's/^GRUB_TIMEOUT=5$/GRUB_TIMEOUT=0/' /etc/default/grub
 fi
-# The factory copy (Settings -> Updates -> Reset MWX 7): made now on systems set up before Reset existed; on the others
-# its first-start setup is brought up to date.
-if [ -f /etc/mwx7/installed ] && [ ! -f /etc/mwx7/firstboot ]; then
-  # In the background: it waits for this update to finish, so the copy never holds half-installed packages.
-  systemd-run --quiet --no-block --unit=mwx7-factory-$$ /usr/bin/python3 /usr/share/mwx7/oobe/install.py factory \
-    >/dev/null 2>&1 || true
+# 1.9.0.207 kept a factory snapshot for Reset; Reset now installs MWX 7 again from GitHub, so it goes.
+if [ -f /etc/mwx7/factory ]; then
+  rm -f /etc/mwx7/factory
+  d=$(findmnt -no SOURCE / | cut -d[ -f1)
+  mkdir -p /run/mwx7-postinst && mount -o subvolid=5 "$d" /run/mwx7-postinst 2>/dev/null && {
+    if [ -d /run/mwx7-postinst/@factory ]; then
+      btrfs property set -ts /run/mwx7-postinst/@factory ro false 2>/dev/null
+      btrfs -q subvolume delete /run/mwx7-postinst/@factory 2>/dev/null || true
+    fi
+    umount /run/mwx7-postinst; }
 fi
 for f in /etc/grub.d/[0-9]*; do if [ -x "$f" ]; then sh -n "$f"; fi; done
 if [ -f /etc/mwx7/installed ] && [ -f /boot/grub/grub.cfg ] && command -v update-grub >/dev/null; then

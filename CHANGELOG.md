@@ -3,8 +3,12 @@
 Derived from the git history. Newest first.
 
 ## v1.9.0
-- **Reset MWX 7** (Settings → Updates): back to a fresh MWX 7 in one click, no ISO. It restarts into the first-start
-  setup, which installs the newest version before asking for your name
+- **Reset MWX 7** (Settings → Updates): MWX 7 installed again from GitHub at the version you have. "Keep everything"
+  repairs a broken system and keeps accounts, files, apps and settings; "Delete everything" is a clean new PC whose
+  setup offers the newest version
+- **Updates when you want them**: an icon in the status bar says when updates are ready; Shut Down and Restart offer
+  "Update and shut down". Only security fixes install by themselves
+- Boot menu only when there is another system (Windows) to choose; the bar and dock follow the window colour
 - **Window colour works**: frames change colour right away, Settings' own title bar too
 - Smoother in VMware: title bars and traffic lights redraw only when they change, the first minimize no longer
   stutters, lighter glass blur; the screen runs at its highest refresh rate

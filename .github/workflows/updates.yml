@@ -34,6 +34,16 @@ jobs:
           V="$(node -p "require('./package.json').version").$(git rev-list --count HEAD)"
           echo "V=$V" >> "$GITHUB_ENV"
           MWX7_VERSION="$V" ./distro/desktop/build-deb.sh repo
+      - name: Earlier versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The index lists the last versions too: Reset MWX 7 reinstalls the exact version a PC runs.
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/updates" \
+            -o rel.json || exit 0
+          node -e 'for (const a of require("./rel.json").assets) if (a.name.endsWith(".deb")) console.log(a.browser_download_url)' |
+            while read -r url; do f="repo/$(basename "$url")"; [ -e "$f" ] || curl -fsSL -o "$f" "$url" || rm -f "$f"; done
+          ls repo/*.deb | sort -V | head -n -10 | xargs -r rm -f
       - name: Sign the channel
         env:
           KEY: ${{ secrets.MWX7_UPDATES_KEY }}
@@ -64,9 +74,9 @@ jobs:
               --notes "The MWX 7 update channel, used by Settings -> Updates on installed systems. Nothing to download here by hand."
           # The new package first, then the index that points at it, so a system checking in between never sees an
           # index for a package that isn't there yet.
-          gh release upload updates -R "$GITHUB_REPOSITORY" --clobber ./*.deb
+          gh release upload updates -R "$GITHUB_REPOSITORY" --clobber "./mwx7-desktop_${V}_amd64.deb"
           [ -n "${UNSIGNED:-}" ] || gh release upload updates -R "$GITHUB_REPOSITORY" --clobber Packages Packages.gz Release Release.gpg InRelease
-          # Keep the two newest packages (one for systems still holding the previous index).
+          # Keep the ten newest packages (the index lists them all; Reset MWX 7 installs the version a PC runs).
           gh release view updates -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep '\.deb$' | sort -V |
-            head -n -2 | while read -r old; do gh release delete-asset updates "$old" -R "$GITHUB_REPOSITORY" -y; done
+            head -n -10 | while read -r old; do gh release delete-asset updates "$old" -R "$GITHUB_REPOSITORY" -y; done
           echo "Published mwx7-desktop $V"

@@ -5,13 +5,12 @@
   mwx7-admin password              set a new password, read from standard input
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
-  mwx7-admin reset [keep]          Reset MWX 7 from the factory copy made at setup, then a restart. Plain: absolutely
-                                   clean (accounts, files, apps, settings, logs go; the first-start setup runs and
-                                   offers the newest version). keep: MWX 7 is reinstalled and everything else stays
+  mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
+                                   restart. Plain: absolutely clean (the first-start setup runs and offers the newest
+                                   version). keep: accounts, files, apps and settings stay
 """
 import os
 import pwd
-import time
 import shutil
 import subprocess
 import sys
@@ -48,124 +47,16 @@ def main():
         os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
         shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
-    elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/factory'):
+    elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
         reset(keep=cmd[1:] == ['keep'])
     else:
         sys.exit(__doc__)
 
 
-# Keep everything: this PC's accounts, logon, network, language, keyboard and time zone come along whole...
-KEEP = ('etc/passwd', 'etc/shadow', 'etc/group', 'etc/gshadow', 'etc/subuid', 'etc/subgid', 'etc/greetd/config.toml',
-        'etc/hostname', 'etc/hosts', 'etc/default/locale', 'etc/default/keyboard', 'etc/timezone', 'etc/localtime',
-        'etc/machine-id', 'etc/NetworkManager/system-connections', 'var/lib/AccountsService', 'var/lib/flatpak')
-# ...and from these, everything the fresh system doesn't have yet (apps put in /opt or /usr/local, extra app sources).
-ADD = ('opt', 'usr/local', 'etc/apt/sources.list.d', 'etc/apt/keyrings', 'etc/apt/trusted.gpg.d', 'usr/share/keyrings')
-
-FINISH = '''#!/bin/sh
-# One time, on the first start after "Reset MWX 7 - keep everything" (removes itself when done): deletes the replaced
-# system and installs again the apps that were added to it. Without internet it tries again on the next start.
-d=$(findmnt -no SOURCE / | cut -d[ -f1)
-mkdir -p /run/mwx7-finish && mount -o subvolid=5 "$d" /run/mwx7-finish && {
-  btrfs -q subvolume delete /run/mwx7-finish/@old 2>/dev/null; umount /run/mwx7-finish; }
-if [ -s /var/lib/mwx7/reinstall ]; then
-  for i in $(seq 1 60); do getent hosts deb.debian.org >/dev/null && break; sleep 5; done
-  apt-get update -q || exit 0
-  # One by one: an app that no longer exists must not hold back the others.
-  for p in $(cat /var/lib/mwx7/reinstall); do DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$p" || true; done
-fi
-rm -f /var/lib/mwx7/reinstall /etc/systemd/system/multi-user.target.wants/mwx7-reset-finish.service \\
-  /etc/systemd/system/mwx7-reset-finish.service /usr/local/sbin/mwx7-reset-finish
-'''
-FINISH_UNIT = '''[Unit]
-Description=MWX 7: finish "Reset MWX 7 - keep everything" (old system deleted, added apps installed again)
-After=network-online.target
-
-[Service]
-# exec, not oneshot: the logon screen never waits for it.
-Type=exec
-ExecStart=/usr/local/sbin/mwx7-reset-finish
-
-[Install]
-WantedBy=multi-user.target
-'''
-
-
-def copy(src, dst):
-    subprocess.run(['cp', '-a', '--reflink=auto', src, dst], check=True)
-
-
-def keep_everything(new):
-    """The fresh system (new) gets this PC's accounts and settings and, on its first start, the apps added here.
-    Only MWX 7 and Debian's own files come back fresh: that is what repairs a broken system."""
-    for rel in KEEP:
-        src, dst = '/' + rel, f'{new}/{rel}'
-        if not os.path.lexists(src):
-            continue
-        if os.path.isdir(dst) and not os.path.islink(dst):
-            shutil.rmtree(dst)
-        elif os.path.lexists(dst):
-            os.unlink(dst)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        copy(src, dst)
-    for rel in ADD:
-        if not os.path.isdir('/' + rel):
-            continue
-        for name in os.listdir('/' + rel):
-            dst = f'{new}/{rel}/{name}'
-            if not os.path.lexists(dst):
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                copy(f'/{rel}/{name}', dst)
-    # Apps installed here (apt) that the fresh system doesn't have: installed again on its first start.
-    mine = set(subprocess.run(['apt-mark', 'showmanual'], capture_output=True, text=True).stdout.split())
-    fresh = set(subprocess.run(['chroot', new, 'apt-mark', 'showmanual'], capture_output=True, text=True).stdout.split())
-    os.makedirs(f'{new}/var/lib/mwx7', exist_ok=True)
-    with open(f'{new}/var/lib/mwx7/reinstall', 'w') as f:
-        f.write('\n'.join(sorted(mine - fresh)) + '\n')
-    # Straight to the logon screen: no first-start setup.
-    for rel in ('etc/mwx7/firstboot', 'etc/sudoers.d/mwx7-firstboot'):
-        if os.path.lexists(f'{new}/{rel}'):
-            os.unlink(f'{new}/{rel}')
-    os.makedirs(f'{new}/usr/local/sbin', exist_ok=True)
-    with open(f'{new}/usr/local/sbin/mwx7-reset-finish', 'w') as f:
-        f.write(FINISH)
-    os.chmod(f'{new}/usr/local/sbin/mwx7-reset-finish', 0o755)
-    with open(f'{new}/etc/systemd/system/mwx7-reset-finish.service', 'w') as f:
-        f.write(FINISH_UNIT)
-    wants = f'{new}/etc/systemd/system/multi-user.target.wants'
-    os.makedirs(wants, exist_ok=True)
-    if not os.path.lexists(f'{wants}/mwx7-reset-finish.service'):
-        os.symlink('/etc/systemd/system/mwx7-reset-finish.service', f'{wants}/mwx7-reset-finish.service')
-
-
-def reset(keep=False):
-    # Subvolume names are what boots: the boot menu and fstab mount "@" and "@home", so swapping the directories on
-    # the top level of the btrfs disk is the whole reset. The old ones are deleted by the next first-start setup.
-    root = subprocess.run(['findmnt', '-no', 'SOURCE', '/'], capture_output=True, text=True).stdout.strip()
-    dev = root.split('[')[0]
-    top = '/run/mwx7-reset'
-    os.makedirs(top, exist_ok=True)
-    subprocess.run(['mount', '-o', 'subvolid=5', dev, top], check=True)
-    try:
-        if not os.path.isdir(f'{top}/@factory'):
-            sys.exit('no factory copy on this disk')
-        for old in ('@old', '@home-old', '@log-old', '@cache-old', '@new'):
-            if os.path.isdir(f'{top}/{old}'):
-                subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}'], check=True)
-        subprocess.run(['btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@factory', f'{top}/@new'], check=True)
-        if keep:
-            keep_everything(f'{top}/@new')
-        os.rename(f'{top}/@', f'{top}/@old')
-        os.rename(f'{top}/@new', f'{top}/@')
-        if not keep:
-            # Absolutely clean: new, empty homes, logs and caches too.
-            for sub in ('@home', '@log', '@cache'):
-                if os.path.isdir(f'{top}/{sub}'):
-                    os.rename(f'{top}/{sub}', f'{top}/{sub}-old')
-                subprocess.run(['btrfs', '-q', 'subvolume', 'create', f'{top}/{sub}'], check=True)
-    finally:
-        subprocess.run(['umount', top])
-    time.sleep(1)
-    subprocess.Popen(['systemctl', 'reboot'])
+def reset(keep):
+    # The work is the setup's own installer, which knows how MWX 7 is put on a disk. Its progress lines go straight
+    # through to Settings.
+    os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'reinstall', 'keep' if keep else 'clean'])
 
 
 main()
