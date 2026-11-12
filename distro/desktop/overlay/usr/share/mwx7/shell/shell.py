@@ -491,6 +491,8 @@ class Shell(Gtk.Application):
 
     def build_bar(self):
         w = self.layer_window('bar', (Layer.Edge.TOP, Layer.Edge.LEFT, Layer.Edge.RIGHT), 28)
+        # Its menus (orb, app name, clock) need focus while open, or GTK closes them before a click lands.
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.ON_DEMAND)
         box = Gtk.CenterBox()
         left = Gtk.Box(spacing=8)
         orb = Gtk.MenuButton()
@@ -501,9 +503,18 @@ class Shell(Gtk.Application):
         orb.set_popover(self.build_system_menu())
         self.orb_button = orb
         left.append(orb)
+        # The focused app's name, a menu as on the web: Minimize, Full Screen, Close (Personalize and About on the desktop).
         self.title = Gtk.Label(label='Desktop')
         self.title.add_css_class('app-title')
-        left.append(self.title)
+        app_btn = Gtk.MenuButton()
+        app_btn.add_css_class('app-btn')
+        app_btn.set_child(self.title)
+        self.app_pop = Gtk.Popover()
+        self.app_pop.add_css_class('sysmenu')
+        self.app_pop.set_has_arrow(False)
+        self.app_pop.connect('show', lambda *_: self.fill_app_menu())
+        app_btn.set_popover(self.app_pop)
+        left.append(app_btn)
         right = Gtk.Box(spacing=10)
         # Updates waiting: a quiet icon (no pop-ups); click for Settings -> Updates. Shut Down and Restart also offer them.
         self.upd_btn = Gtk.Button(visible=False)
@@ -1149,8 +1160,36 @@ class Shell(Gtk.Application):
         self.send_minimize_hints()
         self.send_icons()
         focused = next((v for v in apps_windows(self.views) if v.get('activated') and not v.get('minimized')), None)
+        self.focused_view = focused
         self.title.set_label(self.app_label(focused) if focused else 'Desktop')
         return False
+
+    def fill_app_menu(self):
+        pop, v = self.app_pop, getattr(self, 'focused_view', None)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        def item(label, fn):
+            b = Gtk.Button(label=label)
+            b.add_css_class('sys-item')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (pop.popdown(), fn()))
+            col.append(b)
+
+        def sep():
+            line = Gtk.Box()
+            line.add_css_class('sys-sep')
+            col.append(line)
+        if v:
+            name, vid = self.app_label(v), v['id']
+            item('Minimize', lambda: self.act('wm-actions/set-minimized', {'view_id': vid, 'state': True}))
+            item('Exit Full Screen' if v.get('maximized') or v.get('tiled-edges') == 15 else 'Full Screen',
+                 lambda: self.act('mwx7/toggle-maximize', {'id': vid}))
+            sep()
+            item(f'Close {name}', lambda: self.act('window-rules/close-view', {'id': vid}))
+        else:
+            item('Personalize…', lambda: self.launch([SETTINGS, '--page', 'themes']))
+            item('About MWX 7', lambda: self.launch(ABOUT))
+        pop.set_child(col)
 
     def app_label(self, view):
         """The focused app's name, as the web concept's menu bar shows it (\"My Computer\", \"Notepad\")."""
