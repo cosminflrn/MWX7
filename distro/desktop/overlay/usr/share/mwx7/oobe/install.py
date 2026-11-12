@@ -43,6 +43,8 @@ GROUPS = ('cdrom', 'sudo', 'audio', 'dip', 'video', 'render', 'input', 'plugdev'
 
 
 def sh(*cmd, quiet=True, **kw):
+    if 'input' not in kw:
+        kw['stdin'] = subprocess.DEVNULL  # nothing here may ever wait for the keyboard (apt, dpkg)
     r = subprocess.run(cmd, capture_output=True, text=True, **kw)
     if r.returncode != 0:
         raise RuntimeError(f"{' '.join(cmd)} failed: {(r.stderr or r.stdout).strip()[-400:]}")
@@ -643,7 +645,7 @@ def reinstall(keep):
                 chroot('apt-get', *opts, 'update', '-q')
                 r = subprocess.run(['chroot', TARGET, 'apt-get', *opts, 'install', '-y', '-q', '--allow-downgrades',
                                     '-o', 'Dpkg::Options::=--force-confold', *wanted], capture_output=True, text=True,
-                                   env=env)
+                                   env=env, stdin=subprocess.DEVNULL)
                 if r.returncode != 0:
                     raise RuntimeError('Installing this PC\'s version failed: ' + (r.stdout + r.stderr).strip()[-300:])
                 os.unlink(src)
