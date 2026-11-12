@@ -5,8 +5,9 @@
   mwx7-admin password              set a new password, read from standard input
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
-  mwx7-admin reset                 Reset MWX 7: back to the factory copy made at setup (all accounts, files and
-                                   settings go), then a restart into the first-start setup, which updates first
+  mwx7-admin reset [keep]          Reset MWX 7: back to the factory copy made at setup, then a restart. Plain: all
+                                   accounts, files and settings go and the first-start setup runs (it offers the
+                                   newest version). keep: the accounts and their files stay, MWX 7 itself is fresh
 """
 import os
 import pwd
@@ -47,13 +48,63 @@ def main():
         os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
         shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
-    elif cmd == ['reset'] and os.path.exists('/etc/mwx7/factory'):
-        reset()
+    elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/factory'):
+        reset(keep=cmd[1:] == ['keep'])
     else:
         sys.exit(__doc__)
 
 
-def reset():
+# What makes the accounts and this PC's own setup: copied into the fresh system when the person keeps their files.
+KEEP = ('etc/passwd', 'etc/shadow', 'etc/group', 'etc/gshadow', 'etc/subuid', 'etc/subgid', 'etc/greetd/config.toml',
+        'etc/hostname', 'etc/hosts', 'etc/default/locale', 'etc/default/keyboard', 'etc/timezone', 'etc/localtime',
+        'etc/NetworkManager/system-connections', 'var/lib/AccountsService')
+
+
+CLEANUP_UNIT = '''[Unit]
+Description=MWX 7: delete the system replaced by Reset MWX 7
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'd=$$(findmnt -no SOURCE / | cut -d[ -f1); mkdir -p /run/mwx7-cleanup && \\
+  mount -o subvolid=5 "$$d" /run/mwx7-cleanup && { btrfs -q subvolume delete /run/mwx7-cleanup/@old || true; \\
+  umount /run/mwx7-cleanup; }; rm -f /etc/systemd/system/multi-user.target.wants/mwx7-reset-cleanup.service \\
+  /etc/systemd/system/mwx7-reset-cleanup.service'
+
+[Install]
+WantedBy=multi-user.target
+'''
+
+
+def keep_accounts(new):
+    for rel in KEEP:
+        src, dst = '/' + rel, f'{new}/{rel}'
+        if not os.path.lexists(src):
+            continue
+        if os.path.isdir(dst) and not os.path.islink(dst):
+            shutil.rmtree(dst)
+        elif os.path.lexists(dst):
+            os.unlink(dst)
+        if os.path.isdir(src) and not os.path.islink(src):
+            shutil.copytree(src, dst, symlinks=True)
+        else:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst, follow_symlinks=False)
+    # Straight to the logon screen: no first-start setup.
+    for rel in ('etc/mwx7/firstboot', 'etc/sudoers.d/mwx7-firstboot'):
+        if os.path.lexists(f'{new}/{rel}'):
+            os.unlink(f'{new}/{rel}')
+    # Without the setup nothing would delete the old system: a one-time job on the next start does, then removes itself.
+    unit = f'{new}/etc/systemd/system/mwx7-reset-cleanup.service'
+    with open(unit, 'w') as f:
+        f.write(CLEANUP_UNIT)
+    wants = f'{new}/etc/systemd/system/multi-user.target.wants'
+    os.makedirs(wants, exist_ok=True)
+    link = f'{wants}/mwx7-reset-cleanup.service'
+    if not os.path.lexists(link):
+        os.symlink('/etc/systemd/system/mwx7-reset-cleanup.service', link)
+
+
+def reset(keep=False):
     # Subvolume names are what boots: the boot menu and fstab mount "@" and "@home", so swapping the directories on
     # the top level of the btrfs disk is the whole reset. The old ones are deleted by the next first-start setup.
     root = subprocess.run(['findmnt', '-no', 'SOURCE', '/'], capture_output=True, text=True).stdout.strip()
@@ -68,10 +119,13 @@ def reset():
             if os.path.isdir(f'{top}/{old}'):
                 subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}'], check=True)
         subprocess.run(['btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@factory', f'{top}/@new'], check=True)
+        if keep:
+            keep_accounts(f'{top}/@new')
         os.rename(f'{top}/@', f'{top}/@old')
         os.rename(f'{top}/@new', f'{top}/@')
-        os.rename(f'{top}/@home', f'{top}/@home-old')
-        subprocess.run(['btrfs', '-q', 'subvolume', 'create', f'{top}/@home'], check=True)
+        if not keep:
+            os.rename(f'{top}/@home', f'{top}/@home-old')
+            subprocess.run(['btrfs', '-q', 'subvolume', 'create', f'{top}/@home'], check=True)
     finally:
         subprocess.run(['umount', top])
     time.sleep(1)

@@ -676,9 +676,8 @@ class Settings(Gtk.Application):
 
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Reset MWX 7'))
-            p.append(note('Back to a fresh MWX 7, like just after setup: all accounts, files, apps and settings on this '
-                          'PC are deleted. It restarts into the first-start setup, which installs the newest version '
-                          'first. No ISO needed.'))
+            p.append(note('Back to a fresh MWX 7, no ISO needed. You choose: keep your files and account, or delete '
+                          'everything and start with the first-start setup.'))
             reset = Gtk.Button(label='Reset MWX 7…', halign=Gtk.Align.START)
             reset.add_css_class('destructive-action')
             reset.connect('clicked', self.confirm_reset)
@@ -704,9 +703,18 @@ class Settings(Gtk.Application):
         dlg.add_css_class('mwx7-settings')
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
                       margin_start=20, margin_end=20)
-        box.append(Gtk.Label(label='Delete everything and start fresh?', xalign=0, css_classes=['section']))
-        box.append(Gtk.Label(label='Your files, apps, settings and accounts on this PC are deleted for good.\n'
-                                   'MWX 7 restarts right away into the first-start setup.', xalign=0, wrap=True))
+        box.append(Gtk.Label(label='Reset MWX 7', xalign=0, css_classes=['section']))
+        keep = Gtk.CheckButton(label='Keep my files')
+        keep.set_active(True)
+        box.append(keep)
+        box.append(Gtk.Label(label='MWX 7 itself is made fresh. Your account, files and settings stay; apps you added '
+                                   'go. You sign in as before.', xalign=0, wrap=True, max_width_chars=60,
+                             margin_start=26, css_classes=['dim-label']))
+        wipe = Gtk.CheckButton(label='Delete everything', group=keep)
+        box.append(wipe)
+        box.append(Gtk.Label(label='Accounts, files, apps and settings are deleted for good. MWX 7 starts with the '
+                                   'first-start setup, like a new PC.', xalign=0, wrap=True, max_width_chars=60,
+                             margin_start=26, css_classes=['dim-label']))
         btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
         cancel = Gtk.Button(label='Cancel')
         cancel.connect('clicked', lambda *_: dlg.close())
@@ -718,8 +726,8 @@ class Settings(Gtk.Application):
             go.set_sensitive(False)
             cancel.set_sensitive(False)
             msg.set_label('Resetting… MWX 7 restarts in a moment.')
-            self.admin(['reset'], lambda ok, err: ok or (msg.set_label(err or 'Reset did not work.'),
-                                                         cancel.set_sensitive(True)))
+            self.admin(['reset'] + (['keep'] if keep.get_active() else []),
+                       lambda ok, err: ok or (msg.set_label(err or 'Reset did not work.'), cancel.set_sensitive(True)))
         go.connect('clicked', do_reset)
         btns.append(cancel)
         btns.append(go)
