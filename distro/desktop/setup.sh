@@ -33,6 +33,9 @@ apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold /t
   google-chrome-stable firmware-amd-graphics firmware-intel-graphics firmware-misc-nonfree firmware-realtek \
   firmware-iwlwifi open-vm-tools spice-vdagent qemu-guest-agent cryptsetup cryptsetup-initramfs \
   live-boot squashfs-tools calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window
+# The ISO starts the first-start setup, not the logon screen: its greetd config wins over the package's, even when the
+# build root kept the package's from an earlier build.
+install -m 0644 "$SRC/distro/desktop/live/etc/greetd/config.toml" /etc/greetd/config.toml
 # Smaller download: left to itself apt picks ukui-polkit as the installer's password prompt (OpenCV and map libraries,
 # ~150 MB); lxpolkit is 47 kB.
 apt-get purge -y -qq ukui-polkit 2>/dev/null || true
