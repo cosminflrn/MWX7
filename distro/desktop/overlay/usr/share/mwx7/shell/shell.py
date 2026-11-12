@@ -423,8 +423,11 @@ class Shell(Gtk.Application):
         threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
         self.refresh()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
-        if os.environ.get('MWX7_SHELL_OPEN') == 'start':
-            GLib.timeout_add(1500, lambda: self.start_button.popup() and False)
+        what = os.environ.get('MWX7_SHELL_OPEN')
+        if what in ('start', 'calendar', 'system'):
+            btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn,
+                   'system': lambda: self.orb_button}[what]()
+            GLib.timeout_add(1500, lambda: btn.popup() and False)
 
     def apply_tint(self):
         """The bar, the dock and the Start menu's glass take the window colour and intensity chosen in Settings, the
@@ -478,6 +481,7 @@ class Shell(Gtk.Application):
         orb_img.set_pixel_size(22)
         orb.set_child(orb_img)
         orb.set_popover(self.build_system_menu())
+        self.orb_button = orb
         left.append(orb)
         self.title = Gtk.Label(label='Desktop')
         self.title.add_css_class('app-title')
@@ -544,9 +548,15 @@ class Shell(Gtk.Application):
         show_desktop.set_tooltip_text('Show desktop')
         show_desktop.connect('clicked', lambda *_: self.ipc.call('wm-actions/toggle_showdesktop'))
         right.append(show_desktop)
+        # The clock opens the web concept's calendar flyout: the time large, the date, the month, Today.
         self.clock = Gtk.Label()
         self.clock.add_css_class('clock')
-        right.append(self.clock)
+        clock_btn = Gtk.MenuButton()
+        clock_btn.add_css_class('clock-btn')
+        clock_btn.set_child(self.clock)
+        clock_btn.set_popover(self.build_calendar())
+        self.clock_btn = clock_btn
+        right.append(clock_btn)
         box.set_start_widget(left)
         box.set_end_widget(right)
         box.set_hexpand(True)
@@ -567,16 +577,81 @@ class Shell(Gtk.Application):
         self.start_button.popup()
         GLib.idle_add(self.start_menu.search.grab_focus)
 
-    def build_system_menu(self):
+    def build_calendar(self):
         pop = Gtk.Popover()
-        pop.add_css_class('start')
-        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        col.append(self.menu_row('Settings', 'settings',
-                                 lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/settings/mwx7-settings']))))
-        col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(ABOUT))))
-        col.append(Gtk.Separator())
-        for label, icon, cmd in POWER_ACTIONS:
-            col.append(self.menu_row(label, icon, lambda *_a, c=cmd: (pop.popdown(), power(c))))
+        pop.add_css_class('calflyout')
+        pop.set_has_arrow(False)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        head.add_css_class('cal-head')
+        big = Gtk.Label(xalign=0)
+        big.add_css_class('cal-time')
+        date = Gtk.Label(xalign=0)
+        date.add_css_class('cal-date')
+        head.append(big)
+        head.append(date)
+        col.append(head)
+        cal = Gtk.Calendar()
+        cal.add_css_class('cal-month')
+        col.append(cal)
+        foot = Gtk.Box()
+        foot.add_css_class('cal-foot')
+        today = Gtk.Button(label='Today')
+        today.add_css_class('cal-link')
+        today.connect('clicked', lambda *_: cal.select_day(GLib.DateTime.new_now_local()))
+        foot.append(today)
+        spacer = Gtk.Box(hexpand=True)
+        foot.append(spacer)
+        change = Gtk.Button(label='Change date and time settings…')
+        change.add_css_class('cal-link')
+        change.connect('clicked', lambda *_: (pop.popdown(), self.launch([SETTINGS, '--page', 'datetime'])))
+        foot.append(change)
+        col.append(foot)
+        pop.set_child(col)
+
+        def tick():
+            if not pop.get_visible():
+                return False
+            t = time.localtime()
+            big.set_label(time.strftime('%H:%M:%S', t))
+            date.set_label(time.strftime('%A, %B ', t) + str(t.tm_mday) + time.strftime(', %Y', t))
+            return True
+
+        def shown(*_):
+            cal.select_day(GLib.DateTime.new_now_local())
+            tick()
+            GLib.timeout_add(500, tick)
+        pop.connect('show', shown)
+        return pop
+
+    def build_system_menu(self):
+        """The orb in the bar: the web concept's (macOS-like) system menu, text only."""
+        pop = Gtk.Popover()
+        pop.add_css_class('sysmenu')
+        pop.set_has_arrow(False)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        def item(label, fn):
+            b = Gtk.Button(label=label)
+            b.add_css_class('sys-item')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (pop.popdown(), fn()))
+            col.append(b)
+
+        def sep():
+            s = Gtk.Box()
+            s.add_css_class('sys-sep')
+            col.append(s)
+        item('About MWX 7', lambda: self.launch(ABOUT))
+        sep()
+        item('Settings…', lambda: self.launch([SETTINGS]))
+        item('Search', self.open_search)
+        item('Overview', lambda: self.ipc.call('scale/toggle'))
+        sep()
+        item('Lock', lambda: power(POWER_ACTIONS[0][2]))
+        item('Log Off…', lambda: power(POWER_ACTIONS[1][2]))
+        item('Restart…', lambda: power(POWER_ACTIONS[2][2]))
+        item('Shut Down…', lambda: power(POWER_ACTIONS[3][2]))
         pop.set_child(col)
         return pop
 

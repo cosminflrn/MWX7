@@ -133,3 +133,40 @@ window.mwx7-power button.suggested-action {
   color: #ffffff; font-weight: 600; border: 1px solid #154a96; border-radius: 4px; padding: 3px 14px;
   background: linear-gradient(to bottom, #7fc1ff, #2f7fe0 50%, #1c62c4 51%, #3f93f0);
 }
+
+/* The orb's system menu in the bar, as on the web: frosted glass, text only. */
+popover.sysmenu > contents {
+  padding: 5px 0; min-width: 196px; border-radius: 6px;
+  background: linear-gradient(to bottom, rgba(232, 241, 252, 0.94), rgba(214, 230, 249, 0.93));
+  border: 1px solid rgba(0, 25, 80, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 10, 30, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  font-family: Selawik, "DejaVu Sans", sans-serif; font-size: 13px;
+}
+button.sys-item {
+  padding: 3px 26px 3px 36px; min-height: 0; margin: 0 5px; border-radius: 4px;
+  background: none; border: none; box-shadow: none; color: #111111;
+}
+button.sys-item:hover { background: linear-gradient(to bottom, #6fb0f5, #2f7fe0); color: #ffffff; }
+button.sys-item:hover label { color: #ffffff; }
+.sys-sep { min-height: 1px; margin: 4px 10px; background: rgba(0, 25, 80, 0.18); }
+
+/* The clock's calendar flyout, as on the web. */
+menubutton.clock-btn > button { min-height: 0; padding: 1px 6px; background: none; border: none; box-shadow: none; border-radius: 4px; }
+menubutton.clock-btn > button:hover, menubutton.clock-btn > button:checked {
+  background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+popover.calflyout > contents {
+  padding: 0; min-width: 286px; border-radius: 6px; background: #ffffff;
+  border: 1px solid rgba(0, 25, 80, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 10, 30, 0.35), 0 0 0 4px rgba(170, 200, 235, 0.55);
+  font-family: Selawik, "DejaVu Sans", sans-serif; color: #1a1a1a;
+}
+.cal-head { padding: 14px 18px 10px; border-bottom: 1px solid #dbe5f0; background: linear-gradient(to bottom, #ffffff, #f3f7fc); }
+.cal-time { font-size: 36px; font-weight: 300; color: #1e3f66; }
+.cal-date { font-size: 13px; color: #2a6fc1; }
+calendar.cal-month { margin: 8px 12px; border: none; background: none; color: #1a1a1a; }
+calendar.cal-month > grid > label.day-number:selected { background: linear-gradient(to bottom, #d9ecfd, #b9dbfb); box-shadow: inset 0 0 0 1px #7eb4ea; color: #0b2440; border-radius: 3px; }
+calendar.cal-month > grid > label.day-number.other-month { color: #b5bdc8; }
+.cal-foot { padding: 6px 10px; border-top: 1px solid #dbe5f0; background: #f3f7fc; }
+button.cal-link { background: none; border: none; box-shadow: none; color: #2a6fc1; padding: 2px 6px; min-height: 0; }
+button.cal-link:hover { text-decoration: underline; }

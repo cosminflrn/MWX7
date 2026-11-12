@@ -202,8 +202,11 @@ class Settings(Gtk.Application):
             scroll.set_child(build())
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
-        # "--updates" (the update notification) opens straight at Updates.
-        start = next((i for i, pg in enumerate(pages) if pg[0] == 'updates'), 0) if '--updates' in sys.argv else 0
+        # "--updates" (the update notification) opens straight at Updates; "--page <id>" at any page (the bar's clock
+        # opens Date & time, the desktop's menu Personalize).
+        want = 'updates' if '--updates' in sys.argv else (sys.argv[sys.argv.index('--page') + 1]
+                                                         if '--page' in sys.argv[:-1] else '')
+        start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
         root.append(nav)
         root.append(self.stack)
