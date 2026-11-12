@@ -5,6 +5,8 @@ layer) shows through. Nothing here runs faster than once a second, except the sh
 gauge, and only the gadget that changed is redrawn.
 """
 import json
+import socket
+import struct
 import math
 import os
 import subprocess
@@ -20,7 +22,7 @@ gi.require_version('Gdk', '4.0')
 gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gdk, GLib, Gtk, Pango, PangoCairo  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +56,37 @@ def launch(cmd, fallback=None):
         subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
+
+
+WALL_FILE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wallpaper')
+WALLPAPERS = '/usr/share/mwx7/wallpapers'
+
+
+def wayfire(method, data=None):
+    """One request to Wayfire (Show desktop, Overview); a missing answer is ignored."""
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(2)
+        s.connect(os.environ.get('WAYFIRE_SOCKET', ''))
+        body = json.dumps({'method': method, 'data': data or {}}).encode()
+        s.sendall(struct.pack('<I', len(body)) + body)
+        s.recv(4096)
+        s.close()
+    except OSError:
+        pass
+
+
+def desktop_dir():
+    return GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP) or os.path.expanduser('~/Desktop')
+
+
+def unique(folder, name):
+    """'New folder', 'New folder (2)'... as on the web."""
+    base, ext = (name, '') if '.' not in name else (name.rsplit('.', 1)[0], '.' + name.rsplit('.', 1)[1])
+    path, n = os.path.join(folder, name), 2
+    while os.path.lexists(path):
+        path, n = os.path.join(folder, f'{base} ({n}){ext}'), n + 1
+    return path
 
 
 def load_json(path):
@@ -626,7 +659,7 @@ class DesktopIcon(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         self.add_css_class('desk-icon')
         self.set_size_request(94, -1)
-        img = Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
+        img = icon if isinstance(icon, Gtk.Image) else Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
         img.set_pixel_size(48)
         self.append(img)
         lab = Gtk.Label(label=label, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
@@ -692,6 +725,13 @@ class Desktop(Gtk.Application):
             item = DesktopIcon(label, icon, self.select, lambda c=cmd, f=fallback: launch(c, f))
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
+        self.fixed_count = len(self.icons)
+        # The files and folders in the Desktop folder follow MWX 7's own icons, as on the web; watched, not polled.
+        os.makedirs(desktop_dir(), exist_ok=True)
+        self.desk_mon = Gio.File.new_for_path(desktop_dir()).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.desk_mon.connect('changed', lambda *_a: self.files_later())
+        self.files_timer = 0
+        self.load_files()
 
         city = str(self.cfg.get('city') or 'Bucharest')
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
@@ -705,6 +745,9 @@ class Desktop(Gtk.Application):
         # halign END / valign START: the column takes only the space of its tiles, the desktop gets the rest.
         self.root.add_overlay(self.gadget_col)
 
+        # For screenshots in automated checks (no pointer there): MWX7_DESKTOP_OPEN=menu.
+        if os.environ.get('MWX7_DESKTOP_OPEN') == 'menu':
+            GLib.timeout_add(2000, lambda: self.menu(500, 300) and False)
         click = Gtk.GestureClick()
         click.set_button(0)
         click.connect('pressed', self.desktop_click)
@@ -719,14 +762,75 @@ class Desktop(Gtk.Application):
         return float(v) if isinstance(v, (int, float)) else default
 
     # -- icons
-    def relayout(self, height):
+    def relayout(self, height, force=False):
+        self.height = height
         rows = max(1, (height - ORIGIN) // CELL_H)
-        if rows == self.rows:
+        if rows == self.rows and not force:
             return
         self.rows = rows
         # Column-major like Windows: fill a column top to bottom, then the next one.
         for i, item in enumerate(self.icons):
             self.fixed.move(item, ORIGIN + (i // rows) * CELL_W, ORIGIN + (i % rows) * CELL_H)
+
+    def files_later(self):
+        # A burst of changes (a copy of many files) reloads once.
+        if not self.files_timer:
+            self.files_timer = GLib.timeout_add(300, self.load_files)
+
+    def load_files(self):
+        self.files_timer = 0
+        for item in self.icons[self.fixed_count:]:
+            if item is self.selected:
+                self.selected = None
+            self.fixed.remove(item)
+        del self.icons[self.fixed_count:]
+        try:
+            names = sorted((n for n in os.listdir(desktop_dir()) if not n.startswith('.')), key=str.lower)
+        except OSError:
+            names = []
+        for name in names[:60]:
+            f = Gio.File.new_for_path(os.path.join(desktop_dir(), name))
+            try:
+                info = f.query_info('standard::icon,standard::display-name', Gio.FileQueryInfoFlags.NONE, None)
+                img = Gtk.Image.new_from_gicon(info.get_icon())
+                label = info.get_display_name()
+            except GLib.Error:
+                img, label = Gtk.Image.new_from_icon_name('text-x-generic'), name
+            item = DesktopIcon(label, img, self.select,
+                               lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None))
+            self.icons.append(item)
+            self.fixed.put(item, ORIGIN, ORIGIN)
+        if getattr(self, 'height', 0):
+            self.relayout(self.height, force=True)
+        return False
+
+    def next_wallpaper(self):
+        try:
+            walls = sorted(os.path.join(WALLPAPERS, f) for f in os.listdir(WALLPAPERS)
+                           if f.lower().endswith(('.jpg', '.png')))
+        except OSError:
+            walls = []
+        try:
+            cur = open(WALL_FILE).read().strip()
+        except OSError:
+            cur = ''
+        if not walls:
+            return
+        nxt = walls[(walls.index(cur) + 1) % len(walls)] if cur in walls else walls[0]
+        os.makedirs(os.path.dirname(WALL_FILE), exist_ok=True)
+        with open(WALL_FILE, 'w') as f:
+            f.write(nxt + '\n')
+        # The new wallpaper starts before the old one stops, so the desktop never flashes empty.
+        old = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaybg'], capture_output=True, text=True).stdout.split()
+        launch(['swaybg', '-i', nxt, '-m', 'fill'])
+        GLib.timeout_add(700, lambda: [subprocess.run(['kill', p]) for p in old] and False)
+
+    def new_item(self, folder):
+        path = unique(desktop_dir(), 'New folder' if folder else 'New Text Document.txt')
+        try:
+            os.mkdir(path) if folder else open(path, 'x').close()
+        except OSError:
+            pass
 
     def select(self, item):
         if self.selected is item:
@@ -745,6 +849,7 @@ class Desktop(Gtk.Application):
             self.menu(x, y)
 
     def menu(self, x, y):
+        """The web concept's desktop menu: glass card, 16 px icons, the same items in the same order."""
         pop = Gtk.Popover()
         pop.add_css_class('desk-menu')
         pop.set_parent(self.root)
@@ -755,16 +860,33 @@ class Desktop(Gtk.Application):
         pop.set_pointing_to(rect)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
-        def row(label, fn):
+        def row(label, icon, fn):
             b = Gtk.Button()
             b.add_css_class('menu-row')
-            lab = Gtk.Label(label=label, xalign=0)
-            b.set_child(lab)
+            r = Gtk.Box(spacing=8)
+            path = os.path.join(ICONS, '16', icon + '.png')
+            img = Gtk.Image.new_from_file(path) if os.path.exists(path) else Gtk.Image()
+            img.set_pixel_size(16)
+            r.append(img)
+            r.append(Gtk.Label(label=label, xalign=0))
+            b.set_child(r)
             b.connect('clicked', lambda *_a: (pop.popdown(), fn()))
             box.append(b)
 
-        row('Change wallpaper…', lambda: launch([SETTINGS]))
-        row('Hide gadgets' if self.gadgets_on else 'Show gadgets', self.toggle_gadgets)
+        def sep():
+            line = Gtk.Box()
+            line.add_css_class('menu-sep')
+            box.append(line)
+        row('Next Wallpaper', 'wallpaper', self.next_wallpaper)
+        row('Personalize…', 'settings', lambda: launch([SETTINGS, '--page', 'themes']))
+        sep()
+        row('New Folder', 'new-folder', lambda: self.new_item(True))
+        row('New Text Document', 'new-file', lambda: self.new_item(False))
+        row('Hide Gadgets' if self.gadgets_on else 'Show Gadgets', 'gadgets', self.toggle_gadgets)
+        sep()
+        row('Show Desktop', 'desktop', lambda: wayfire('wm-actions/toggle_showdesktop'))
+        row('Overview', 'maximize', lambda: wayfire('scale/toggle'))
+        row('About MWX 7', 'info', lambda: launch([APP, 'about'], [SETTINGS]))
         pop.set_child(box)
         # A popover keeps its parent alive; unparent once it closes or every right-click would leak one.
         pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
