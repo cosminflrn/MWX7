@@ -43,9 +43,9 @@ massif, Nepal Himalaya) with fast-moving clouds, not the Sierra Nevada. Both fil
 | `10-snowboard.jpg` | Man in Snowboard Jumping on Ramp | https://www.pexels.com/photo/1635086/ |
 | `11-beach.jpg` | Beautiful Tropical Beach with Palm Trees and Turquoise Water | https://www.pexels.com/photo/12858509/ |
 | `12-horse.jpg` | Close-up Photo of Brown Horse | https://www.pexels.com/photo/1730760/ |
-| `13-piglet.jpg` | pink piglet | https://unsplash.com/photos/pink-piglet-ZKbve9f7Mp4 |
+| `13-piglet.jpg` | white piglet chewing hay | https://unsplash.com/photos/i4XLJmlYit4 |
 
-`13-piglet.jpg`: photographer Forest S (@forest_ms), Unsplash License (https://unsplash.com/license).
+`13-piglet.jpg`: photographer Christopher Carson, Unsplash License (https://unsplash.com/license).
 
 ## Power-on photo (`boot/`)
 
