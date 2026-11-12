@@ -59,14 +59,16 @@ jobs:
           trap 'echo "::error::Publishing failed at line $LINENO"' ERR
           cp distro/out/mwx7.iso "$F"
           sha256sum "$F" > "$F.sha256"
+          # Reset MWX 7 finds the newest ISO through this small file (releases/latest/download/latest.json).
+          printf '{"iso": "%s", "sha256": "%s"}\n' "$F" "$(cut -d' ' -f1 "$F.sha256")" > latest.json
           if gh release view "$TAG" >/dev/null 2>&1; then
             # One ISO per release: a rebuild replaces the previous one.
             for old in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -E '\.iso(\.sha256)?$'); do
               gh release delete-asset "$TAG" "$old" -y
             done
-            gh release upload "$TAG" "$F" "$F.sha256" --clobber
+            gh release upload "$TAG" "$F" "$F.sha256" latest.json --clobber
             gh release edit "$TAG" --notes-file distro/RELEASE_NOTES.md
           else
-            gh release create "$TAG" "$F" "$F.sha256" --target "$GITHUB_SHA" \
+            gh release create "$TAG" "$F" "$F.sha256" latest.json --target "$GITHUB_SHA" \
               --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md
           fi

@@ -321,6 +321,7 @@ FIRSTBOOT_SUDOERS = ('# MWX 7 first start after a reset: the setup runs as this 
                      'mwx ALL=(root) NOPASSWD: /usr/bin/python3 /usr/share/mwx7/oobe/install.py *\n')
 
 
+GITHUB = 'https://github.com/cosminflrn/MWX7/releases'
 RELEASES = 'https://api.github.com/repos/cosminflrn/MWX7/releases'
 ISO_CACHE = '/var/cache/mwx7/reset.iso'
 # Keep everything: this PC's accounts, logon, network, language, keyboard and time zone come along whole...
@@ -360,8 +361,15 @@ WantedBy=multi-user.target
 
 
 def newest_iso():
-    """(iso url, sha256 url, version) of the newest MWX 7 ISO on GitHub."""
+    """(iso url, sha256 url, name) of the newest MWX 7 ISO on GitHub: from the small latest.json the ISO build
+    publishes beside it, or else from GitHub's API."""
     import urllib.request
+    try:
+        latest = json.load(urllib.request.urlopen(GITHUB + '/latest/download/latest.json', timeout=30))
+        return (f"{GITHUB}/latest/download/{latest['iso']}", f"{GITHUB}/latest/download/{latest['iso']}.sha256",
+                latest['iso'])
+    except (OSError, ValueError, KeyError):
+        pass
     req = urllib.request.Request(RELEASES + '?per_page=20', headers={'Accept': 'application/vnd.github+json'})
     for rel in json.load(urllib.request.urlopen(req, timeout=30)):
         assets = {a['name']: a['browser_download_url'] for a in rel.get('assets', [])}
