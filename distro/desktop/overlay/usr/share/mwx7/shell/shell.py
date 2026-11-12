@@ -30,7 +30,7 @@ APP = '/usr/share/mwx7/bin/mwx7-app'  # MWX 7's own apps (the web concept's apps
 SETTINGS = '/usr/share/mwx7/settings/mwx7-settings'
 # Pinned dock apps, as on MWX 7 on the web: (label, icon, command, app-ids that count as "this app is running").
 PINNED = [
-    ('My Computer', 'computer', ['thunar'], ('thunar',)),
+    ('My Computer', 'computer', [APP, 'explorer'], ('org.mwx7.explorer', 'thunar')),
     ('Internet', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], ('google-chrome',)),
     ('Media Player', 'mediaplayer', [APP, 'mediaplayer'], ('org.mwx7.mediaplayer', 'mwx7-mediaplayer', 'mediaplayer.html', 'mediaplayer_html')),
     ('Notepad', 'notepad', [APP, 'notepad'], ('org.mwx7.notepad', 'mwx7-notepad', 'notepad.html', 'notepad_html')),
@@ -42,7 +42,7 @@ ABOUT = [APP, 'about']
 PLACES = [
     ('Documents', 'folder-documents', 'DOCUMENTS'), ('Pictures', 'folder-pictures', 'PICTURES'),
     ('Music', 'folder-music', 'MUSIC'), None,
-    ('Computer', 'computer', ['thunar', 'computer:///']), ('Settings', 'settings', [SETTINGS]), None,
+    ('Computer', 'computer', [APP, 'explorer']), ('Settings', 'settings', [SETTINGS]), None,
     ('Search', 'search', 'SEARCH'), ('About MWX 7', 'about', ABOUT),
 ]
 # Log Off ends the Wayfire session, which returns to the MWX 7 logon screen.
@@ -215,13 +215,13 @@ def apps_windows(views):
 
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
-    'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
+    'google-chrome': 'browser', 'thunar': 'computer', 'org.mwx7.explorer': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
     'chromium': 'browser', 'mwx7-settings': 'settings', 'org.mwx7.snip': 'snip',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
 # Helpers and duplicates that make no sense as Start menu entries.
-HIDDEN_APPS = ('chromium', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
+HIDDEN_APPS = ('chromium', 'thunar', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
                'org.freedesktop.Xwayland', 'debian-', 'gcr-', 'polkit', 'agreety', 'vim', 'htop', 'python3')
 
 
@@ -330,7 +330,7 @@ class StartMenu(Gtk.Popover):
         # Right: the person's folders and the system's places.
         right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         right.add_css_class('sm-right')
-        right.append(self.place_row(user_display_name(), None, ['thunar', GLib.get_home_dir()], avatar=True))
+        right.append(self.place_row(user_display_name(), None, [APP, 'explorer', GLib.get_home_dir()], avatar=True))
         dirs = {'DOCUMENTS': GLib.UserDirectory.DIRECTORY_DOCUMENTS, 'PICTURES': GLib.UserDirectory.DIRECTORY_PICTURES,
                 'MUSIC': GLib.UserDirectory.DIRECTORY_MUSIC}
         for entry in PLACES:
@@ -341,7 +341,7 @@ class StartMenu(Gtk.Popover):
                 continue
             label, icon, cmd = entry
             if isinstance(cmd, str) and cmd in dirs:
-                cmd = ['thunar', GLib.get_user_special_dir(dirs[cmd]) or GLib.get_home_dir()]
+                cmd = [APP, 'explorer', GLib.get_user_special_dir(dirs[cmd]) or GLib.get_home_dir()]
             right.append(self.place_row(label, icon, cmd))
         body.append(right)
         root.append(body)
@@ -955,7 +955,7 @@ class Shell(Gtk.Application):
         dot.add_css_class('run-dot')
         v.append(dot)
         trash.set_child(v)
-        trash.connect('clicked', lambda *_: self.launch(['thunar', 'trash:///']))
+        trash.connect('clicked', lambda *_: self.launch([APP, 'explorer', os.path.join(GLib.get_user_data_dir(), 'Trash')]))
         self.hover_zoom(trash, self.trash_img)
         shelf.append(trash)
         self.update_trash()

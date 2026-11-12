@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=My Computer
+Comment=Browse your files and folders
+Exec=/usr/share/mwx7/bin/mwx7-app explorer %f
+Icon=/usr/share/mwx7/icons/computer.png
+Categories=System;FileManager;
+Keywords=files;folders;explorer;documents;
+StartupWMClass=org.mwx7.explorer
+MimeType=inode/directory;

@@ -35,7 +35,7 @@ FONT = 'Selawik, DejaVu Sans'
 
 # (label, icon, command, fallback command when the launcher is missing). Order = column order, top to bottom.
 ITEMS = [
-    ('My Computer', 'computer', ['thunar'], None),
+    ('My Computer', 'computer', ['/usr/share/mwx7/bin/mwx7-app', 'explorer'], None),
     ('Internet', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], None),
     ('Notepad', 'notepad', [APP, 'notepad'], None),
     ('Calculator', 'calculator', [APP, 'calculator'], None),
