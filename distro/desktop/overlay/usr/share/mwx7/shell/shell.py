@@ -104,12 +104,14 @@ def power(cmd):
 class Ipc:
     """Wayfire IPC: 4-byte little-endian length, then a JSON body; one request at a time per socket."""
 
-    def __init__(self):
+    def __init__(self, timeout=1.0):
         self.path = os.environ.get('WAYFIRE_SOCKET', '')
         self.lock = threading.Lock()
         self.sock = None
+        self.timeout = timeout
 
-    def _connect(self, timeout=1.0):
+    def _connect(self, timeout=-1):
+        timeout = self.timeout if timeout == -1 else timeout
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         # Requests from the main thread must never wait long: a missing answer is better than a frozen bar.
         s.settimeout(timeout)
@@ -883,6 +885,9 @@ class Shell(Gtk.Application):
             pop.set_child(col)
             pop.connect('closed', lambda p: (GLib.idle_add(p.unparent), state.update(pop=None)))
             state['pop'] = pop
+            # The list already names the app: no tooltip on top of it while it is open.
+            button.set_has_tooltip(False)
+            pop.connect('closed', lambda *_: button.set_has_tooltip(True))
             pop.popup()
             return False
 
@@ -944,8 +949,29 @@ class Shell(Gtk.Application):
         return False
 
     def refresh(self):
-        views = self.ipc.call('window-rules/list-views')
-        self.views = views if isinstance(views, list) else []
+        """Asks Wayfire for its windows off the main thread (a busy or slow machine can take seconds to answer, and
+        with the old 1 s limit on the main thread the dock and the bar simply never learned about any window), then
+        updates the dock and the bar on the main thread. One request at a time; a request during one runs once after."""
+        if getattr(self, 'refreshing', False):
+            self.refresh_again = True
+            return False
+        self.refreshing, self.refresh_again = True, False
+        if not hasattr(self, 'list_ipc'):
+            self.list_ipc = Ipc(timeout=8.0)
+
+        def work():
+            views = self.list_ipc.call('window-rules/list-views')
+            GLib.idle_add(self.apply_views, views)
+        threading.Thread(target=work, daemon=True).start()
+        return False
+
+    def apply_views(self, views):
+        self.refreshing = False
+        if self.refresh_again:
+            GLib.idle_add(self.refresh)
+        if not isinstance(views, list):
+            return False  # no answer this time: keep showing what was last known
+        self.views = views
         self.sync_running_apps()
         for b, ids in self.dock_items:
             if self.windows_of(ids):
