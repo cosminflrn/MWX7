@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Space Pinball
+Comment=Pinball in space
+Exec=/usr/share/mwx7/bin/mwx7-app pinball
+Icon=/usr/share/mwx7/icons/pinball.png
+Categories=Game;ArcadeGame;
+Keywords=game;arcade;ball;
+StartupWMClass=mwx7-pinball

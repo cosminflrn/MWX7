@@ -28,6 +28,12 @@ cp -a "$REPO/public/media/avatars" "$S/avatars"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$S/wallpaper.jpg"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
    "$REPO/public/media/pictures/"*.jpg "$S/wallpapers/"
+# The concept's apps (Notepad, Paint, ...) as a local web app; mwx7-app opens one per window (index.html?app=<id>).
+if [ -f "$REPO/dist/index.html" ]; then
+  mkdir -p "$S/web" && cp -a "$REPO/dist/." "$S/web/"
+else
+  echo "warning: $REPO/dist/index.html not found (run 'npx vite build' first): the package ships without the web apps" >&2
+fi
 # Selawik (OFL) as TTF: Pango loads fonts through HarfBuzz, which can't read the website's WOFF2.
 cp -a "$HERE/fonts/selawik/." "$PKG/usr/share/fonts/selawik/"
 echo "$V" > "$S/version"

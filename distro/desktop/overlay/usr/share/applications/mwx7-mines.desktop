@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mines
+Comment=Find every mine without setting one off
+Exec=/usr/share/mwx7/bin/mwx7-app mines
+Icon=/usr/share/mwx7/icons/mines.png
+Categories=Game;LogicGame;
+Keywords=minesweeper;game;puzzle;
+StartupWMClass=mwx7-mines
