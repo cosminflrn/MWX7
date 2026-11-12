@@ -64,11 +64,9 @@ def power(cmd):
     title = Gtk.Label(label=f'{what} ready to install', xalign=0)
     title.add_css_class('power-title')
     box.append(title)
-    text = Gtk.Label(label=f'Install now and then {action}? It takes a few minutes; don\'t turn off the PC meanwhile.',
+    text = Gtk.Label(label=f'Install now and then {action}? The PC restarts to install them, which takes a few minutes; don\'t turn it off.',
                      xalign=0, wrap=True, max_width_chars=50)
     box.append(text)
-    bar = Gtk.ProgressBar(visible=False)
-    box.append(bar)
     btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
     cancel = Gtk.Button(label='Cancel')
     plain = Gtk.Button(label=action.capitalize())
@@ -82,13 +80,10 @@ def power(cmd):
     plain.connect('clicked', lambda *_: (dlg.close(), subprocess.Popen(cmd)))
 
     def update(*_):
-        btns.set_visible(False)
-        text.set_label(f'Installing updates, then MWX 7 will {action}. Don\'t turn off the PC.')
-        bar.set_visible(True)
-        GLib.timeout_add(150, lambda: bar.pulse() or True)
-        # Root does the rest (pkexec, MWX 7's update rule): it installs, then restarts or shuts down even if this
-        # session ends meanwhile.
-        subprocess.Popen(['pkexec', '/usr/share/mwx7/bin/mwx7-update', 'install-then', cmd[-1]], start_new_session=True)
+        # The machine restarts into the update screen (systemd offline update) and installs there, outside this
+        # session, so there is nothing to show here: the dialog just goes away. pkexec uses MWX 7's update rule.
+        dlg.close()
+        subprocess.Popen(['pkexec', '/usr/share/mwx7/bin/mwx7-update', 'offline', cmd[-1]], start_new_session=True)
     upd.connect('clicked', update)
     dlg.present()
 
