@@ -7,7 +7,7 @@
   install.py finish ANSWERS.json    the person's choices: account, language, keyboard, time zone; then unmounts
   install.py finish ANSWERS --here  the same on the running system (first start after Settings -> Reset MWX 7)
   install.py factory                makes the factory copy on a system set up before Reset existed (package update)
-  install.py update                 installs the newest updates (that first start, before the setup's pages)
+  install.py update check|install   after a reset, before the setup's pages: what is new, then (if wanted) install
   install.py ready                  tells the serial console the setup is on screen (for the automated boot tests)
 
 Reset: right after copying, the fresh system is kept as the read-only btrfs snapshot @factory, set to start into the
@@ -333,6 +333,13 @@ def make_factory(root, from_running=False):
     try:
         f = top + '/@factory'
         if os.path.exists(f):
+            # It already exists: only its first-start setup is brought up to date, so a reset starts with this
+            # version's setup (the rest of the copy stays as it was; the setup then offers the newest version).
+            sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'false')
+            try:
+                shutil.copytree('/usr/share/mwx7/oobe', f'{f}/usr/share/mwx7/oobe', dirs_exist_ok=True)
+            finally:
+                sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'true')
             return
         work = top + '/@factory-new'
         if os.path.exists(work):
@@ -363,7 +370,8 @@ def make_factory(root, from_running=False):
 
 
 def factory_here():
-    """For systems set up before 1.9.0.207 (run by the package update): their own factory copy, so Reset appears."""
+    """Run by every package update: systems set up before 1.9.0.207 get their own factory copy (so Reset appears);
+    systems that have one get its first-start setup brought up to date."""
     global TARGET
     source = sh('findmnt', '-no', 'SOURCE', '/').strip()  # /dev/sda2[/@] on MWX 7's layout
     if sh('findmnt', '-no', 'FSTYPE', '/').strip() != 'btrfs' or not source.endswith('[/@]'):
@@ -386,17 +394,21 @@ def factory_here():
         return
     if subprocess.run(['dpkg', '--audit'], capture_output=True, text=True).stdout.strip():
         return  # something is half-installed: try again after the next update
-    make_factory(source.split('[')[0], from_running=True)
+    make_factory(source.split('[')[0], from_running=not os.path.exists('/etc/mwx7/factory'))
 
 
-def update():
-    """Newest MWX 7 and Debian updates, before the first start's setup pages (after a reset)."""
-    say('STEP', 'Looking for updates')
-    r = subprocess.run(['/usr/share/mwx7/bin/mwx7-update', 'check'], capture_output=True, text=True)
-    if r.returncode != 0:
-        raise RuntimeError('No internet connection: updates can be installed later in Settings.')
-    if not r.stdout.strip():
-        say('STEP', 'MWX 7 is up to date')
+def update(action):
+    """After a reset, before the setup's pages: "check" says what is new (NEWEST <version>, COUNT <n>), "install"
+    installs it. The setup asks in between, so the person decides."""
+    if action == 'check':
+        say('STEP', 'Looking for updates')
+        r = subprocess.run(['/usr/share/mwx7/bin/mwx7-update', 'check'], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError('No internet connection: updates can be installed later in Settings.')
+        pkgs = dict(l.split()[:2] for l in r.stdout.splitlines() if len(l.split()) >= 2)
+        if pkgs.get('mwx7-desktop'):
+            say('NEWEST', pkgs['mwx7-desktop'])
+        say('COUNT', len(pkgs))
         return
     say('STEP', 'Installing updates')
     p = subprocess.Popen(['/usr/share/mwx7/bin/mwx7-update', 'install'], stdout=subprocess.PIPE,
@@ -561,11 +573,10 @@ if __name__ == '__main__':
             finish(args[0])
         elif cmd == 'finish' and args[1:] == ['--here'] and os.path.exists('/etc/mwx7/firstboot'):
             finish(args[0], here=True)
-        elif cmd == 'factory' and os.path.exists('/etc/mwx7/installed') and not os.path.exists('/etc/mwx7/factory') \
-                and not os.path.exists('/etc/mwx7/firstboot'):
+        elif cmd == 'factory' and os.path.exists('/etc/mwx7/installed') and not os.path.exists('/etc/mwx7/firstboot'):
             factory_here()
-        elif cmd == 'update' and os.path.exists('/etc/mwx7/firstboot'):
-            update()
+        elif cmd == 'update' and args in (['check'], ['install']) and os.path.exists('/etc/mwx7/firstboot'):
+            update(args[0])
         elif cmd == 'ready':
             ready()
         else:
