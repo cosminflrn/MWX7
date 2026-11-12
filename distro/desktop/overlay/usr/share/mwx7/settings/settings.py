@@ -69,10 +69,31 @@ def ini_set(section, key, value):
         else:
             body = '\n' + line + body if body.startswith('\n') else '\n' + line + '\n' + body
         text = text[:m.start(1)] + body + text[m.end(1):]
-    tmp = WF_INI + '.tmp'
-    with open(tmp, 'w') as f:
-        f.write(text)
-    os.replace(tmp, WF_INI)  # atomic, so Wayfire never reads half a file
+    # Wayfire reloads its config when the file is modified in place (inotify IN_MODIFY); a new file renamed over it
+    # is never noticed, which is why changes (window colour) did not apply. One write() of the whole file, never
+    # shorter than before (a padding comment fills the rest), so Wayfire can't read a truncated or half-written file.
+    text = re.sub(r'\n#PAD *\n?\Z', '\n', text)
+    data = text.encode()
+    old = os.path.getsize(WF_INI)
+    if len(data) < old:
+        data += b'#PAD' + b' ' * max(0, old - len(data) - 4)
+    fd = os.open(WF_INI, os.O_WRONLY)
+    try:
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def titlebar_css(selector, rgba):
+    """Aero gloss over a window colour (#RRGGBBAA): a bright upper half, the colour itself below the gloss line."""
+    try:
+        c = [int(rgba[i:i + 2], 16) for i in (1, 3, 5)]
+    except ValueError:
+        c = [156, 196, 236]
+    def mix(k):  # k of white over the colour
+        return 'rgb({}, {}, {})'.format(*(round(v + (255 - v) * k) for v in c))
+    return (f'{selector} {{ background: linear-gradient(to bottom, {mix(0.78)} 0%, {mix(0.5)} 50%, {mix(0.12)} 51%, '
+            f'{mix(0.35)} 100%); }}\n')
 
 
 def run(cmd):
@@ -133,6 +154,11 @@ class Settings(Gtk.Application):
         w.set_default_size(820, 560)
         w.add_css_class('mwx7-settings')
         w.set_titlebar(self.titlebar(w, 'Settings'))
+        # GTK 4 draws this window's title bar itself, so it follows the chosen window colour here (Wayfire tints the rest).
+        self.tint = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.tint,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+        self.apply_tint()
         root = Gtk.Box()
         nav = Gtk.ListBox()
         nav.add_css_class('nav')
@@ -257,9 +283,16 @@ class Settings(Gtk.Application):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         GLib.timeout_add(700, lambda: [subprocess.run(['kill', pid]) for pid in old] and False)
 
+    def apply_tint(self):
+        act = ini_get('decoration', 'active_color', COLORS[0][1]).lstrip('\\')
+        inact = ini_get('decoration', 'inactive_color', COLORS[0][2]).lstrip('\\')
+        self.tint.load_from_data((titlebar_css('headerbar.mwx7-titlebar', act) +
+                                  titlebar_css('window.mwx7-settings:backdrop headerbar.mwx7-titlebar', inact)).encode())
+
     def on_color(self, btn, act, inact, row):
         ini_set('decoration', 'active_color', '\\' + act)
         ini_set('decoration', 'inactive_color', '\\' + inact)
+        self.apply_tint()
         child = row.get_first_child()
         while child:
             child.remove_css_class('chosen')
@@ -646,7 +679,68 @@ class Settings(Gtk.Application):
         prev = Gtk.Button(label='Preview the first-start setup', halign=Gtk.Align.START)
         prev.connect('clicked', lambda *_: subprocess.Popen(['python3', '/usr/share/mwx7/oobe/oobe.py', '--preview']))
         p.append(prev)
+
+        if os.path.exists('/etc/mwx7/factory'):
+            p.append(section('Reset MWX 7'))
+            p.append(note('Back to a fresh MWX 7, like just after setup: all accounts, files, apps and settings on this '
+                          'PC are deleted. It restarts into the first-start setup, which installs the newest version '
+                          'first. No ISO needed.'))
+            reset = Gtk.Button(label='Reset MWX 7…', halign=Gtk.Align.START)
+            reset.add_css_class('destructive-action')
+            reset.connect('clicked', self.confirm_reset)
+            p.append(reset)
         return p
+
+    def confirm_reset(self, *_):
+        dlg = Gtk.Window(title='Reset MWX 7', modal=True, transient_for=self.get_active_window())
+        dlg.add_css_class('mwx7-settings')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
+                      margin_start=20, margin_end=20)
+        box.append(Gtk.Label(label='Delete everything and start fresh?', xalign=0, css_classes=['section']))
+        box.append(Gtk.Label(label='Your files, apps, settings and accounts on this PC are deleted for good.\n'
+                                   'MWX 7 restarts right away into the first-start setup.', xalign=0, wrap=True))
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
+        cancel = Gtk.Button(label='Cancel')
+        cancel.connect('clicked', lambda *_: dlg.close())
+        go = Gtk.Button(label='Reset and restart')
+        go.add_css_class('destructive-action')
+        msg = Gtk.Label(xalign=0, wrap=True)
+
+        def do_reset(*_):
+            go.set_sensitive(False)
+            cancel.set_sensitive(False)
+            msg.set_label('Resetting… MWX 7 restarts in a moment.')
+            self.admin(['reset'], lambda ok, err: ok or (msg.set_label(err or 'Reset did not work.'),
+                                                         cancel.set_sensitive(True)))
+        go.connect('clicked', do_reset)
+        btns.append(cancel)
+        btns.append(go)
+        box.append(msg)
+        box.append(btns)
+        dlg.set_child(box)
+        dlg.present()
+
+    @staticmethod
+    def acceleration():
+        """Whether OpenGL runs on a GPU: asks the GL driver for its name through a GL context of GTK's own. Software
+        drawing (llvmpipe) makes everything sluggish; in VMware it means "Accelerate 3D graphics" isn't on or working."""
+        try:
+            import ctypes
+            import ctypes.util
+            ctx = Gdk.Display.get_default().create_gl_context()
+            ctx.realize()
+            ctx.make_current()
+            lib = ctypes.CDLL(ctypes.util.find_library('GLESv2') or ctypes.util.find_library('GL') or 'libGL.so.1')
+            lib.glGetString.restype = ctypes.c_char_p
+            name = (lib.glGetString(0x1F01) or b'').decode(errors='replace')  # GL_RENDERER
+            Gdk.GLContext.clear_current()
+        except Exception:
+            return 'Unknown'
+        if not name:
+            return 'Unknown'
+        if any(w in name.lower() for w in ('llvmpipe', 'softpipe', 'software')):
+            return 'Off (software drawing): in VMware, tick Display → Accelerate 3D graphics'
+        return 'On (' + name.split(';')[0].split('(')[0].strip() + ')'
 
     # ---- About ------------------------------------------------------------------------------------------------------
     def page_about(self):
@@ -660,13 +754,19 @@ class Settings(Gtk.Application):
             version = open('/usr/share/mwx7/version').read().strip()
         except OSError:
             version = '?'
+        # /usr/lib/os-release is MWX 7's own; the diverted Debian original says what the system is built on.
         os_name = ''
         try:
-            for line in open('/etc/os-release'):
+            for line in open('/usr/lib/os-release.debian'):
                 if line.startswith('PRETTY_NAME='):
                     os_name = line.split('=', 1)[1].strip().strip('"')
         except OSError:
             pass
+        if not os_name:
+            try:
+                os_name = 'Debian ' + open('/etc/debian_version').read().strip()
+            except OSError:
+                os_name = 'Debian'
         cpu = next((l.split(':', 1)[1].strip() for l in open('/proc/cpuinfo') if l.startswith('model name')), '?')
         mem_kb = next((int(l.split()[1]) for l in open('/proc/meminfo') if l.startswith('MemTotal')), 0)
         gpu = ''
@@ -676,7 +776,8 @@ class Settings(Gtk.Application):
                 break
         disk = shutil.disk_usage('/')
         rows = [('MWX 7', version), ('Based on', os_name), ('Processor', cpu), ('Memory', f'{mem_kb / 1048576:.1f} GB'),
-                ('Graphics', gpu or 'Unknown'), ('Free space', f'{disk.free / 1e9:.1f} GB of {disk.total / 1e9:.1f} GB')]
+                ('Graphics', gpu or 'Unknown'), ('Acceleration', self.acceleration()),
+                ('Free space', f'{disk.free / 1e9:.1f} GB of {disk.total / 1e9:.1f} GB')]
         grid = Gtk.Grid(column_spacing=18, row_spacing=6)
         for i, (k, v) in enumerate(rows):
             a = Gtk.Label(label=k, xalign=0)

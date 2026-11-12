@@ -61,12 +61,14 @@ def run():
     # 5. GRUB: MWX 7's name, the quiet boot the splash needs, and other systems (Windows) listed in the menu.
     #    Calamares' grubcfg job runs next and adds what an encrypted disk needs.
     write(target('etc/default/grub'), '''# MWX 7 boot menu settings. Run "sudo update-grub" after changing this file.
-GRUB_DEFAULT=saved
-GRUB_SAVEDEFAULT=true
+# Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
+# ("error: sparse file not allowed" on every start).
+GRUB_DEFAULT=0
 GRUB_TIMEOUT=5
 GRUB_DISTRIBUTOR="MWX 7"
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
-GRUB_CMDLINE_LINUX="loglevel=3 vt.global_cursor_default=0"
+# loglevel=3 after "quiet" (which sets 4): only critical kernel messages may cover the splash.
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 vt.global_cursor_default=0"
+GRUB_CMDLINE_LINUX=""
 GRUB_DISABLE_OS_PROBER=false
 GRUB_DISABLE_RECOVERY=true
 # The menu in MWX 7's look; it only shows when Esc is held or another system (Windows) is there to choose.

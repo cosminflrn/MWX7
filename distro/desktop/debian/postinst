@@ -51,6 +51,14 @@ rm -f /etc/apt/sources.list.d/google-chrome.sources  # Chrome adds a second copy
 # Boot menu: MWX 7's entry names, checked so a mistake can never leave the system without a boot menu. An installed
 # system gets the menu rebuilt now; the ISO build and the first-start setup build theirs themselves.
 /usr/share/mwx7/bin/mwx7-grub-names
+# Systems set up before 1.9.0.206: GRUB tried to remember the last entry (an error on every start on btrfs), and
+# "quiet" came after loglevel=3 and undid it (VMware's SMBus warning appeared over the splash).
+if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_DEFAULT=saved' /etc/default/grub 2>/dev/null; then
+  sed -i -e 's/^GRUB_DEFAULT=saved/GRUB_DEFAULT=0/' -e '/^GRUB_SAVEDEFAULT=/d' \
+    -e 's/^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"$/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 vt.global_cursor_default=0"/' \
+    -e 's/^GRUB_CMDLINE_LINUX="loglevel=3 vt.global_cursor_default=0"$/GRUB_CMDLINE_LINUX=""/' /etc/default/grub
+  rm -f /boot/grub/grubenv
+fi
 for f in /etc/grub.d/[0-9]*; do if [ -x "$f" ]; then sh -n "$f"; fi; done
 if [ -f /etc/mwx7/installed ] && [ -f /boot/grub/grub.cfg ] && command -v update-grub >/dev/null; then
   update-grub >/dev/null 2>&1 || echo "mwx7-desktop: update-grub failed; the previous boot menu stays" >&2

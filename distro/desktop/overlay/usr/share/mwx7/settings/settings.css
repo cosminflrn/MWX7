@@ -47,3 +47,10 @@ window.mwx7-settings button.suggested-action {
 }
 window.mwx7-settings button.suggested-action:hover { background: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); }
 window.mwx7-settings .status { font-weight: 600; color: #1c4f8f; }
+/* Reset MWX 7: the one button that deletes everything, in red glass. */
+window.mwx7-settings button.destructive-action {
+  color: #ffffff; font-weight: 600; border: 1px solid #8e1b1b; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  background: linear-gradient(to bottom, #ff9b8f, #e0473a 50%, #c4302a 51%, #e65a4c);
+}
+window.mwx7-settings button.destructive-action:hover { background: linear-gradient(to bottom, #ffb2a8, #ea5a4d 50%, #d23b33 51%, #f06d5f); }
+window.mwx7-settings button.destructive-action:disabled { opacity: 0.55; }

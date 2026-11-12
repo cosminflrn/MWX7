@@ -20,6 +20,7 @@ apt-get install -y -qq --no-install-recommends $BUILD_DEPS grub-common >/dev/nul
 PKG="$(mktemp -d)"; chmod 0755 "$PKG"
 trap 'rm -rf "$PKG" /tmp/mwx7-plugin-build' EXIT
 cp -a "$HERE/overlay/." "$PKG/"
+find "$PKG" -name __pycache__ -prune -exec rm -rf {} +  # left by local syntax checks
 S="$PKG/usr/share/mwx7"
 mkdir -p "$S/icons" "$S/wallpapers" "$PKG/usr/share/fonts/selawik"
 cp -a "$REPO/public/media/icons/." "$S/icons/"

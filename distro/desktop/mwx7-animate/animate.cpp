@@ -304,12 +304,38 @@ class wayfire_animation : public wf::plugin_interface_t, private wf::per_output_
         return wf::ipc::json_ok();
     };
 
+    // GPU drivers (Mesa's VMware driver especially) finish building a shader the first time it draws, which made the
+    // very first minimize stutter. Draw one tiny invisible triangle off screen at startup instead.
+    static void warm_up_genie()
+    {
+        wf::framebuffer_t src, dst;
+        OpenGL::render_begin();
+        src.allocate(4, 4);
+        dst.allocate(4, 4);
+        dst.bind();
+        wf::texture_t tex{src.tex};
+        const float vert[] = {-1, -1, 1, -1, 0, 1};
+        const float uv[] = {0, 0, 1, 0, 0.5, 1};
+        mwx7::genie_program.use(tex.type);
+        mwx7::genie_program.set_active_texture(tex);
+        mwx7::genie_program.attrib_pointer("position", 2, 0, vert);
+        mwx7::genie_program.attrib_pointer("uvPosition", 2, 0, uv);
+        mwx7::genie_program.uniformMatrix4f("MVP", glm::mat4(1.0f));
+        mwx7::genie_program.uniform1f("alpha", 0.0f);
+        GL_CALL(glDrawArrays(GL_TRIANGLES, 0, 3));
+        mwx7::genie_program.deactivate();
+        src.release();
+        dst.release();
+        OpenGL::render_end();
+    }
+
     void init() override
     {
         init_output_tracking();
         OpenGL::render_begin();
         mwx7::genie_program.compile(mwx7::genie_vertex_source, mwx7::genie_frag_source);
         OpenGL::render_end();
+        warm_up_genie();
         ipc_repo->register_method("mwx7/set-minimize-hint", ipc_set_minimize_hint);
     }
 

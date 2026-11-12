@@ -1,0 +1,49 @@
+#!/usr/bin/python3
+# Switches every screen to its highest refresh rate at the current resolution, once per login. Monitors often start
+# on a 60 Hz mode even when they can do 144 Hz. Screens whose mode was chosen in Settings -> Display are left alone.
+import json
+import os
+import re
+import subprocess
+
+
+def chosen_outputs():
+    """Outputs that have a mode in the user's wayfire.ini, which is where Settings records the person's choice."""
+    path = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wayfire.ini')
+    names = set()
+    section = ''
+    for line in open(path):
+        line = line.strip()
+        m = re.match(r'\[(.*)\]$', line)
+        if m:
+            section = m.group(1)
+        elif section.startswith('output:') and re.match(r'mode\s*=\s*\S', line):
+            names.add(section[len('output:'):])
+    return names
+
+
+def main():
+    try:
+        skip = chosen_outputs()
+    except OSError:
+        skip = set()
+    out = subprocess.run(['wlr-randr', '--json'], capture_output=True, text=True, timeout=10).stdout
+    for o in json.loads(out or '[]'):
+        if not o.get('enabled') or o.get('name') in skip:
+            continue
+        modes = o.get('modes', [])
+        cur = next((m for m in modes if m.get('current')), None)
+        if not cur:
+            continue
+        same = [m for m in modes if m['width'] == cur['width'] and m['height'] == cur['height']]
+        best = max(same, key=lambda m: m['refresh'])
+        if best['refresh'] > cur['refresh'] + 0.01:
+            subprocess.run(['wlr-randr', '--output', o['name'], '--mode',
+                            f"{best['width']}x{best['height']}@{best['refresh']:.3f}Hz"],
+                           capture_output=True, timeout=10)
+
+
+try:
+    main()
+except Exception:  # never disturb the login over a cosmetic tweak
+    pass
