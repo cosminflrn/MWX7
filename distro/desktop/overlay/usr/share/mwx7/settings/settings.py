@@ -470,6 +470,25 @@ class Settings(Gtk.Application):
             cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
             if mm_w and cur_w and cur_w / (mm_w / 25.4) > 140 and float(o.get('scale', 1)) < 1.25:
                 p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
+        # Night light: warmer colours from sunset to sunrise, where the weather gadget's city is.
+        p.append(section('Night light'))
+        flag = os.path.join(CONF_DIR, 'nightlight')
+        night = Gtk.CheckButton(label='Warmer colours from sunset to sunrise')
+        night.set_active(os.path.exists(flag))
+
+        def toggled(c):
+            if c.get_active():
+                os.makedirs(CONF_DIR, exist_ok=True)
+                open(flag, 'w').close()
+                subprocess.Popen(['/usr/share/mwx7/bin/mwx7-nightlight'], start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                if os.path.exists(flag):
+                    os.remove(flag)
+                run(['pkill', '-u', str(os.getuid()), '-x', 'wlsunset'])
+        night.connect('toggled', toggled)
+        p.append(night)
+        p.append(note('The times follow the city chosen for the weather gadget (Settings \u2192 Desktop).'))
         return p
 
     # ---- Keyboard ---------------------------------------------------------------------------------------------------
