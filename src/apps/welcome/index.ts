@@ -5,7 +5,7 @@ import { h } from '../../ui/dom';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const BASE = import.meta.env.BASE_URL;
 // J.S. Bach, Aria da Capo (Goldberg Variations), Kimiko Ishizaka, CC0: a real piano recording, see media/CREDITS.md
 const MUSIC = `${BASE}media/music/goldberg-aria-da-capo.ogg`;
@@ -22,12 +22,19 @@ interface Slide {
   art: string;
 }
 
+// On the installed MWX 7 the tour opens as its own app window (?app=welcome): it is a real PC there, not a browser demo.
+const native = (): boolean => new URLSearchParams(location.search).has('app');
+
 // Built at mount time: the app registry is not filled yet when this module loads.
 const buildSlides = (): Slide[] => [
   {
     title: 'Welcome to MWX 7',
-    lead: 'A dream desktop that blends the best of Windows XP, Windows 7 and macOS, running right here in your browser.',
-    points: [['Nothing is saved', 'Every reload is a fresh machine, so feel free to explore.']],
+    lead: native()
+      ? 'A dream desktop that blends the best of Windows XP, Windows 7 and macOS, on your own PC.'
+      : 'A dream desktop that blends the best of Windows XP, Windows 7 and macOS, running right here in your browser.',
+    points: native()
+      ? [['Always up to date', 'Settings → Updates brings new versions; security fixes install by themselves.']]
+      : [['Nothing is saved', 'Every reload is a fresh machine, so feel free to explore.']],
     art: `<div class="wl-a1"><div class="wl-halo"></div><div class="wl-big-orb">${icons.orb}</div>
       <span class="wl-sat s1">${app('explorer')}</span><span class="wl-sat s2">${app('browser')}</span>
       <span class="wl-sat s3">${app('mediaplayer')}</span><span class="wl-sat s4">${app('pinball')}</span></div>`,
@@ -51,7 +58,7 @@ const buildSlides = (): Slide[] => [
     lead: 'The essentials are all here, and they work together.',
     points: [
       ['My Computer', 'Browse folders and drives.'],
-      ['Internet', 'Surf the web inside the desktop.'],
+      ['Internet', native() ? 'Google Chrome, framed in glass like every window.' : 'Surf the web inside the desktop.'],
       ['Media Player', 'Listen to Bach, recorded on a real piano.'],
       ['Photo Viewer', 'Flip through your pictures.'],
     ],
@@ -61,7 +68,7 @@ const buildSlides = (): Slide[] => [
     title: 'Make it yours',
     lead: 'Open Settings to change how MWX 7 looks.',
     points: [
-      ['Wallpapers', 'Live video backgrounds of meadow and mountains.'],
+      ['Wallpapers', native() ? 'Meadows, mountains, beaches and more.' : 'Live video backgrounds of meadow and mountains.'],
       ['Window Color', 'Tint the glass and set its intensity.'],
       ['Gadgets', 'Clock, calendar and more, right on the desktop.'],
     ],

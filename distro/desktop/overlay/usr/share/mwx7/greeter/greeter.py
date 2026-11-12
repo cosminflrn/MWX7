@@ -102,6 +102,10 @@ class Greeter(Gtk.Application):
         back = Gtk.Picture.new_for_filename(os.path.join(SHARE, 'wallpaper.jpg'))
         back.set_content_fit(Gtk.ContentFit.COVER)
         overlay.set_child(back)
+        # The web concept's logon: the wallpaper dimmed towards the edges so the account stands out.
+        shade = Gtk.Box()
+        shade.add_css_class('shade')
+        overlay.add_overlay(shade)
 
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         col.set_halign(Gtk.Align.CENTER)
@@ -112,6 +116,10 @@ class Greeter(Gtk.Application):
         frame.add_css_class('avatar')
         frame.set_halign(Gtk.Align.CENTER)
         frame.append(self.avatar)
+        # Accounts without a password sign in by clicking the picture, as on the web.
+        pic_click = Gtk.GestureClick()
+        pic_click.connect('released', lambda *_: self.no_password and self.on_go())
+        frame.add_controller(pic_click)
         col.append(frame)
         self.name = Gtk.Label()
         self.name.add_css_class('name')
@@ -132,10 +140,15 @@ class Greeter(Gtk.Application):
         row.append(self.go)
         col.append(row)
         self.pw_row = row
-        self.signin = Gtk.Button(label='Sign in')
-        self.signin.add_css_class('signin')
-        self.signin.set_halign(Gtk.Align.CENTER)
-        self.signin.connect('clicked', self.on_go)
+        self.signin = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
+        hint = Gtk.Label(label='Click your picture to sign in')
+        hint.add_css_class('hint')
+        self.signin.append(hint)
+        self.signin_go = Gtk.Button(label='→')
+        self.signin_go.add_css_class('go')
+        self.signin_go.set_tooltip_text('Sign in')
+        self.signin_go.connect('clicked', self.on_go)
+        self.signin.append(self.signin_go)
         col.append(self.signin)
         self.message = Gtk.Label()
         self.message.add_css_class('message')
@@ -158,8 +171,14 @@ class Greeter(Gtk.Application):
             col.append(others)
         overlay.add_overlay(col)
 
-        brand = Gtk.Label(label='MWX 7')
+        brand = Gtk.Box(spacing=10)
         brand.add_css_class('brand')
+        orb = Gtk.Image.new_from_file(os.path.join(SHARE, 'icons', 'orb.png'))
+        orb.set_pixel_size(34)
+        brand.append(orb)
+        word = Gtk.Label()
+        word.set_markup('<b>MWX</b> <span weight="300" foreground="#bfe0ff">7</span>')
+        brand.append(word)
         brand.set_halign(Gtk.Align.CENTER)
         brand.set_valign(Gtk.Align.END)
         brand.set_margin_bottom(28)
@@ -170,8 +189,7 @@ class Greeter(Gtk.Application):
         power.set_valign(Gtk.Align.END)
         power.set_margin_end(24)
         power.set_margin_bottom(20)
-        for label, icon, cmd in (('Restart', 'logoff', ['systemctl', 'reboot']),
-                                 ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])):
+        for label, icon, cmd in (('Shut Down', 'shutdown', ['systemctl', 'poweroff']),):
             b = Gtk.Button()
             b.add_css_class('power')
             b.set_tooltip_text(label)
@@ -188,7 +206,6 @@ class Greeter(Gtk.Application):
         self.clock.set_valign(Gtk.Align.END)
         self.clock.set_margin_start(28)
         self.clock.set_margin_bottom(22)
-        overlay.add_overlay(self.clock)
         self.tick()
         GLib.timeout_add_seconds(10, self.tick)
 
@@ -224,7 +241,7 @@ class Greeter(Gtk.Application):
         self.no_password = not needs_password(user[0])
         self.pw_row.set_visible(not self.no_password)
         self.signin.set_visible(self.no_password)
-        (self.signin if self.no_password else self.password).grab_focus()
+        (self.signin_go if self.no_password else self.password).grab_focus()
 
     def tick(self):
         self.clock.set_label(time.strftime('%H:%M\n%A, %-d %B'))
@@ -235,7 +252,7 @@ class Greeter(Gtk.Application):
         if (not password and not self.no_password) or not self.go.get_sensitive():
             return
         self.go.set_sensitive(False)
-        self.signin.set_sensitive(False)
+        self.signin_go.set_sensitive(False)
         self.password.set_sensitive(False)
         self.message.set_label('Welcome')
         login = self.user[0]
@@ -256,7 +273,7 @@ class Greeter(Gtk.Application):
             return False
         self.message.set_label(problem)
         self.go.set_sensitive(True)
-        self.signin.set_sensitive(True)
+        self.signin_go.set_sensitive(True)
         self.password.set_sensitive(True)
         self.password.set_text('')
         self.password.grab_focus()

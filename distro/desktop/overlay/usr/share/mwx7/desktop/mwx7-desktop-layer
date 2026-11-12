@@ -1,0 +1,17 @@
+#!/bin/sh
+# Starts the MWX 7 desktop layer (desktop icons + gadgets) and keeps it running.
+# gtk4-layer-shell must be loaded before libwayland-client, which Python cannot guarantee on its own.
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so.0
+# Same renderer choice as the shell: GTK's GPU renderers draw badly or not at all on some drivers (VMware/VirtualBox 3D).
+export GSK_RENDERER=cairo
+export GTK_A11Y=none
+LOG="${XDG_RUNTIME_DIR:-/tmp}/mwx7-desktop.log"
+# Restart on a crash, but give up after a burst of quick failures instead of spinning.
+fails=0
+while [ "$fails" -lt 5 ]; do
+  start=$(date +%s)
+  python3 /usr/share/mwx7/desktop/desktop.py "$@" >> "$LOG" 2>&1
+  [ $(( $(date +%s) - start )) -lt 10 ] && fails=$((fails + 1)) || fails=0
+  echo "mwx7-desktop-layer exited, restarting ($fails)" >> "$LOG"
+  sleep 1
+done

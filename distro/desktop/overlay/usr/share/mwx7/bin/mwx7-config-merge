@@ -16,6 +16,12 @@ KEPT = {'decoration': ('active_color', 'inactive_color'),
                   'mouse_natural_scroll', 'left_handed_mode')}
 
 
+# Window colours MWX 7 Settings offered before 1.9.0.209 (opaque pastel frames).
+OLD_COLORS = {'\\#' + c for c in ('9CC4ECC0', 'D2DEEBB0', '7FA3D6C8', 'C3D0E3B0', '86D0D8C0', 'CFE3E6B0', 'A8D99AC0',
+                                  'D6E6D1B0', 'B9A9E3C0', 'DCD6EDB0', 'EDB0C4C0', 'EED8E0B0', 'F2D27EC0', 'F1E6C8B0',
+                                  'A9B3BEC8', 'D5D9DEB0')}
+
+
 def sections(text):
     """{name: (start, end)} of each section body."""
     out = {}
@@ -73,14 +79,9 @@ def in_vm():
 
 
 def for_this_machine(text, system):
-    """In a virtual machine only the bar, dock and notifications get blurred glass: blurring behind every window made
-    dragging windows and hovering title bars lag in VMware (each frame re-blurred the whole window area). Real
-    graphics cards get the full glass."""
+    """Glass is blurred everywhere again (1.9.0.207 left windows unblurred in virtual machines): the system default."""
     full = get(sections(system).get('blur', ''), 'blur_by_default')
-    if not full:
-        return text
-    want = re.sub(r'\s*\|\s*type is "toplevel"', '', full) if in_vm() else full
-    return put(text, 'blur', 'blur_by_default', want)
+    return put(text, 'blur', 'blur_by_default', full) if full else text
 
 
 def merged(new, old):
@@ -89,6 +90,8 @@ def merged(new, old):
         for sec, keys in KEPT.items():
             for k in keys:
                 v = get(mine.get(sec, ''), k)
+                if v in OLD_COLORS:  # the pastel frames before Aero glass: the new default instead
+                    continue
                 if v is not None:
                     new = put(new, sec, k, v)
         for sec, body in mine.items():

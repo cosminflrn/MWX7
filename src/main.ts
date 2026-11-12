@@ -37,8 +37,14 @@ function loadFonts(): void {
 }
 
 async function start(): Promise<void> {
-  forgetPersistedData();
   loadFonts();
+  // ?app=<id>: one app, no desktop (the real OS draws the window). Loaded on demand so the concept itself is unchanged.
+  const appId = new URLSearchParams(location.search).get('app');
+  if (appId) {
+    await (await import('./appmode')).runAppMode(appId);
+    return;
+  }
+  forgetPersistedData();
   document.body.insertAdjacentHTML('afterbegin', ICON_DEFS);
   registerAll();
   await seedFS();

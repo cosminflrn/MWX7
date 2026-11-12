@@ -39,28 +39,88 @@ void decoration_theme_t::set_buttons(button_type_t flags)
  * @param scissor The GL scissor rectangle to use.
  * @param active Whether to use active or inactive colors
  */
+void decoration_theme_t::update_band(int width, int height, int band, bool active) const
+{
+    if ((width == band_key_w) && (height == band_key_h) && (band == band_key_band) && (active == band_key_active) &&
+        (band_texture.tex != (GLuint)-1))
+    {
+        return;
+    }
+
+    band_key_w = width, band_key_h = height, band_key_band = band, band_key_active = active;
+    auto surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, std::max(1, width), std::max(1, band));
+    auto cr = cairo_create(surface);
+    // Top sheen, as MWX 7 on the web: bright at the edge, fading out by the middle of the title bar.
+    auto sheen = cairo_pattern_create_linear(0, 0, 0, 70);
+    cairo_pattern_add_color_stop_rgba(sheen, 0, 1, 1, 1, active ? 0.30 : 0.22);
+    cairo_pattern_add_color_stop_rgba(sheen, 34.0 / 70, 1, 1, 1, active ? 0.06 : 0.04);
+    cairo_pattern_add_color_stop_rgba(sheen, 1, 1, 1, 1, 0);
+    cairo_set_source(cr, sheen);
+    cairo_paint(cr);
+    cairo_pattern_destroy(sheen);
+    // Aero's diagonal light streaks: a CSS-style 118° gradient over the whole frame, of which the band shows the top.
+    const double th = 118.0 * M_PI / 180.0;
+    const double dx = std::sin(th), dy = -std::cos(th);
+    const double len = std::abs(width * dx) + std::abs(height * dy);
+    const double cx = width / 2.0, cy = height / 2.0;
+    auto streaks = cairo_pattern_create_linear(cx - dx * len / 2, cy - dy * len / 2, cx + dx * len / 2, cy + dy * len / 2);
+    const double stops[][2] = {{0.22, 0}, {0.225, 0.10}, {0.24, 0.10}, {0.25, 0}, {0.46, 0}, {0.465, 0.07}, {0.50, 0.07},
+        {0.51, 0}, {0.70, 0}, {0.705, 0.05}, {0.715, 0.05}, {0.72, 0}};
+    for (auto& st : stops)
+    {
+        cairo_pattern_add_color_stop_rgba(streaks, st[0], 1, 1, 1, st[1] * (active ? 1.0 : 0.6));
+    }
+
+    cairo_set_source(cr, streaks);
+    cairo_paint(cr);
+    cairo_pattern_destroy(streaks);
+    cairo_destroy(cr);
+    cairo_surface_upload_to_texture(surface, band_texture);
+    cairo_surface_destroy(surface);
+}
+
+/**
+ * Fill the given rectangle with MWX 7's Aero glass: the chosen colour at the chosen intensity over Wayfire's blur, the
+ * cached sheen and streaks on the title band, and the frame's rings (a dark outer line, a bright inner one).
+ */
 void decoration_theme_t::render_background(const wf::render_target_t& fb,
     wf::geometry_t rectangle, const wf::geometry_t& scissor, bool active) const
 {
-    // MWX 7 glass: the translucent base colour (Wayfire's blur shows through it), a soft white gloss over the upper half
-    // of the title bar, and a bright hairline along the top edge, like the frames of MWX 7 on the web.
     // Wayfire blends premultiplied colours: multiply by alpha here or translucent fills come out far too bright.
     auto pm = [] (wf::color_t c) { return wf::color_t{c.r * c.a, c.g * c.a, c.b * c.a, c.a}; };
-    wf::color_t color = active ? active_color : inactive_color;
+    const wf::color_t c = active_color;
     const int band = (int)border_size + (int)title_height;
+    update_band(rectangle.width, rectangle.height, band, active);
     OpenGL::render_begin(fb);
     fb.logic_scissor(scissor);
     const auto proj = fb.get_orthographic_projection();
-    OpenGL::render_rectangle(rectangle, pm(color), proj);
-    // Two-step gloss: brighter at the very top, fading towards the middle of the title bar.
-    wf::geometry_t gloss1{rectangle.x, rectangle.y, rectangle.width, band / 4};
-    OpenGL::render_rectangle(gloss1, pm({1.0, 1.0, 1.0, active ? 0.34 : 0.22}), proj);
-    wf::geometry_t gloss2{rectangle.x, rectangle.y + band / 4, rectangle.width, band / 4};
-    OpenGL::render_rectangle(gloss2, pm({1.0, 1.0, 1.0, active ? 0.18 : 0.12}), proj);
-    wf::geometry_t line{rectangle.x, rectangle.y, rectangle.width, 1};
-    OpenGL::render_rectangle(line, pm({1.0, 1.0, 1.0, 0.8}), proj);
-    wf::geometry_t base{rectangle.x, rectangle.y + band - 1, rectangle.width, 1};
-    OpenGL::render_rectangle(base, pm({0.05, 0.15, 0.30, 0.30}), proj);
+    if (active)
+    {
+        OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, c.a}), proj);
+    } else
+    {
+        // Unfocused windows: half the tint and a cool grey veil, so the focused one clearly stands out.
+        OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, c.a * 0.5}), proj);
+        OpenGL::render_rectangle(rectangle, pm({150 / 255.0, 165 / 255.0, 190 / 255.0, 0.22}), proj);
+    }
+
+    OpenGL::render_texture(band_texture.tex, fb, {rectangle.x, rectangle.y, rectangle.width, band},
+        glm::vec4(1.0f), OpenGL::TEXTURE_TRANSFORM_INVERT_Y);
+    // Rings: outer dark hairline all round, inner bright hairline, and a soft edge where the client area begins.
+    const auto r = rectangle;
+    const wf::color_t dark = pm({0.0, 20 / 255.0, 60 / 255.0, active ? 0.55 : 0.4});
+    const wf::color_t light = pm({1.0, 1.0, 1.0, active ? 0.42 : 0.3});
+    OpenGL::render_rectangle({r.x, r.y, r.width, 1}, dark, proj);
+    OpenGL::render_rectangle({r.x, r.y + r.height - 1, r.width, 1}, dark, proj);
+    OpenGL::render_rectangle({r.x, r.y, 1, r.height}, dark, proj);
+    OpenGL::render_rectangle({r.x + r.width - 1, r.y, 1, r.height}, dark, proj);
+    OpenGL::render_rectangle({r.x + 1, r.y + 1, r.width - 2, 1}, pm({1.0, 1.0, 1.0, active ? 0.7 : 0.45}), proj);
+    OpenGL::render_rectangle({r.x + 1, r.y + r.height - 2, r.width - 2, 1}, light, proj);
+    OpenGL::render_rectangle({r.x + 1, r.y + 1, 1, r.height - 2}, light, proj);
+    OpenGL::render_rectangle({r.x + r.width - 2, r.y + 1, 1, r.height - 2}, light, proj);
+    const int bs = border_size;
+    OpenGL::render_rectangle({r.x + bs - 1, r.y + band - 1, r.width - 2 * bs + 2, 1},
+        pm({0.05, 0.15, 0.30, 0.35}), proj);
     OpenGL::render_end();
 }
 

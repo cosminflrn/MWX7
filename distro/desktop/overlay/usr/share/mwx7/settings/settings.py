@@ -30,17 +30,28 @@ UPDATE = '/usr/share/mwx7/bin/mwx7-update'
 GREETD = '/etc/greetd/config.toml'
 USER = pwd.getpwuid(os.getuid()).pw_name
 
-# Window colours: (name, active RGBA, inactive RGBA), MWX 7's glass tints.
+# Window colours, as Windows 7's "Window Color and Appearance" (and MWX 7 on the web): the glass's tint; the intensity
+# slider sets how strongly it is tinted (0 = nearly clear glass over the blurred desktop).
 COLORS = [
-    ('Sky', '#9CC4ECC0', '#D2DEEBB0'),
-    ('Twilight', '#7FA3D6C8', '#C3D0E3B0'),
-    ('Sea', '#86D0D8C0', '#CFE3E6B0'),
-    ('Leaf', '#A8D99AC0', '#D6E6D1B0'),
-    ('Lavender', '#B9A9E3C0', '#DCD6EDB0'),
-    ('Blush', '#EDB0C4C0', '#EED8E0B0'),
-    ('Sun', '#F2D27EC0', '#F1E6C8B0'),
-    ('Graphite', '#A9B3BEC8', '#D5D9DEB0'),
+    ('Sky', '#1e64dc'), ('Twilight', '#4a4f8f'), ('Sea', '#1d9aa5'), ('Leaf', '#3f9a3f'),
+    ('Lime', '#9ac93a'), ('Sun', '#e8c52b'), ('Pumpkin', '#e8812a'), ('Ruby', '#c42b3a'),
+    ('Fuchsia', '#c23a9a'), ('Blush', '#ee9fb4'), ('Violet', '#7d4cc4'), ('Lavender', '#a99bd6'),
+    ('Taupe', '#8a7f73'), ('Chocolate', '#6b4630'), ('Slate', '#5f6b78'), ('Frost', '#b9d3e8'),
 ]
+
+
+def glass_alpha(intensity):
+    return 0.08 + max(0, min(100, intensity)) / 100 * 0.7
+
+
+def glass_now():
+    """(#rrggbb, intensity 0-100) from the frames' colour in wayfire.ini."""
+    v = ini_get('decoration', 'active_color', '#1E64DC14').lstrip('\\').lstrip('#')
+    try:
+        a = int(v[6:8], 16) / 255 if len(v) >= 8 else 1.0
+        return '#' + v[:6].lower(), round(max(0.0, min(1.0, (a - 0.08) / 0.7)) * 100)
+    except ValueError:
+        return '#1e64dc', 0
 
 
 # ---- Wayfire config editing: keep the file as written (comments, \\# escapes) and change single keys --------------
@@ -84,16 +95,17 @@ def ini_set(section, key, value):
         os.close(fd)
 
 
-def titlebar_css(selector, rgba):
-    """Aero gloss over a window colour (#RRGGBBAA): a bright upper half, the colour itself below the gloss line."""
-    try:
-        c = [int(rgba[i:i + 2], 16) for i in (1, 3, 5)]
-    except ValueError:
-        c = [156, 196, 236]
-    def mix(k):  # k of white over the colour
-        return 'rgb({}, {}, {})'.format(*(round(v + (255 - v) * k) for v in c))
-    return (f'{selector} {{ background: linear-gradient(to bottom, {mix(0.78)} 0%, {mix(0.5)} 50%, {mix(0.12)} 51%, '
-            f'{mix(0.35)} 100%); }}\n')
+def titlebar_css(selector, rgb, alpha, active=True):
+    """Settings' own title bar (GTK 4 draws it) as the same glass as the frames: tint, sheen and streaks over the blur
+    Wayfire puts behind it."""
+    r, g, b = (int(rgb[i:i + 2], 16) for i in (1, 3, 5))
+    a = alpha if active else alpha * 0.5
+    veil = '' if active else ', linear-gradient(rgba(150, 165, 190, 0.22), rgba(150, 165, 190, 0.22))'
+    sheen = 0.30 if active else 0.22
+    return (f'{selector} {{ background: linear-gradient(118deg, rgba(255,255,255,0) 22%, rgba(255,255,255,0.1) 22.5%, '
+            f'rgba(255,255,255,0.1) 24%, rgba(255,255,255,0) 25%, rgba(255,255,255,0) 46%, rgba(255,255,255,0.07) 46.5%, '
+            f'rgba(255,255,255,0.07) 50%, rgba(255,255,255,0) 51%), linear-gradient(to bottom, rgba(255,255,255,{sheen}), '
+            f'rgba(255,255,255,0.06)), linear-gradient(rgba({r},{g},{b},{a:.3f}), rgba({r},{g},{b},{a * 0.86:.3f})){veil}; }}\n')
 
 
 def run(cmd):
@@ -190,8 +202,11 @@ class Settings(Gtk.Application):
             scroll.set_child(build())
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
-        # "--updates" (the update notification) opens straight at Updates.
-        start = next((i for i, pg in enumerate(pages) if pg[0] == 'updates'), 0) if '--updates' in sys.argv else 0
+        # "--updates" (the update notification) opens straight at Updates; "--page <id>" at any page (the bar's clock
+        # opens Date & time, the desktop's menu Personalize).
+        want = 'updates' if '--updates' in sys.argv else (sys.argv[sys.argv.index('--page') + 1]
+                                                         if '--page' in sys.argv[:-1] else '')
+        start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
         root.append(nav)
         root.append(self.stack)
@@ -245,23 +260,44 @@ class Settings(Gtk.Application):
         p.append(flow)
 
         p.append(section('Window color'))
-        p.append(note('The tint of window frames. The glass lets the wallpaper show through.'))
-        row = Gtk.Box(spacing=8)
-        active = ini_get('decoration', 'active_color').replace('\\\\', '\\')
-        for name, act, inact in COLORS:
+        p.append(note('The tint of the glass on window frames, the status bar and the dock.'))
+        flow = Gtk.FlowBox(max_children_per_line=8, min_children_per_line=8, selection_mode=Gtk.SelectionMode.NONE,
+                           column_spacing=6, row_spacing=6, halign=Gtk.Align.START)
+        cur, intensity = glass_now()
+        self.swatches = []
+        for name, hexc in COLORS:
             b = Gtk.Button()
             b.add_css_class('swatch')
             b.set_tooltip_text(name)
             sw = Gtk.Box()
-            sw.set_size_request(40, 40)
+            sw.set_size_request(36, 36)
             prov = Gtk.CssProvider()
-            prov.load_from_data(f'box {{ background: {act[:7]}; border-radius: 4px; }}'.encode())
+            prov.load_from_data(f'box {{ background: {hexc}; border-radius: 4px; }}'.encode())
             sw.get_style_context().add_provider(prov, Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
             b.set_child(sw)
-            if active.lstrip('\\').upper() == act.upper():
+            if hexc == cur:
                 b.add_css_class('chosen')
-            b.connect('clicked', self.on_color, act, inact, row)
-            row.append(b)
+            b.connect('clicked', lambda _b, h=hexc: self.set_glass(h, None))
+            self.swatches.append((hexc, b))
+            flow.append(b)
+        p.append(flow)
+        row = Gtk.Box(spacing=10)
+        row.append(Gtk.Label(label='Color intensity', css_classes=['key']))
+        self.intensity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self.intensity.set_value(intensity)
+        self.intensity.set_size_request(260, -1)
+        self.intensity.set_draw_value(False)
+        # Applied when the slider is let go (and after a short pause while dragging), not on every pixel of travel.
+        self.intensity_timer = 0
+
+        def moved(*_):
+            if self.intensity_timer:
+                GLib.source_remove(self.intensity_timer)
+            self.intensity_timer = GLib.timeout_add(250, lambda: (setattr(self, 'intensity_timer', 0),
+                                                                  self.set_glass(None, self.intensity.get_value()))
+                                                    and False)
+        self.intensity.connect('value-changed', moved)
+        row.append(self.intensity)
         p.append(row)
         return p
 
@@ -284,20 +320,24 @@ class Settings(Gtk.Application):
         GLib.timeout_add(700, lambda: [subprocess.run(['kill', pid]) for pid in old] and False)
 
     def apply_tint(self):
-        act = ini_get('decoration', 'active_color', COLORS[0][1]).lstrip('\\')
-        inact = ini_get('decoration', 'inactive_color', COLORS[0][2]).lstrip('\\')
-        self.tint.load_from_data((titlebar_css('headerbar.mwx7-titlebar', act) +
-                                  titlebar_css('window.mwx7-settings:backdrop headerbar.mwx7-titlebar', inact)).encode())
+        rgb, intensity = glass_now()
+        a = glass_alpha(intensity)
+        self.tint.load_from_data((titlebar_css('headerbar.mwx7-titlebar', rgb, a) +
+                                  titlebar_css('window.mwx7-settings:backdrop headerbar.mwx7-titlebar', rgb, a, False) +
+                                  'window.mwx7-settings { background: transparent; }\n'
+                                  'window.mwx7-settings > box { background: #ffffff; }\n').encode())
 
-    def on_color(self, btn, act, inact, row):
-        ini_set('decoration', 'active_color', '\\' + act)
-        ini_set('decoration', 'inactive_color', '\\' + inact)
+    def set_glass(self, rgb, intensity):
+        cur, cur_i = glass_now()
+        rgb = rgb or cur
+        intensity = cur_i if intensity is None else intensity
+        value = '\\' + rgb.upper() + f'{round(glass_alpha(intensity) * 255):02X}'
+        ini_set('decoration', 'active_color', value)
+        ini_set('decoration', 'inactive_color', value)
         self.apply_tint()
-        child = row.get_first_child()
-        while child:
-            child.remove_css_class('chosen')
-            child = child.get_next_sibling()
-        btn.add_css_class('chosen')
+        for hexc, btn in getattr(self, 'swatches', []):
+            (btn.add_css_class if hexc == rgb else btn.remove_css_class)('chosen')
+
 
     # ---- Display ----------------------------------------------------------------------------------------------------
     def page_display(self):

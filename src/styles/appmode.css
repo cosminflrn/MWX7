@@ -1,0 +1,35 @@
+/* App mode (?app=<id>): the app's window is the whole page and the real OS draws the frame. Everything is scoped to .appmode. */
+.appmode body { background: #fff; }
+.appmode #windows { position: fixed; inset: 0; }
+.appmode .win {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.appmode .win-titlebar, .appmode .rz { display: none; }
+.appmode .win-body { border-radius: 0; box-shadow: none; }
+
+.am-menus {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  background: linear-gradient(#fbfcfe, #e4e9f1);
+  border-bottom: 1px solid rgba(0, 20, 60, 0.25);
+}
+.am-menus[hidden] { display: none; }
+.am-menu {
+  border: 0;
+  background: none;
+  padding: 2px 9px;
+  border-radius: 3px;
+  cursor: default;
+}
+.am-menu:hover, .am-menu.open { background: rgba(60, 120, 220, 0.18); }

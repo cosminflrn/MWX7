@@ -4,82 +4,120 @@ window.bar, window.dock { background: transparent; }
 window.bar .bar-plate {
   min-height: 28px;
   padding: 0 10px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.62), rgba(225, 238, 252, 0.45));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 1px 0 rgba(20, 50, 90, 0.25);
-  color: #0b2440;
+  /* The glass itself (tint, sheen, streaks) comes from shell.py with the colour chosen in Settings. */
+  border-bottom: 1px solid rgba(0, 25, 80, 0.6);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.5);
+  color: #000000;
   font-family: Selawik, "DejaVu Sans", sans-serif;
   font-size: 13px;
 }
 window.bar .bar-plate > centerbox { min-height: 28px; }
-.app-title { font-weight: 600; text-shadow: 0 0 6px rgba(255, 255, 255, 0.9); }
-.clock { text-shadow: 0 0 6px rgba(255, 255, 255, 0.9); }
+/* Black text on a soft white glow, like Windows 7 captions: readable on clear or tinted glass. */
+.app-title { font-weight: 700; padding: 0 6px; text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), 0 0 12px rgba(255, 255, 255, 0.75); }
+.clock { padding: 0 4px; text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), 0 0 12px rgba(255, 255, 255, 0.75); }
 
 menubutton.orb > button, button.flat-ico {
-  min-height: 0; min-width: 0; padding: 1px 4px;
-  background: none; border: none; box-shadow: none; border-radius: 6px;
+  min-height: 0; min-width: 0; padding: 2px 6px;
+  background: none; border: none; box-shadow: none; border-radius: 4px; color: #000000;
 }
 menubutton.orb image { -gtk-icon-size: 22px; }
-menubutton.orb > button:hover, button.flat-ico:hover { background: rgba(255, 255, 255, 0.5); }
+menubutton.orb > button:hover, button.flat-ico:hover { background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6); }
 
+/* The dock: flush with the bottom edge, the frames' glass, top corners rounded, as on the web. */
 .dock-shelf {
-  padding: 6px 12px 4px;
-  border-radius: 14px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.72), rgba(218, 234, 252, 0.52));
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 6px 18px rgba(10, 30, 60, 0.35);
+  padding: 0 9px 0;
+  min-height: 64px;
+  border-radius: 14px 14px 0 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 1px 0 1px rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(0, 25, 80, 0.6);
+  border-bottom: none;
 }
 button.dock-item {
-  padding: 4px 6px 0; min-width: 0; min-height: 0;
-  background: none; border: none; box-shadow: none; border-radius: 10px;
-  transition: background 120ms ease-out;
+  padding: 0 2px; min-width: 56px; min-height: 0;
+  background: none; border: none; box-shadow: none; border-radius: 8px;
 }
-button.dock-item:hover { background: rgba(255, 255, 255, 0.35); }
-.run-dot { min-width: 5px; min-height: 5px; margin: 2px 0 1px; border-radius: 3px; background: transparent; }
-button.dock-item.running .run-dot { background: #ffffff; box-shadow: 0 0 4px rgba(40, 120, 255, 0.9); }
+button.dock-item:hover { background: radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.35), transparent 70%); }
+button.dock-item image { -gtk-icon-shadow: 0 2px 3px rgba(0, 0, 0, 0.35); }
+.run-dot { min-width: 4px; min-height: 4px; margin: 1px 0 3px; border-radius: 2px; background: transparent; }
+button.dock-item.running .run-dot { background: rgba(255, 255, 255, 0.95); box-shadow: 0 0 4px 1px rgba(160, 220, 255, 0.9); }
 
 popover.start > contents {
-  padding: 8px;
-  border-radius: 10px;
-  background: linear-gradient(to bottom, rgba(250, 252, 255, 0.92), rgba(225, 236, 250, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  padding: 6px;
+  border-radius: 8px;
+  background: linear-gradient(to bottom, rgba(250, 252, 255, 0.97), rgba(232, 240, 251, 0.96));
+  border: 1px solid rgba(0, 25, 80, 0.45);
   color: #0b2440;
 }
-button.menu-row { padding: 4px 10px; background: none; border: none; box-shadow: none; border-radius: 6px; }
+button.menu-row { padding: 4px 10px; background: none; border: none; box-shadow: none; border-radius: 4px; }
 button.menu-row:hover { background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; }
 
-/* Dock Start orb */
+/* Dock Start orb: a soft blue glow, brighter when pointed at. */
 menubutton.dock-orb > button {
-  padding: 0 4px; min-width: 0; min-height: 0;
+  padding: 0 2px; min-width: 0; min-height: 0;
   background: none; border: none; box-shadow: none; border-radius: 40px;
 }
-menubutton.dock-orb > button:hover { background: radial-gradient(circle, rgba(120, 200, 255, 0.55), transparent 70%); }
-.dock-sep { min-width: 1px; margin: 8px 4px 10px; background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.9), transparent); }
+menubutton.dock-orb > button:hover { background: radial-gradient(circle, rgba(120, 210, 255, 0.6), transparent 68%); }
+.dock-sep { min-width: 1px; margin: 12px 3px 6px; background: rgba(255, 255, 255, 0.35); box-shadow: 1px 0 0 rgba(0, 0, 0, 0.15); }
 
-/* Start menu: glass panel above the orb, like MWX 7 on the web. */
+/* Start menu, as on the web (Windows 7): account on the glass, white programs pane, dark glass places pane. */
 popover.startmenu > contents {
   padding: 0;
-  min-width: 340px;
-  border-radius: 12px;
-  background: linear-gradient(to bottom, rgba(235, 244, 255, 0.96), rgba(214, 230, 249, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 10px 30px rgba(10, 30, 60, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  color: #0b2440;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 25, 80, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 10, 30, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   font-family: Selawik, "DejaVu Sans", sans-serif;
+  font-size: 13px;
 }
-.sm-head { padding: 10px 14px; border-bottom: 1px solid rgba(120, 160, 210, 0.35); }
-frame.sm-avatar { border-radius: 6px; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
-frame.sm-avatar > image { border-radius: 4px; }
-.sm-user { font-size: 15px; font-weight: 600; }
-list.sm-list { background: rgba(255, 255, 255, 0.9); margin: 8px 8px 0; border-radius: 6px; padding: 4px; }
-list.sm-list row { padding: 5px 8px; border-radius: 4px; }
+.sm-head { padding: 10px 14px 8px; }
+frame.sm-avatar { border-radius: 5px; border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45); }
+frame.sm-avatar > image { border-radius: 3px; }
+.sm-user { font-size: 16px; color: #ffffff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.sm-body { margin: 0 8px; }
+.sm-left {
+  min-width: 260px;
+  background: #ffffff;
+  border-radius: 4px 0 0 4px;
+  border: 1px solid rgba(0, 25, 80, 0.45);
+  border-right: none;
+  color: #1a1a1a;
+}
+list.sm-list { background: transparent; padding: 6px; }
+list.sm-list row { padding: 5px 8px; border-radius: 3px; color: #1a1a1a; }
 list.sm-list row:hover, list.sm-list row:selected {
   background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; color: #0b2440;
 }
-.sm-foot { padding: 8px; }
-.sm-foot entry { border-radius: 4px; background: #ffffff; border: 1px solid #9fb6d1; color: #0b2440; min-height: 28px; }
-button.sm-power { padding: 3px 6px; min-height: 0; background: none; border: none; box-shadow: none; border-radius: 4px; }
-button.sm-power:hover { background: rgba(255, 255, 255, 0.7); }
+entry.sm-search {
+  margin: 6px 8px 8px; min-height: 26px; border-radius: 3px;
+  background: #ffffff; border: 1px solid #8fa8c7; color: #1a1a1a; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.sm-right {
+  min-width: 190px; padding: 8px 6px;
+  background: linear-gradient(to bottom, rgba(12, 24, 44, 0.42), rgba(12, 24, 44, 0.58));
+  border: 1px solid rgba(0, 25, 80, 0.45);
+  border-radius: 0 4px 4px 0;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.25);
+}
+button.sm-place { padding: 5px 10px; background: none; border: none; box-shadow: none; border-radius: 3px; color: #ffffff; }
+button.sm-place label { color: #ffffff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75); }
+button.sm-place:hover {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+.sm-sep { min-height: 1px; margin: 5px 10px; background: rgba(255, 255, 255, 0.28); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25); }
+.sm-foot { padding: 8px 10px 10px; }
+button.sm-power, menubutton.sm-more > button {
+  padding: 3px 10px; min-height: 0; color: #ffffff;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.1) 50%, rgba(0, 0, 0, 0.12) 51%, rgba(255, 255, 255, 0.12));
+  border: 1px solid rgba(0, 20, 50, 0.7); border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+button.sm-power label { color: #ffffff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+.sm-split > button.sm-power { border-radius: 3px 0 0 3px; }
+menubutton.sm-more > button { padding: 3px 4px; border-radius: 0 3px 3px 0; border-left: none; }
+button.sm-power:hover, menubutton.sm-more > button:hover {
+  background: linear-gradient(to bottom, rgba(140, 200, 255, 0.6), rgba(60, 130, 220, 0.45) 50%, rgba(20, 80, 180, 0.5) 51%, rgba(80, 160, 240, 0.5));
+}
 
 /* Status icons in the bar */
 image.tray { -gtk-icon-size: 16px; color: #0b2440; }
@@ -95,3 +133,40 @@ window.mwx7-power button.suggested-action {
   color: #ffffff; font-weight: 600; border: 1px solid #154a96; border-radius: 4px; padding: 3px 14px;
   background: linear-gradient(to bottom, #7fc1ff, #2f7fe0 50%, #1c62c4 51%, #3f93f0);
 }
+
+/* The orb's system menu in the bar, as on the web: frosted glass, text only. */
+popover.sysmenu > contents {
+  padding: 5px 0; min-width: 196px; border-radius: 6px;
+  background: linear-gradient(to bottom, rgba(232, 241, 252, 0.94), rgba(214, 230, 249, 0.93));
+  border: 1px solid rgba(0, 25, 80, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 10, 30, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  font-family: Selawik, "DejaVu Sans", sans-serif; font-size: 13px;
+}
+button.sys-item {
+  padding: 3px 26px 3px 36px; min-height: 0; margin: 0 5px; border-radius: 4px;
+  background: none; border: none; box-shadow: none; color: #111111;
+}
+button.sys-item:hover { background: linear-gradient(to bottom, #6fb0f5, #2f7fe0); color: #ffffff; }
+button.sys-item:hover label { color: #ffffff; }
+.sys-sep { min-height: 1px; margin: 4px 10px; background: rgba(0, 25, 80, 0.18); }
+
+/* The clock's calendar flyout, as on the web. */
+menubutton.clock-btn > button { min-height: 0; padding: 1px 6px; background: none; border: none; box-shadow: none; border-radius: 4px; }
+menubutton.clock-btn > button:hover, menubutton.clock-btn > button:checked {
+  background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+popover.calflyout > contents {
+  padding: 0; min-width: 286px; border-radius: 6px; background: #ffffff;
+  border: 1px solid rgba(0, 25, 80, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 10, 30, 0.35), 0 0 0 4px rgba(170, 200, 235, 0.55);
+  font-family: Selawik, "DejaVu Sans", sans-serif; color: #1a1a1a;
+}
+.cal-head { padding: 14px 18px 10px; border-bottom: 1px solid #dbe5f0; background: linear-gradient(to bottom, #ffffff, #f3f7fc); }
+.cal-time { font-size: 36px; font-weight: 300; color: #1e3f66; }
+.cal-date { font-size: 13px; color: #2a6fc1; }
+calendar.cal-month { margin: 8px 12px; border: none; background: none; color: #1a1a1a; }
+calendar.cal-month > grid > label.day-number:selected { background: linear-gradient(to bottom, #d9ecfd, #b9dbfb); box-shadow: inset 0 0 0 1px #7eb4ea; color: #0b2440; border-radius: 3px; }
+calendar.cal-month > grid > label.day-number.other-month { color: #b5bdc8; }
+.cal-foot { padding: 6px 10px; border-top: 1px solid #dbe5f0; background: #f3f7fc; }
+button.cal-link { background: none; border: none; box-shadow: none; color: #2a6fc1; padding: 2px 6px; min-height: 0; }
+button.cal-link:hover { text-decoration: underline; }

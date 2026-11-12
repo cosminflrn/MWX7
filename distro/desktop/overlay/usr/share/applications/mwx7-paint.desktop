@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Paint
+Comment=Draw and edit pictures
+Exec=/usr/share/mwx7/bin/mwx7-app paint
+Icon=/usr/share/mwx7/icons/paint.png
+Categories=Graphics;
+Keywords=draw;image;picture;brush;
+StartupWMClass=mwx7-paint

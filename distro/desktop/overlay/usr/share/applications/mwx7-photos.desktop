@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Viewer
+Comment=View your pictures
+Exec=/usr/share/mwx7/bin/mwx7-app photos
+Icon=/usr/share/mwx7/icons/photos.png
+Categories=Graphics;Viewer;
+Keywords=photos;pictures;images;gallery;
+StartupWMClass=mwx7-photos

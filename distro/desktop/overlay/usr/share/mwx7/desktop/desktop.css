@@ -1,0 +1,39 @@
+/* MWX 7 desktop layer: transparent so the wallpaper (background layer) shows through. */
+window.desktop-layer { background: transparent; }
+
+/* Same look as the concept's .desk-icon: 48px icon, white label with a soft dark shadow, pale-blue glass selection. */
+.desk-icon {
+  padding: 5px 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+}
+.desk-icon image { -gtk-icon-shadow: 0 2px 3px rgba(0, 0, 0, 0.35); }
+.desk-icon label {
+  color: #ffffff;
+  font-family: Selawik, "DejaVu Sans", sans-serif;
+  font-size: 12px;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.8);
+  padding: 0 3px;
+}
+.desk-icon:hover {
+  background: linear-gradient(rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08));
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.desk-icon.selected {
+  background: linear-gradient(rgba(170, 210, 255, 0.42), rgba(120, 175, 240, 0.32));
+  border-color: rgba(200, 228, 255, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* Right-click menu, in the shell's light glass. */
+popover.desk-menu > contents {
+  padding: 6px;
+  border-radius: 10px;
+  background: linear-gradient(to bottom, rgba(250, 252, 255, 0.94), rgba(225, 236, 250, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  color: #0b2440;
+  font-family: Selawik, "DejaVu Sans", sans-serif;
+}
+popover.desk-menu button.menu-row { padding: 4px 12px; background: none; border: none; box-shadow: none; border-radius: 6px; }
+popover.desk-menu button.menu-row:hover { background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; }

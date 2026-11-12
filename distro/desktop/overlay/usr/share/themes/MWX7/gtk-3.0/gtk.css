@@ -76,3 +76,9 @@ iconview:selected, iconview:selected:focus, .view text:selected, .view text sele
   background-color: #cce8ff; color: #0b2440;
 }
 treeview.view:selected:focus, iconview:selected:focus { box-shadow: inset 0 0 0 1px #99d1ff; }
+
+/* Files' left pane: Explorer's pale blue navigation pane. */
+.sidebar treeview.view, .sidebar .view, .shortcuts-pane treeview.view { background-color: #f3f8fe; color: #1c3150; }
+/* The breadcrumb location bar as on the web: a white field with light separators. */
+.path-bar button { padding: 2px 8px; color: #1c3150; }
+.path-bar button:checked { background-image: linear-gradient(to bottom, #fdfeff, #e3effb); border-color: #b5cde6; }

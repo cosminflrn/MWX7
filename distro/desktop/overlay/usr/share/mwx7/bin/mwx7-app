@@ -1,0 +1,28 @@
+#!/bin/sh
+# mwx7-app <id>: opens one of the MWX 7 web apps (Notepad, Calculator, Paint...) in its own window. Chrome shows the page
+# without any browser around it (--app) and MWX 7's window frame goes around that. The profile is separate from the
+# person's own Chrome profile (nothing is shared, nothing is touched), and --class gives each app its own window id for the dock.
+id="${1:?usage: mwx7-app <id>}"
+case "$id" in *[!a-z0-9-]*) echo "mwx7-app: bad app id" >&2; exit 2;; esac
+profile="${XDG_DATA_HOME:-$HOME/.local/share}/mwx7/apps"
+mkdir -p "$profile"
+# Each app opens at its size on the web (plus its menu strip).
+case "$id" in
+  about) size=420,470;; calculator) size=260,400;; mediaplayer) size=860,560;; notepad) size=640,480;;
+  paint) size=1120,720;; photos) size=860,620;; stickynotes) size=260,280;; welcome) size=700,520;;
+  mines) size=300,400;; solitaire) size=820,640;; pinball) size=620,820;; *) size=900,640;;
+esac
+page=$id.html
+[ -e "/usr/share/mwx7/web/$page" ] || page=index.html
+# Served over http from this PC only (127.0.0.1): Chrome runs a web app's modules and storage reliably there, which it
+# does not promise for file:// pages. The server is the session's (autostart), started here too if it isn't up yet.
+PORT=47677
+if ! python3 -c "import socket; socket.create_connection(('127.0.0.1', $PORT), 0.3)" 2>/dev/null; then
+  setsid python3 -m http.server $PORT --bind 127.0.0.1 --directory /usr/share/mwx7/web >/dev/null 2>&1 < /dev/null &
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    python3 -c "import socket; socket.create_connection(('127.0.0.1', $PORT), 0.3)" 2>/dev/null && break; sleep 0.2
+  done
+fi
+exec google-chrome-stable --ozone-platform=wayland \
+  --app="http://127.0.0.1:$PORT/$page?app=$id" --class="mwx7-$id" --window-size="$size" \
+  --user-data-dir="$profile" --no-first-run --no-default-browser-check
