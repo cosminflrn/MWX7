@@ -217,6 +217,8 @@ class Explorer:
             self.back.append(self.loc)
             self.fwd.clear()
         self.loc = path
+        if path not in (COMPUTER, TRASH):
+            mwx7ui.remember(path)
         self.search.set_text('')
         self.query = ''
         self.watch()

@@ -269,6 +269,36 @@ def app_icon_widget(app, size):
     return img
 
 
+# The Start menu's most-used programs: how often each app was started from it (and from search).
+USAGE_FILE = os.path.join(GLib.get_user_config_dir(), 'mwx7', 'start-usage.json')
+FREQUENT = 9
+STARTER = ['mwx7-explorer.desktop', 'mwx7-notepad.desktop', 'mwx7-calculator.desktop', 'mwx7-paint.desktop',
+           'mwx7-mediaplayer.desktop', 'mwx7-photos.desktop', 'mwx7-snip.desktop', 'mwx7-stickynotes.desktop',
+           'mwx7-taskmgr.desktop']
+
+
+def load_usage():
+    try:
+        data = json.load(open(USAGE_FILE))
+        return {k: int(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def count_use(app_id):
+    if not app_id:
+        return
+    usage = load_usage()
+    usage[app_id] = usage.get(app_id, 0) + 1
+    try:
+        os.makedirs(os.path.dirname(USAGE_FILE), exist_ok=True)
+        with open(USAGE_FILE + '.tmp', 'w') as f:
+            json.dump(usage, f)
+        os.replace(USAGE_FILE + '.tmp', USAGE_FILE)
+    except OSError:
+        pass
+
+
 class StartMenu(Gtk.Popover):
     """The MWX 7 Start menu, as on the web (Windows 7's): the account on the glass, programs and search on the white
     left pane, places on the dark glass right pane, Log off and Shut down underneath. Opens above the dock orb."""
@@ -276,6 +306,7 @@ class StartMenu(Gtk.Popover):
     def __init__(self, shell):
         super().__init__()
         self.shell = shell
+        self.mode = 'freq'  # the most-used programs; 'all' is All Programs
         self.add_css_class('startmenu')
         self.set_has_arrow(False)
         self.set_position(Gtk.PositionType.TOP)
@@ -408,26 +439,57 @@ class StartMenu(Gtk.Popover):
         return b
 
     def fill(self):
+        """Windows 7's left pane: the programs used most (a starter set at first), then All Programs, which turns the
+        list into every installed app, A to Z. Searching always looks through every app."""
         while (row := self.listbox.get_row_at_index(0)) is not None:
             self.listbox.remove(row)
         apps = [a for a in Gio.AppInfo.get_all() if a.should_show()
                 and not (a.get_id() or '').lower().startswith(HIDDEN_APPS)]
         apps.sort(key=lambda a: app_name(a).lower())
+        by_id = {a.get_id(): a for a in apps}
+        usage = load_usage()
+        ranked = sorted((i for i in usage if i in by_id), key=lambda i: -usage[i])
+        freq = (ranked + [i for i in STARTER if i in by_id and i not in ranked])[:FREQUENT]
+        for aid in freq:
+            self.listbox.append(self.app_row(by_id[aid], 'freq', 32))
+        toggle = Gtk.ListBoxRow()
+        toggle.kind = 'toggle'
+        toggle.add_css_class('sm-allprogs')
+        self.toggle_label = Gtk.Label(xalign=0, hexpand=True)
+        tbox = Gtk.Box(spacing=8)
+        tbox.append(self.toggle_label)
+        self.toggle_arrow = Gtk.Label()
+        tbox.append(self.toggle_arrow)
+        toggle.set_child(tbox)
         for app in apps:
-            row = Gtk.ListBoxRow()
-            row.app = app
-            row.terms = ' '.join(filter(None, [app_name(app), app.get_display_name(), app.get_description() or '',
-                                               ' '.join(getattr(app, 'get_keywords', lambda: [])() or [])])).lower()
-            box = Gtk.Box(spacing=10)
-            box.append(app_icon_widget(app, 32))
-            box.append(Gtk.Label(label=app_name(app), xalign=0))
-            row.set_child(box)
-            self.listbox.append(row)
+            self.listbox.append(self.app_row(app, 'all', 24))
+        self.listbox.append(toggle)
+        self.set_mode(getattr(self, 'mode', 'freq'))
         return False
+
+    def app_row(self, app, kind, size):
+        row = Gtk.ListBoxRow()
+        row.app, row.kind = app, kind
+        row.terms = ' '.join(filter(None, [app_name(app), app.get_display_name(), app.get_description() or '',
+                                           ' '.join(getattr(app, 'get_keywords', lambda: [])() or [])])).lower()
+        box = Gtk.Box(spacing=10)
+        box.append(app_icon_widget(app, size))
+        box.append(Gtk.Label(label=app_name(app), xalign=0))
+        row.set_child(box)
+        return row
+
+    def set_mode(self, mode):
+        self.mode = mode
+        self.toggle_label.set_label('Back' if mode == 'all' else 'All Programs')
+        self.toggle_arrow.set_label('\u25c0' if mode == 'all' else '\u25b6')
+        self.listbox.invalidate_filter()
 
     def filter_row(self, row):
         q = self.search.get_text().strip().lower()
-        return not q or all(w in row.terms for w in q.split())
+        kind = getattr(row, 'kind', 'all')
+        if q:
+            return kind == 'all' and all(w in row.terms for w in q.split())
+        return kind == 'toggle' or kind == self.mode
 
     def first_visible(self):
         i = 0
@@ -443,13 +505,20 @@ class StartMenu(Gtk.Popover):
             self.on_row(self.listbox, row)
 
     def on_row(self, _lb, row):
+        if getattr(row, 'kind', '') == 'toggle':
+            self.set_mode('freq' if self.mode == 'all' else 'all')
+            return
         self.popdown()
+        count_use(row.app.get_id())
+        GLib.timeout_add(400, self.fill)
         try:
             row.app.launch([], None)
         except GLib.Error:
             pass
 
     def on_show(self, *_):
+        if self.mode != 'freq':
+            self.set_mode('freq')
         self.search.set_text('')
         self.listbox.invalidate_filter()
         GLib.idle_add(self.search.grab_focus)
@@ -617,7 +686,13 @@ class Shell(Gtk.Application):
         show_desktop.set_child(Gtk.Image.new_from_file(os.path.join(ICONS, '16', 'desktop.png')) if os.path.exists(
             os.path.join(ICONS, '16', 'desktop.png')) else Gtk.Image.new_from_icon_name('user-desktop'))
         show_desktop.set_tooltip_text('Show desktop')
-        show_desktop.connect('clicked', lambda *_: self.act('wm-actions/toggle_showdesktop'))
+        show_desktop.connect('clicked', lambda *_: (self.unpeek(), self.act('wm-actions/toggle_showdesktop')))
+        # Aero Peek at the desktop: resting on the button turns every window to glass outlines until the pointer leaves.
+        self.peek_timer = 0
+        hover = Gtk.EventControllerMotion()
+        hover.connect('enter', lambda *_: self.peek_later(None))
+        hover.connect('leave', lambda *_: self.unpeek())
+        show_desktop.add_controller(hover)
         right.append(show_desktop)
         # The clock opens the web concept's calendar flyout: the time large, the date, the month, Today.
         self.clock = Gtk.Label()
@@ -1063,6 +1138,29 @@ class Shell(Gtk.Application):
                 self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.act('window-rules/focus-view', {'id': w['id']})
 
+    def peek_later(self, keep):
+        """Aero Peek: after a short rest, every window but `keep` (None: all of them) fades to a faint outline."""
+        if self.peek_timer:
+            GLib.source_remove(self.peek_timer)
+        self.peek_timer = GLib.timeout_add(450, lambda: (self.peek(keep), False)[1])
+
+    def peek(self, keep):
+        self.peek_timer = 0
+        self.peeked = []
+        for v in apps_windows(self.views):
+            if not v.get('minimized'):
+                a = 1.0 if v['id'] == keep else 0.06
+                self.act('wf/alpha/set-view-alpha', {'view-id': v['id'], 'alpha': a})
+                self.peeked.append(v['id'])
+
+    def unpeek(self):
+        if self.peek_timer:
+            GLib.source_remove(self.peek_timer)
+            self.peek_timer = 0
+        for vid in getattr(self, 'peeked', []):
+            self.act('wf/alpha/set-view-alpha', {'view-id': vid, 'alpha': 1.0})
+        self.peeked = []
+
     def load_thumbnail(self, vid, pic):
         """Asks the frames plugin for a small picture of the window (off the main thread) and shows it when ready."""
         if not hasattr(self, 'thumb_ipc'):
@@ -1115,8 +1213,13 @@ class Shell(Gtk.Application):
                 cell.append(pic)
                 b.set_child(cell)
                 self.load_thumbnail(w['id'], pic)
+                th = Gtk.EventControllerMotion()
+                th.connect('enter', lambda *_a, v=w: None if v.get('minimized') else self.peek_later(v['id']))
+                th.connect('leave', lambda *_a: self.unpeek())
+                b.add_controller(th)
 
                 def pick(_b, v=w):
+                    self.unpeek()
                     close()
                     if v.get('minimized'):
                         self.act('wm-actions/set-minimized', {'view_id': v['id'], 'state': False})
@@ -1133,7 +1236,7 @@ class Shell(Gtk.Application):
             state['pop'] = pop
             # The list already names the app: no tooltip on top of it while it is open.
             button.set_has_tooltip(False)
-            pop.connect('closed', lambda *_: button.set_has_tooltip(True))
+            pop.connect('closed', lambda *_: (button.set_has_tooltip(True), self.unpeek()))
             pop.popup()
             return False
 
@@ -1170,6 +1273,23 @@ class Shell(Gtk.Application):
             b.connect('clicked', lambda *_: (pop.popdown(), fn()))
             col.append(b)
 
+        # Jump list, as in Windows 7: the files (or folders) this app opened lately; one click opens one again.
+        app = next((a for a in (app_for_id(i) for i in ids) if a), None)
+        names = {i.lower() for i in ids} | ({(app.get_id() or '').removesuffix('.desktop').lower()} if app else set())
+        recent = []
+        for info in Gtk.RecentManager.get_default().get_items():
+            if any(a.lower() in names for a in info.get_applications()) and info.exists():
+                recent.append(info)
+        recent.sort(key=lambda r: -r.get_modified().to_unix())
+        if recent and app:
+            sub = Gtk.Label(label='Recent', xalign=0)
+            sub.add_css_class('menu-head')
+            col.append(sub)
+            for info in recent[:7]:
+                item(info.get_display_name(), lambda u=info.get_uri(), a=app: a.launch_uris([u], None))
+            sep = Gtk.Box()
+            sep.add_css_class('menu-sep')
+            col.append(sep)
         if launch:
             item('New window', launch)
         wins = self.windows_of(ids)

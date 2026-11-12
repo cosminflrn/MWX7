@@ -182,6 +182,8 @@ class Player:
         self.tracks = find_tracks([f.get_path() for f in app.files])
         self.render_list()
         if app.files:
+            for f in app.files:
+                mwx7ui.remember(f.get_path())
             GLib.idle_add(lambda: self.select(0, True) and False)
         GLib.timeout_add(250, self.tick)
         GLib.timeout_add(33, self.animate)
@@ -220,6 +222,8 @@ class Player:
         self.index = self.tracks.index(cur) if cur in self.tracks else -1
 
     def open_paths(self, paths):
+        for p in paths:
+            mwx7ui.remember(p)
         for p in reversed(paths):
             if p in self.tracks:
                 self.tracks.remove(p)

@@ -41,3 +41,6 @@ popover.desk-menu button.menu-row {
 popover.desk-menu button.menu-row:hover { background: linear-gradient(#3f8ef0, #2a76de); }
 popover.desk-menu button.menu-row:hover label { color: #ffffff; }
 popover.desk-menu .menu-sep { min-height: 1px; margin: 4px 6px; background: rgba(0, 25, 80, 0.16); }
+
+/* Rubber-band selection: Windows 7's translucent blue box. */
+.rubber-band { background-color: rgba(51, 153, 255, 0.22); border: 1px solid rgba(51, 153, 255, 0.85); }

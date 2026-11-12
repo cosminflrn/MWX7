@@ -120,6 +120,7 @@ class Notepad:
         self.buf.place_cursor(self.buf.get_start_iter())
         self.path, self.dirty = path, False
         self.retitle()
+        mwx7ui.remember(path)
         return True
 
     def write(self, path):
@@ -129,6 +130,7 @@ class Notepad:
         except OSError as e:
             self.alert(f'Notepad cannot save {os.path.basename(path)}.', e.strerror or str(e))
             return False
+        mwx7ui.remember(path)
         self.path, self.dirty = path, False
         self.retitle()
         return True
