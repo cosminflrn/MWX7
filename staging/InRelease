@@ -1,30 +1,30 @@
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA512
 
-Date: Wed, 11 Nov 2026 20:16:08 +0000
+Date: Thu, 12 Nov 2026 00:04:59 +0000
 Label: MWX 7
 Origin: MWX 7
 Suite: updates
 MD5Sum:
- 3de7946b6696e021f27e1ac4c5e5c8a6             1923 Packages
- b7e1f1f588f9c88c0f6c59f2b22349cc             1106 Packages.gz
- c9d691035dd5961f944947dad47e791b               80 Release
+ d935fe7b9c17eb5b0b1cb5f000bed1e5             1923 Packages
+ 11fa725b278f800c0759c413eaec5764             1104 Packages.gz
+ d54c28b4e9514dc6fc67d3f52754d9b9               80 Release
 SHA1:
- 47d231afe8e2602b48ebd9de95e39bf13c9c83c5             1923 Packages
- c60126b5283db85eeb558582b15d476f25cd98f2             1106 Packages.gz
- 1ca88a554fa6404ef69d4aacbb86a940b445ca8e               80 Release
+ 8d4d38fa34eff233daa1d47d17c6fe1a4f69e892             1923 Packages
+ 23dcd903d6c162f3cd898fdc6e50933a74fa6835             1104 Packages.gz
+ 8f782e141e479c67c190ed5917f2c93fa9d218e3               80 Release
 SHA256:
- a84a7b106d8d949e2fc42b9d7e0f4f79d42b3fd1ea0fbe447eec8c9a78f93edc             1923 Packages
- 759e269f2ec0de62b6cb4e9e8c485e085eae182e9c42137d4fb2d6eea30e4a3d             1106 Packages.gz
- abe3d207e01977c170e70a7ef665f41a8f18c8bf573664aa9d0ce8fddec89515               80 Release
+ f5eb6175120f0f7d4b62807c2471ea32456a2cac3ffb3e2ad76812201f3d2d53             1923 Packages
+ 8373cdbf5f1238d09671e9a3265a94281d68d0b8ad8d6de5d7c1c8e580731d6a             1104 Packages.gz
+ 83ce4afd9c22ea6732454823a97478cf7479384d8c36cb826194d9e151032d44               80 Release
 SHA512:
- 4c207a6bdf86386804d0e37307838af93f1dab18d3b21239b3a5ceb2487a5ecb7bb0a7d1a7a7c137c29506b0d4c9ea6c41b82252663c0e357f3840c9667e8fd9             1923 Packages
- cd17d527b1ab8a8cc1e66588df2c8bb1e506f18dd8e2475e65b652b49fea642ea01872c7d4036d3988fac2bfcb9f6e1100f6438d93286ea29a674867f0708dfb             1106 Packages.gz
- e1e42119970d54612331fadf7c271a63b1d8d1c5719b9698c079e3c65a036289579e7a602a985a916e5f31797a4de5e70712ec65b1f5ca970bf06e41c78ec7fa               80 Release
+ 6f693c112fd75e2a36c505c4ba3e334bb0a482a50888656da0223c6289d0486c9692a6097c53239722361bfc0ac2aaead225f8440b20051909da19cca7defb8d             1923 Packages
+ e0471517adc724884bd9ef6fb61fe21cc41e5ad4895d100d0a4af93c030a46731be08cabd5f53286cb097f11e1cc92fbd409bf3f462a767e814f08c659946474             1104 Packages.gz
+ 47461c375120f7a4eee0dc6882aab7ebd8106b8581df48b7d512b6ab4630e58304cd276aca6eb0a965791c39a78720f2d2f617bd70cfbc95200e81d4a9d1f66e               80 Release
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQQ7OT2wYO8EER2NxWshgQstGxqnFwUCavTNCAAKCRAhgQstGxqn
-F1y4AQCQyq7Gq8dk4675JV+4gO9Uq8mlZX35roHfFI5nAkkajgD+J9ytVoa9rmuh
-z8dJOtui5ryZS/WWHRrP6vUWP6mKzwU=
-=0fop
+iHUEARYKAB0WIQQ7OT2wYO8EER2NxWshgQstGxqnFwUCavUCqwAKCRAhgQstGxqn
+F1RgAQDGMfIweRUxeXuOxAehgAj//dUbMNX4XjEF1IWA1AinDwD/U5+aFBE7MXq3
+7C7T5cAFiM6ERgL2i/dSgfMo5tk2/Qk=
+=60yE
 -----END PGP SIGNATURE-----
