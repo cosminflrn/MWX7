@@ -3,6 +3,13 @@
 Derived from the git history. Newest first.
 
 ## v1.9.0
+- **Reset MWX 7** (Settings → Updates): back to a fresh MWX 7 in one click, no ISO. It restarts into the first-start
+  setup, which installs the newest version before asking for your name
+- **Window colour works**: frames change colour right away, Settings' own title bar too
+- Smoother in VMware: title bars and traffic lights redraw only when they change, the first minimize no longer
+  stutters, lighter glass blur; the screen runs at its highest refresh rate
+- Fixed: "sparse file not allowed" at start, the SMBus message over the splash, the splash drifting to a corner
+- New cute piglet account picture; Settings → About shows whether 3D acceleration is on
 - **"Updates available" notification**: a few minutes after you sign in (and every few hours), MWX 7 says when an
   update is waiting; click it to open Settings → Updates
 - **What's new in Settings → Updates**: after an update, the Updates page lists what changed (the first update

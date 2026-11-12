@@ -84,6 +84,18 @@ def ini_set(section, key, value):
         os.close(fd)
 
 
+def titlebar_css(selector, rgba):
+    """Aero gloss over a window colour (#RRGGBBAA): a bright upper half, the colour itself below the gloss line."""
+    try:
+        c = [int(rgba[i:i + 2], 16) for i in (1, 3, 5)]
+    except ValueError:
+        c = [156, 196, 236]
+    def mix(k):  # k of white over the colour
+        return 'rgb({}, {}, {})'.format(*(round(v + (255 - v) * k) for v in c))
+    return (f'{selector} {{ background: linear-gradient(to bottom, {mix(0.78)} 0%, {mix(0.5)} 50%, {mix(0.12)} 51%, '
+            f'{mix(0.35)} 100%); }}\n')
+
+
 def run(cmd):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
@@ -142,6 +154,11 @@ class Settings(Gtk.Application):
         w.set_default_size(820, 560)
         w.add_css_class('mwx7-settings')
         w.set_titlebar(self.titlebar(w, 'Settings'))
+        # GTK 4 draws this window's title bar itself, so it follows the chosen window colour here (Wayfire tints the rest).
+        self.tint = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.tint,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_USER + 1)
+        self.apply_tint()
         root = Gtk.Box()
         nav = Gtk.ListBox()
         nav.add_css_class('nav')
@@ -266,9 +283,16 @@ class Settings(Gtk.Application):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         GLib.timeout_add(700, lambda: [subprocess.run(['kill', pid]) for pid in old] and False)
 
+    def apply_tint(self):
+        act = ini_get('decoration', 'active_color', COLORS[0][1]).lstrip('\\')
+        inact = ini_get('decoration', 'inactive_color', COLORS[0][2]).lstrip('\\')
+        self.tint.load_from_data((titlebar_css('headerbar.mwx7-titlebar', act) +
+                                  titlebar_css('window.mwx7-settings:backdrop headerbar.mwx7-titlebar', inact)).encode())
+
     def on_color(self, btn, act, inact, row):
         ini_set('decoration', 'active_color', '\\' + act)
         ini_set('decoration', 'inactive_color', '\\' + inact)
+        self.apply_tint()
         child = row.get_first_child()
         while child:
             child.remove_css_class('chosen')
