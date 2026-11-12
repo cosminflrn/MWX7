@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Build the web apps
+        run: npm ci && npx vite build  # build-iso.sh copies dist/ into the image; build-deb.sh ships it as /usr/share/mwx7/web
       - name: Install build tools
         run: |
           # The runner's Ubuntu mirror failed on 11 Nov 2026 (apt exit 100): retry, then fall back to the main archive.

@@ -5,7 +5,7 @@ name: Updates
 on:
   push:
     branches: [main]
-    paths: ['package.json', 'distro/**', 'public/media/**']
+    paths: ['package.json', 'distro/**', 'public/media/**', 'src/**', 'index.html', 'vite.config.ts']
   workflow_dispatch:
 
 permissions:
@@ -24,10 +24,12 @@ jobs:
       - name: Tools
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates nodejs gnupg apt-utils curl >/dev/null
+          apt-get install -y -qq --no-install-recommends git ca-certificates nodejs npm gnupg apt-utils curl >/dev/null
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # the build number is the commit count
+      - name: Build the web apps
+        run: npm ci && npx vite build  # build-deb.sh ships dist/ as /usr/share/mwx7/web
       - name: Build the package
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"

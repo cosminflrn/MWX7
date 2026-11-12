@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Solitaire
+Comment=The classic card game
+Exec=/usr/share/mwx7/bin/mwx7-app solitaire
+Icon=/usr/share/mwx7/icons/solitaire.png
+Categories=Game;CardGame;
+Keywords=cards;game;klondike;
+StartupWMClass=mwx7-solitaire

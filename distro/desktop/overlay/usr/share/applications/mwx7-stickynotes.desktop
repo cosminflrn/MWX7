@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Sticky Notes
+Comment=Small notes for quick reminders
+Exec=/usr/share/mwx7/bin/mwx7-app stickynotes
+Icon=/usr/share/mwx7/icons/stickynotes.png
+Categories=Utility;
+Keywords=note;reminder;memo;
+StartupWMClass=mwx7-stickynotes

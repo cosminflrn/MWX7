@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Media Player
+Comment=Play music and video
+Exec=/usr/share/mwx7/bin/mwx7-app mediaplayer
+Icon=/usr/share/mwx7/icons/mediaplayer.png
+Categories=AudioVideo;Player;
+Keywords=music;audio;video;player;
+StartupWMClass=mwx7-mediaplayer

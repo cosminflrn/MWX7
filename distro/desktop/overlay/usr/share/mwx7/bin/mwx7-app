@@ -1,0 +1,14 @@
+#!/bin/sh
+# mwx7-app <id>: opens one of the MWX 7 web apps (Notepad, Calculator, Paint...) in its own window. Chrome shows the page
+# without any browser around it (--app) and MWX 7's window frame goes around that. The profile is separate from the
+# person's own Chrome profile (nothing is shared, nothing is touched), and --class gives each app its own window id for the dock.
+# --allow-file-access-from-files: the app is a set of local files and Chrome refuses to load module scripts from file://
+# otherwise; only these app windows run with it (the person's own browsing is a different Chrome profile and process).
+id="${1:?usage: mwx7-app <id>}"
+case "$id" in *[!a-z0-9-]*) echo "mwx7-app: bad app id" >&2; exit 2;; esac
+profile="${XDG_DATA_HOME:-$HOME/.local/share}/mwx7/apps"
+mkdir -p "$profile"
+exec google-chrome-stable --ozone-platform=wayland \
+  --app="file:///usr/share/mwx7/web/index.html?app=$id" --class="mwx7-$id" \
+  --user-data-dir="$profile" --allow-file-access-from-files \
+  --no-first-run --no-default-browser-check
