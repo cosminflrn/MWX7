@@ -440,6 +440,8 @@ class Shell(Gtk.Application):
         self.refresh()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
         what = os.environ.get('MWX7_SHELL_OPEN')
+        if what == 'search':
+            GLib.timeout_add(1500, lambda: self.open_search() and False)
         if what in ('start', 'calendar', 'system'):
             btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn,
                    'system': lambda: self.orb_button}[what]()
@@ -590,8 +592,174 @@ class Shell(Gtk.Application):
         return img
 
     def open_search(self):
-        self.start_button.popup()
-        GLib.idle_add(self.start_menu.search.grab_focus)
+        """The web concept's search: a glass box near the top of the screen over a lightly dimmed desktop; apps and
+        documents as you type, Enter or a click opens, Escape or a click outside closes."""
+        if getattr(self, 'search_win', None):
+            self.search_win.present()
+            return
+        w = Gtk.Window(application=self)
+        w.add_css_class('search-overlay')
+        Layer.init_for_window(w)
+        Layer.set_layer(w, Layer.Layer.OVERLAY)
+        Layer.set_namespace(w, 'mwx7-search')
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(w, e, True)
+        Layer.set_exclusive_zone(w, -1)
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.EXCLUSIVE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, valign=Gtk.Align.START)
+        box.add_css_class('sp-box')
+        bar = Gtk.Box(spacing=10)
+        bar.add_css_class('sp-bar')
+        bar.append(icon_image('search'))
+        bar.get_first_child().set_pixel_size(22)
+        entry = Gtk.Text(hexpand=True)
+        entry.add_css_class('sp-input')
+        entry.set_placeholder_text('Search apps and documents')
+        bar.append(entry)
+        box.append(bar)
+        results = Gtk.ListBox()
+        results.add_css_class('sp-results')
+        results.set_selection_mode(Gtk.SelectionMode.BROWSE)
+        results.set_activate_on_single_click(True)
+        results.set_visible(False)
+        box.append(results)
+        w.set_child(box)
+        self.search_win = w
+        docs = []
+
+        def scan():
+            # Documents are indexed once per search, off the main thread; three levels deep is where people keep files.
+            home = GLib.get_home_dir()
+            for top in ('Desktop', 'Documents', 'Downloads', 'Music', 'Pictures', 'Videos'):
+                base = os.path.join(home, top)
+                for root, dirs, files in os.walk(base):
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    if root[len(base):].count(os.sep) >= 3:
+                        dirs[:] = []
+                    for f in files:
+                        if not f.startswith('.'):
+                            docs.append(os.path.join(root, f))
+                    if len(docs) > 4000:
+                        return
+        threading.Thread(target=scan, daemon=True).start()
+
+        def close(*_):
+            if self.search_win:
+                self.search_win.destroy()
+                self.search_win = None
+
+        def score(q, name):
+            n = name.lower()
+            if n.startswith(q):
+                return 4
+            if any(word.startswith(q) for word in re.split(r'[\s._-]+', n)):
+                return 3
+            return 2 if q in n else 0
+
+        def row(icon, title, sub, run):
+            r = Gtk.ListBoxRow()
+            r.run = run
+            b = Gtk.Box(spacing=10)
+            b.add_css_class('sp-row')
+            icon.set_pixel_size(24)
+            b.append(icon)
+            t = Gtk.Label(label=title, xalign=0)
+            t.add_css_class('sp-row-title')
+            b.append(t)
+            st = Gtk.Label(label=sub, xalign=0, hexpand=True, ellipsize=3)
+            st.add_css_class('sp-row-sub')
+            b.append(st)
+            r.set_child(b)
+            return r
+
+        def group(title):
+            r = Gtk.ListBoxRow(selectable=False, activatable=False)
+            lab = Gtk.Label(label=title, xalign=0)
+            lab.add_css_class('sp-group')
+            r.set_child(lab)
+            return r
+
+        def update(*_):
+            while (child := results.get_row_at_index(0)) is not None:
+                results.remove(child)
+            q = entry.get_text().strip().lower()
+            if not q:
+                results.set_visible(False)
+                return
+            apps = sorted(((score(q, app_name(a)), app_name(a), a) for a in Gio.AppInfo.get_all()
+                           if a.should_show() and not (a.get_id() or '').lower().startswith(HIDDEN_APPS)),
+                          key=lambda t: (-t[0], t[1].lower()))
+            apps = [t for t in apps if t[0]][:6]
+            found = sorted(((score(q, os.path.basename(d)), d) for d in list(docs)), key=lambda t: -t[0])
+            found = [t for t in found if t[0]][:8]
+            first = None
+            if apps:
+                results.append(group('Applications'))
+                for _sc, name, a in apps:
+                    r = row(app_icon_widget(a, 24), name, a.get_description() or '', lambda a=a: a.launch([], None))
+                    results.append(r)
+                    first = first or r
+            if found:
+                results.append(group('Documents'))
+                for _sc, d in found:
+                    f = Gio.File.new_for_path(d)
+                    try:
+                        gicon = f.query_info('standard::icon', Gio.FileQueryInfoFlags.NONE, None).get_icon()
+                        img = Gtk.Image.new_from_gicon(gicon)
+                    except GLib.Error:
+                        img = Gtk.Image.new_from_icon_name('text-x-generic')
+                    r = row(img, os.path.basename(d), os.path.dirname(d).replace(GLib.get_home_dir(), '~'),
+                            lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None))
+                    results.append(r)
+                    first = first or r
+            if first is None:
+                empty = Gtk.ListBoxRow(selectable=False, activatable=False)
+                lab = Gtk.Label(label=f'No results for “{entry.get_text().strip()}”')
+                lab.add_css_class('sp-empty')
+                empty.set_child(lab)
+                results.append(empty)
+            else:
+                results.select_row(first)
+            results.set_visible(True)
+
+        def go(row_):
+            if row_ is not None and getattr(row_, 'run', None):
+                close()
+                try:
+                    row_.run()
+                except GLib.Error:
+                    pass
+        entry.connect('changed', update)
+        entry.connect('activate', lambda *_: go(results.get_selected_row()))
+        results.connect('row-activated', lambda _l, r: go(r))
+        keys = Gtk.EventControllerKey()
+
+        def key(_c, keyval, _code, _state):
+            if keyval == Gdk.KEY_Escape:
+                close()
+                return True
+            if keyval in (Gdk.KEY_Down, Gdk.KEY_Up):
+                rows, i = [], 0
+                while (r := results.get_row_at_index(i)) is not None:
+                    if getattr(r, 'run', None):
+                        rows.append(r)
+                    i += 1
+                if rows:
+                    cur = results.get_selected_row()
+                    k = rows.index(cur) if cur in rows else -1
+                    k = min(len(rows) - 1, k + 1) if keyval == Gdk.KEY_Down else max(0, k - 1)
+                    results.select_row(rows[k])
+                return True
+            return False
+        keys.connect('key-pressed', key)
+        w.add_controller(keys)
+        outside = Gtk.GestureClick()
+        outside.connect('pressed', lambda g, _n, x, y: close() if not box.contains(*w.translate_coordinates(box, x, y) or (0, 0)) else None)
+        w.add_controller(outside)
+        w.present()
+        entry.grab_focus()
+        if os.environ.get('MWX7_SHELL_QUERY'):  # automated checks: a query typed in advance
+            GLib.timeout_add(1500, lambda: entry.set_text(os.environ['MWX7_SHELL_QUERY']) and False)
 
     def build_calendar(self):
         pop = Gtk.Popover()

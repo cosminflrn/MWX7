@@ -183,3 +183,27 @@ popover.peek > contents {
 button.peek-item { padding: 5px 8px; min-height: 0; border-radius: 4px; background: none; border: none; box-shadow: none; color: #0b2440; }
 button.peek-item:hover { background: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; }
 .peek-min { color: #6a7f99; font-size: 11px; }
+
+/* Search, as on the web: a glass box near the top over a lightly dimmed desktop. */
+window.search-overlay { background: rgba(5, 15, 30, 0.10); }
+.sp-box {
+  margin-top: 140px; min-width: 640px; border-radius: 12px;
+  background: linear-gradient(to bottom, rgba(244, 249, 255, 0.95), rgba(218, 233, 250, 0.94));
+  border: 1px solid rgba(0, 25, 80, 0.6);
+  box-shadow: 0 24px 70px rgba(0, 10, 30, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  font-family: Selawik, "DejaVu Sans", sans-serif; color: #000000;
+}
+.sp-bar { padding: 12px 16px; }
+text.sp-input { font-size: 22px; font-weight: 300; color: #000000; background: none; }
+list.sp-results { background: none; padding: 4px 6px 8px; border-top: 1px solid rgba(255, 255, 255, 0.6); }
+list.sp-results > row { padding: 0; border-radius: 6px; }
+.sp-row { padding: 4px 10px; }
+.sp-row-title { font-size: 14px; }
+.sp-row-sub { color: #26364a; font-size: 12px; }
+.sp-group { padding: 8px 10px 3px; font-size: 11px; font-weight: 600; color: #1d2b3c; }
+.sp-empty { padding: 14px; color: #26364a; }
+list.sp-results > row:selected {
+  background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(200, 230, 255, 0.4) 49%, rgba(120, 190, 250, 0.4) 51%, rgba(180, 220, 255, 0.55));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75), 0 0 0 1px rgba(30, 90, 170, 0.55);
+  color: #000000;
+}
