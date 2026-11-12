@@ -63,6 +63,8 @@ def pending_updates():
 
 
 SOUND = '/usr/share/mwx7/bin/mwx7-sound'
+# Aero Peek thumbnails: their width in the dock's preview.
+PEEK_SIZE = 180
 
 
 def goodbye(cmd):
@@ -1061,6 +1063,18 @@ class Shell(Gtk.Application):
                 self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.act('window-rules/focus-view', {'id': w['id']})
 
+    def load_thumbnail(self, vid, pic):
+        """Asks the frames plugin for a small picture of the window (off the main thread) and shows it when ready."""
+        if not hasattr(self, 'thumb_ipc'):
+            self.thumb_ipc = Ipc(timeout=8.0)
+        path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', f'mwx7-peek-{vid}.png')
+
+        def work():
+            r = self.thumb_ipc.call('mwx7/thumbnail', {'id': vid, 'path': path, 'size': PEEK_SIZE})
+            if isinstance(r, dict) and r.get('result') == 'ok':
+                GLib.idle_add(lambda: pic.set_filename(path) and False)
+        threading.Thread(target=work, daemon=True).start()
+
     def peek_on_hover(self, button, label, ids):
         """Aero Peek, as on the web: resting the pointer on a running app's dock icon lists its windows above it
         (pick one to bring it forward). Shown after a short pause so passing over the dock opens nothing."""
@@ -1085,22 +1099,22 @@ class Shell(Gtk.Application):
             pop.set_parent(button)
             pop.set_position(Gtk.PositionType.TOP)
             pop.set_offset(0, -6)
-            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            head = Gtk.Label(label=label, xalign=0)
-            head.add_css_class('peek-head')
-            col.append(head)
+            # Windows 7: a live picture of each window, its title above; pick one to bring it forward.
+            col = Gtk.Box(spacing=6)
             for w in wins:
                 b = Gtk.Button()
                 b.add_css_class('peek-item')
-                row = Gtk.Box(spacing=8)
-                t = Gtk.Label(label=(w.get('title') or label)[:60], xalign=0, hexpand=True)
+                cell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                t = Gtk.Label(label=(w.get('title') or label)[:60], xalign=0, max_width_chars=22)
                 t.set_ellipsize(3)  # end
-                row.append(t)
-                if w.get('minimized'):
-                    m = Gtk.Label(label='minimized')
-                    m.add_css_class('peek-min')
-                    row.append(m)
-                b.set_child(row)
+                t.add_css_class('peek-title')
+                cell.append(t)
+                pic = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN)
+                pic.set_size_request(PEEK_SIZE, int(PEEK_SIZE * 0.62))
+                pic.add_css_class('peek-pic')
+                cell.append(pic)
+                b.set_child(cell)
+                self.load_thumbnail(w['id'], pic)
 
                 def pick(_b, v=w):
                     close()
