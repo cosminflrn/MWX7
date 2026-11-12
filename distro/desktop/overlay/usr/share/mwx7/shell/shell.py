@@ -192,6 +192,20 @@ def app_name(app):
     return DISPLAY_NAMES.get(aid, app.get_display_name())
 
 
+def app_for_id(aid):
+    """The menu entry of a window's app id: by desktop file or window class, and MWX 7's web apps by their page
+    (Chrome names their windows after it: chrome-..._notepad.html-...)."""
+    if not aid:
+        return None
+    m = re.search(r'([a-z0-9-]+)[._]html', aid)
+    want = {f'mwx7-{m.group(1)}'} if m else set()
+    for a in Gio.AppInfo.get_all():
+        did = (a.get_id() or '').removesuffix('.desktop').lower()
+        if aid in (did, (a.get_startup_wm_class() or '').lower()) or did in want:
+            return a
+    return None
+
+
 def user_display_name():
     p = pwd.getpwuid(os.getuid())
     full = (p.pw_gecos or '').split(',')[0].strip()
@@ -781,9 +795,7 @@ class Shell(Gtk.Application):
                 # A window never shrinks by itself in GTK 4; ask for the smallest size so the dock fits its icons again.
                 self.dock.set_default_size(1, 1)
         for aid in sorted(open_ids - set(self.dock_running)):
-            app = next((a for a in Gio.AppInfo.get_all()
-                        if aid in ((a.get_id() or '').removesuffix('.desktop').lower(),
-                                   (a.get_startup_wm_class() or '').lower())), None)
+            app = app_for_id(aid)
             if app:
                 label, img, launch = app_name(app), app_icon_widget(app, 48), lambda a=app: a.launch([], None)
             else:
@@ -876,9 +888,7 @@ class Shell(Gtk.Application):
         for label, _icon, _cmd, ids in PINNED:
             if any(i in aid for i in ids):
                 return label
-        app = next((a for a in Gio.AppInfo.get_all()
-                    if aid and aid in ((a.get_id() or '').removesuffix('.desktop').lower(),
-                                       (a.get_startup_wm_class() or '').lower())), None)
+        app = app_for_id(aid)
         return app_name(app) if app else (view.get('title') or aid)[:40]
 
     def send_minimize_hints(self):
