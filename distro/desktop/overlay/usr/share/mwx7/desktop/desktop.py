@@ -758,6 +758,11 @@ class Desktop(Gtk.Application):
         click.set_button(0)
         click.connect('pressed', self.desktop_click)
         self.root.add_controller(click)
+        band = Gtk.GestureDrag(button=1)
+        band.connect('drag-begin', self.band_begin)
+        band.connect('drag-update', self.band_update)
+        band.connect('drag-end', self.band_end)
+        self.fixed.add_controller(band)
         w.set_child(self.root)
         # Rows depend on the output height, which only arrives with the compositor's configure.
         w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, _w, h: self.relayout(h)))
@@ -867,6 +872,9 @@ class Desktop(Gtk.Application):
             pass
 
     def select(self, item):
+        for other in getattr(self, 'band_sel', ()):
+            other.remove_css_class('selected')
+        self.band_sel = set()
         if self.selected is item:
             return
         if self.selected:
@@ -874,6 +882,38 @@ class Desktop(Gtk.Application):
         self.selected = item
         if item:
             item.add_css_class('selected')
+
+    # -- rubber-band selection, as on the web (Windows 7): drag on empty space, the icons it touches get selected
+    def band_begin(self, _g, x, y):
+        self.select(None)
+        self.band_start = (x, y)
+        self.band = Gtk.Box()
+        self.band.add_css_class('rubber-band')
+        self.fixed.put(self.band, x, y)
+
+    def band_update(self, _g, dx, dy):
+        if not getattr(self, 'band', None):
+            return
+        x0, y0 = self.band_start
+        x, y, w, h = min(x0, x0 + dx), min(y0, y0 + dy), abs(dx), abs(dy)
+        self.fixed.move(self.band, x, y)
+        self.band.set_size_request(int(w), int(h))
+        hit = set()
+        for item in self.icons:
+            ok, b = item.compute_bounds(self.fixed)
+            if ok and b.get_x() < x + w and b.get_x() + b.get_width() > x and b.get_y() < y + h \
+                    and b.get_y() + b.get_height() > y:
+                hit.add(item)
+        for item in self.band_sel - hit:
+            item.remove_css_class('selected')
+        for item in hit - self.band_sel:
+            item.add_css_class('selected')
+        self.band_sel = hit
+
+    def band_end(self, *_a):
+        if getattr(self, 'band', None):
+            self.fixed.remove(self.band)
+            self.band = None
 
     def desktop_click(self, gest, _n, x, y):
         button = gest.get_current_button()
