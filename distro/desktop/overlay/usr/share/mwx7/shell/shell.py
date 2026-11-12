@@ -32,9 +32,9 @@ SETTINGS = '/usr/share/mwx7/settings/mwx7-settings'
 PINNED = [
     ('My Computer', 'computer', ['thunar'], ('thunar',)),
     ('Internet', 'browser', ['google-chrome-stable', '--ozone-platform=wayland'], ('google-chrome',)),
-    ('Media Player', 'mediaplayer', [APP, 'mediaplayer'], ('mwx7-mediaplayer',)),
-    ('Notepad', 'notepad', [APP, 'notepad'], ('mwx7-notepad',)),
-    ('Calculator', 'calculator', [APP, 'calculator'], ('mwx7-calculator',)),
+    ('Media Player', 'mediaplayer', [APP, 'mediaplayer'], ('mwx7-mediaplayer', 'mediaplayer.html', 'mediaplayer_html')),
+    ('Notepad', 'notepad', [APP, 'notepad'], ('mwx7-notepad', 'notepad.html', 'notepad_html')),
+    ('Calculator', 'calculator', [APP, 'calculator'], ('mwx7-calculator', 'calculator.html', 'calculator_html')),
     ('Settings', 'settings', [SETTINGS], ('org.mwx7.settings', 'mwx7-settings')),
 ]
 ABOUT = [APP, 'about']
@@ -697,7 +697,7 @@ class Shell(Gtk.Application):
         pinned = tuple(i for _b, ids in self.dock_items[:len(PINNED)] for i in ids)
         # Dialogs (windows with a parent) belong to their app's icon, not one of their own.
         open_ids = {(v.get('app-id') or '').lower() for v in apps_windows(self.views) if v.get('parent', -1) in (-1, None)}
-        open_ids = {a for a in open_ids if a and not a.startswith(pinned)}
+        open_ids = {a for a in open_ids if a and not any(p in a for p in pinned)}
         for aid in list(self.dock_running):
             if aid not in open_ids:
                 b = self.dock_running.pop(aid)
@@ -722,7 +722,8 @@ class Shell(Gtk.Application):
         subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def windows_of(self, ids):
-        return [v for v in apps_windows(self.views) if (v.get('app-id') or '').lower().startswith(ids)]
+        # Substrings: Chrome names app windows after their page (chrome-..._notepad.html-...).
+        return [v for v in apps_windows(self.views) if any(i in (v.get('app-id') or '').lower() for i in ids)]
 
     def dock_click(self, launch, ids):
         wins = self.windows_of(ids)
@@ -798,7 +799,7 @@ class Shell(Gtk.Application):
         """The focused app's name, as the web concept's menu bar shows it (\"My Computer\", \"Notepad\")."""
         aid = (view.get('app-id') or '').lower()
         for label, _icon, _cmd, ids in PINNED:
-            if aid.startswith(ids):
+            if any(i in aid for i in ids):
                 return label
         app = next((a for a in Gio.AppInfo.get_all()
                     if aid and aid in ((a.get_id() or '').removesuffix('.desktop').lower(),

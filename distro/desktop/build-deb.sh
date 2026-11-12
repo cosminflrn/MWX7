@@ -31,6 +31,13 @@ cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sie
 # The concept's apps (Notepad, Paint, ...) as a local web app; mwx7-app opens one per window (index.html?app=<id>).
 if [ -f "$REPO/dist/index.html" ]; then
   mkdir -p "$S/web" && cp -a "$REPO/dist/." "$S/web/"
+  # One page name per app: Chrome names an app window after its page, so each app gets its own window id (the dock
+  # tells them apart); the query string alone would give them all the same one.
+  for d in "$HERE"/overlay/usr/share/applications/mwx7-*.desktop; do
+    id=$(basename "$d" .desktop); id=${id#mwx7-}
+    [ "$id" = settings ] || ln -sf index.html "$S/web/$id.html"
+  done
+  ln -sf index.html "$S/web/about.html"
 else
   echo "warning: $REPO/dist/index.html not found (run 'npx vite build' first): the package ships without the web apps" >&2
 fi

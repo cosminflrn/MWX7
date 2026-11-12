@@ -8,7 +8,9 @@ id="${1:?usage: mwx7-app <id>}"
 case "$id" in *[!a-z0-9-]*) echo "mwx7-app: bad app id" >&2; exit 2;; esac
 profile="${XDG_DATA_HOME:-$HOME/.local/share}/mwx7/apps"
 mkdir -p "$profile"
+page=/usr/share/mwx7/web/$id.html
+[ -e "$page" ] || page=/usr/share/mwx7/web/index.html
 exec google-chrome-stable --ozone-platform=wayland \
-  --app="file:///usr/share/mwx7/web/index.html?app=$id" --class="mwx7-$id" \
+  --app="file://$page?app=$id" --class="mwx7-$id" \
   --user-data-dir="$profile" --allow-file-access-from-files \
   --no-first-run --no-default-browser-check
