@@ -6,6 +6,9 @@
 # app window after its page (notepad.html...), which is how the dock tells them apart.
 id="${1:?usage: mwx7-app <id>}"
 case "$id" in *[!a-z0-9-]*) echo "mwx7-app: bad app id" >&2; exit 2;; esac
+shift
+# Native apps (GTK 4) replace the web ones as they arrive; the rest still open as pages below.
+[ -f "/usr/share/mwx7/apps/$id.py" ] && exec python3 "/usr/share/mwx7/apps/$id.py" "$@"
 # Each app opens at its size on the web (plus its menu strip).
 case "$id" in
   about) size=420,470;; calculator) size=260,400;; mediaplayer) size=860,560;; notepad) size=640,480;;

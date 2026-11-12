@@ -2,8 +2,9 @@
 Type=Application
 Name=Media Player
 Comment=Play music and video
-Exec=/usr/share/mwx7/bin/mwx7-app mediaplayer
+Exec=/usr/share/mwx7/bin/mwx7-app mediaplayer %f
 Icon=/usr/share/mwx7/icons/mediaplayer.png
 Categories=AudioVideo;Player;
 Keywords=music;audio;video;player;
-StartupWMClass=mwx7-mediaplayer
+StartupWMClass=org.mwx7.mediaplayer
+MimeType=audio/ogg;audio/mpeg;audio/flac;audio/x-wav;audio/mp4;audio/x-vorbis+ogg;audio/opus;

@@ -6,4 +6,4 @@ Exec=/usr/share/mwx7/bin/mwx7-app calculator
 Icon=/usr/share/mwx7/icons/calculator.png
 Categories=Utility;Calculator;
 Keywords=math;numbers;
-StartupWMClass=mwx7-calculator
+StartupWMClass=org.mwx7.calculator

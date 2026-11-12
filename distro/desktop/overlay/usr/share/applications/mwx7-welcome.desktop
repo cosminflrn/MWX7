@@ -4,5 +4,5 @@ Name=Welcome to MWX 7
 Comment=A short tour of MWX 7
 Exec=/usr/share/mwx7/bin/mwx7-app welcome
 Icon=/usr/share/mwx7/icons/orb.png
-StartupWMClass=mwx7-welcome
+StartupWMClass=org.mwx7.welcome
 Categories=System;

@@ -61,6 +61,7 @@ def wayfire_windows():
 class Snip(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='org.mwx7.snip')
+        GLib.set_prgname('org.mwx7.snip')
         self.mode = 'rect'
         self.file = None
 

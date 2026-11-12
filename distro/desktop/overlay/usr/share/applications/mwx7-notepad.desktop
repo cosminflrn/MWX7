@@ -2,8 +2,9 @@
 Type=Application
 Name=Notepad
 Comment=Write and save plain text
-Exec=/usr/share/mwx7/bin/mwx7-app notepad
+Exec=/usr/share/mwx7/bin/mwx7-app notepad %f
 Icon=/usr/share/mwx7/icons/notepad.png
 Categories=Utility;TextEditor;
 Keywords=text;editor;write;note;txt;
-StartupWMClass=mwx7-notepad
+StartupWMClass=org.mwx7.notepad
+MimeType=text/plain;
