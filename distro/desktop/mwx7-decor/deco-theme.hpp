@@ -8,6 +8,12 @@ namespace wf
 {
 namespace decor
 {
+/** The app's icon for a window's title bar, set by the MWX 7 shell (IPC mwx7/set-icon): a PNG path. */
+struct view_icon_t : public wf::custom_data_t
+{
+    std::string path;
+};
+
 /**
  * A  class which manages the outlook of decorations.
  * It is responsible for determining the background colors, sizes, etc.
@@ -41,7 +47,8 @@ class decoration_theme_t
      * Render the given text on a cairo_surface_t with the given size.
      * The caller is responsible for freeing the memory afterwards.
      */
-    cairo_surface_t *render_text(std::string text, int width, int height, bool active = true) const;
+    cairo_surface_t *render_text(std::string text, int width, int height, bool active = true,
+        const std::string& icon = "") const;
 
     struct button_state_t
     {

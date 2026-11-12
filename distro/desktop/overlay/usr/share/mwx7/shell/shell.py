@@ -555,14 +555,14 @@ class Shell(Gtk.Application):
         views_btn.add_css_class('flat-ico')
         views_btn.set_tooltip_text('All windows')
         views_btn.set_child(Gtk.Image.new_from_icon_name('view-grid-symbolic'))
-        views_btn.connect('clicked', lambda *_: self.ipc.call('scale/toggle'))
+        views_btn.connect('clicked', lambda *_: self.act('scale/toggle'))
         right.append(views_btn)
         show_desktop = Gtk.Button()
         show_desktop.add_css_class('flat-ico')
         show_desktop.set_child(Gtk.Image.new_from_file(os.path.join(ICONS, '16', 'desktop.png')) if os.path.exists(
             os.path.join(ICONS, '16', 'desktop.png')) else Gtk.Image.new_from_icon_name('user-desktop'))
         show_desktop.set_tooltip_text('Show desktop')
-        show_desktop.connect('clicked', lambda *_: self.ipc.call('wm-actions/toggle_showdesktop'))
+        show_desktop.connect('clicked', lambda *_: self.act('wm-actions/toggle_showdesktop'))
         right.append(show_desktop)
         # The clock opens the web concept's calendar flyout: the time large, the date, the month, Today.
         self.clock = Gtk.Label()
@@ -662,7 +662,7 @@ class Shell(Gtk.Application):
         sep()
         item('Settings…', lambda: self.launch([SETTINGS]))
         item('Search', self.open_search)
-        item('Overview', lambda: self.ipc.call('scale/toggle'))
+        item('Overview', lambda: self.act('scale/toggle'))
         sep()
         item('Lock', lambda: power(POWER_ACTIONS[0][2]))
         item('Log Off…', lambda: power(POWER_ACTIONS[1][2]))
@@ -823,11 +823,11 @@ class Shell(Gtk.Application):
             return
         w = wins[0]
         if w.get('activated') and not w.get('minimized'):
-            self.ipc.call('wm-actions/set-minimized', {'view_id': w['id'], 'state': True})
+            self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': True})
         else:
             if w.get('minimized'):
-                self.ipc.call('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
-            self.ipc.call('window-rules/focus-view', {'id': w['id']})
+                self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
+            self.act('window-rules/focus-view', {'id': w['id']})
 
     def peek_on_hover(self, button, label, ids):
         """Aero Peek, as on the web: resting the pointer on a running app's dock icon lists its windows above it
@@ -873,8 +873,8 @@ class Shell(Gtk.Application):
                 def pick(_b, v=w):
                     close()
                     if v.get('minimized'):
-                        self.ipc.call('wm-actions/set-minimized', {'view_id': v['id'], 'state': False})
-                    self.ipc.call('window-rules/focus-view', {'id': v['id']})
+                        self.act('wm-actions/set-minimized', {'view_id': v['id'], 'state': False})
+                    self.act('window-rules/focus-view', {'id': v['id']})
                 b.connect('clicked', pick)
                 col.append(b)
             hover = Gtk.EventControllerMotion()
@@ -929,7 +929,7 @@ class Shell(Gtk.Application):
         wins = self.windows_of(ids)
         if wins:
             item('Close window' if len(wins) == 1 else f'Close all {len(wins)} windows',
-                 lambda: [self.ipc.call('window-rules/close-view', {'id': w['id']}) for w in wins])
+                 lambda: [self.act('window-rules/close-view', {'id': w['id']}) for w in wins])
         pop.set_child(col)
         pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
         pop.popup()
@@ -979,6 +979,7 @@ class Shell(Gtk.Application):
             else:
                 b.remove_css_class('running')
         self.send_minimize_hints()
+        self.send_icons()
         focused = next((v for v in apps_windows(self.views) if v.get('activated') and not v.get('minimized')), None)
         self.title.set_label(self.app_label(focused) if focused else 'Desktop')
         return False
@@ -991,6 +992,57 @@ class Shell(Gtk.Application):
                 return label
         app = app_for_id(aid)
         return app_name(app) if app else (view.get('title') or aid)[:40]
+
+    def act(self, method, data=None):
+        """Tells Wayfire to do something (focus, minimize, close, overview...) from a worker thread, in order, with
+        time to answer: on a busy PC a one-second limit on the main thread silently dropped dock clicks."""
+        if not hasattr(self, 'act_ipc'):
+            import queue
+            self.act_ipc, self.act_queue = Ipc(timeout=8.0), queue.Queue()
+
+            def worker():
+                while True:
+                    m, d = self.act_queue.get()
+                    self.act_ipc.call(m, d)
+            threading.Thread(target=worker, daemon=True).start()
+        self.act_queue.put((method, data))
+
+    def icon_path(self, aid):
+        """A PNG for a window's title bar: MWX 7's own picture for its apps, else the app's menu icon if it is a PNG
+        (the frames draw PNGs only)."""
+        for _label, icon, _cmd, ids in PINNED:
+            if any(i in aid for i in ids):
+                return os.path.join(ICONS, icon + '.png')
+        for key, name in APP_ICONS.items():
+            if aid.startswith(key):
+                return os.path.join(ICONS, name + '.png')
+        app = app_for_id(aid)
+        gicon = app.get_icon() if app else None
+        if gicon is None:
+            return ''
+        if isinstance(gicon, Gio.FileIcon):
+            path = gicon.get_file().get_path() or ''
+        else:
+            found = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).lookup_by_gicon(
+                gicon, 32, 1, Gtk.TextDirection.NONE, 0)
+            f = found.get_file() if found else None
+            path = (f.get_path() if f else '') or ''
+        return path if path.endswith('.png') else ''
+
+    def send_icons(self):
+        """Each window's app icon to its frame (once per window)."""
+        sent = getattr(self, 'icons_sent', {})
+        live = {}
+        for v in apps_windows(self.views):
+            vid = v.get('id')
+            if vid in sent:
+                live[vid] = sent[vid]
+                continue
+            path = self.icon_path((v.get('app-id') or '').lower())
+            if path:
+                self.act('mwx7/set-icon', {'id': vid, 'path': path})
+            live[vid] = path
+        self.icons_sent = live
 
     def send_minimize_hints(self):
         """Tell the compositor where each window's dock icon is, so minimize pours the window into it (genie)."""
@@ -1010,7 +1062,7 @@ class Shell(Gtk.Application):
             hint = (int(geo['x'] + r.get_x() + r.get_width() / 2 - 24), int(geo['y'] + r.get_y() + 4), 48, 48)
             live[v['id']] = hint
             if sent.get(v['id']) != hint:
-                self.ipc.call('mwx7/set-minimize-hint', {'id': v['id'], 'x': hint[0], 'y': hint[1], 'width': 48, 'height': 48})
+                self.act('mwx7/set-minimize-hint', {'id': v['id'], 'x': hint[0], 'y': hint[1], 'width': 48, 'height': 48})
         self.hints = live
 
     # ---- volume and network ----------------------------------------------------------------------------------------
