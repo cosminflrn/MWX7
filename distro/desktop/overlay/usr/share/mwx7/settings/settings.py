@@ -692,55 +692,90 @@ class Settings(Gtk.Application):
         install.connect('clicked', on_install)
 
         if os.path.exists('/etc/mwx7/installed'):
-            p.append(section('Reset MWX 7'))
-            p.append(note('MWX 7 installed again from GitHub, at the version you have now. You choose: keep everything '
-                          '(repairs a broken system) or delete everything and start clean.'))
-            reset = Gtk.Button(label='Reset MWX 7…', halign=Gtk.Align.START)
-            reset.add_css_class('destructive-action')
-            reset.connect('clicked', self.confirm_reset)
-            p.append(reset)
+            p.append(section('Repair or reset'))
+            p.append(note('Both work offline, from the recovery copy MWX 7 keeps on the disk (this version, nothing to '
+                          'download). Repair also runs from the boot menu: hold Esc while the PC starts.'))
+            row = Gtk.Box(spacing=8)
+            repair = Gtk.Button(label='Repair MWX 7…')
+            repair.connect('clicked', lambda *_: self.confirm_reset(True))
+            factory = Gtk.Button(label='Reset to factory…')
+            factory.add_css_class('destructive-action')
+            factory.connect('clicked', lambda *_: self.confirm_reset(False))
+            row.append(repair)
+            row.append(factory)
+            p.append(row)
+            rec_note = note('')
+            prepare = Gtk.Button(label='Prepare the recovery copy', halign=Gtk.Align.START, visible=False)
+            p.append(rec_note)
+            p.append(prepare)
+
+            def rec_state():
+                try:
+                    st = json.load(open('/var/lib/mwx7/recovery.json'))
+                except (OSError, ValueError):
+                    st = None
+                ready = bool(st) and not st.get('missing')
+                repair.set_sensitive(ready)
+                factory.set_sensitive(ready)
+                if ready:
+                    rec_note.set_label('')
+                elif st:
+                    rec_note.set_label(f"The recovery copy misses {st['missing']} package files (they download when the PC "
+                                       'is online).')
+                else:
+                    rec_note.set_label('The recovery copy is being prepared: MWX 7 is downloaded once (about 900 MB).')
+                rec_note.set_visible(not ready)
+                prepare.set_visible(not ready)
+                return False
+            rec_state()
+
+            def do_prepare(*_):
+                prepare.set_sensitive(False)
+                rec_note.set_label('Preparing the recovery copy…')
+
+                def work():
+                    subprocess.run(['pkexec', ADMIN, 'recovery-prepare'], capture_output=True)
+                    GLib.idle_add(lambda: (prepare.set_sensitive(True), rec_state()) and False)
+                threading.Thread(target=work, daemon=True).start()
+            prepare.connect('clicked', do_prepare)
         return p
 
-    def confirm_reset(self, *_):
-        dlg = Gtk.Window(title='Reset MWX 7', modal=True, transient_for=self.get_active_window())
+    def confirm_reset(self, keep_all):
+        dlg = Gtk.Window(title='Repair MWX 7' if keep_all else 'Reset to factory', modal=True,
+                         transient_for=self.get_active_window())
         dlg.add_css_class('mwx7-settings')
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
                       margin_start=20, margin_end=20)
-        box.append(Gtk.Label(label='Reset MWX 7', xalign=0, css_classes=['section']))
-        keep = Gtk.CheckButton(label='Keep everything')
-        keep.set_active(True)
-        box.append(keep)
-        box.append(Gtk.Label(label='Reinstalls MWX 7 itself, for when something is broken. Your accounts, files, apps '
-                                   'and settings stay; you sign in as before. Apps you added install again by themselves '
-                                   'right after the restart.', xalign=0, wrap=True, max_width_chars=60,
-                             margin_start=26, css_classes=['dim-label']))
-        wipe = Gtk.CheckButton(label='Delete everything', group=keep)
-        box.append(wipe)
-        box.append(Gtk.Label(label='Absolutely clean, like a new PC: accounts, files, apps, settings, Wi-Fi networks and '
-                                   'logs are deleted for good. MWX 7 starts with the first-start setup.', xalign=0,
-                             wrap=True, max_width_chars=60,
-                             margin_start=26, css_classes=['dim-label']))
+        if keep_all:
+            box.append(Gtk.Label(label='Repair MWX 7?', xalign=0, css_classes=['section']))
+            box.append(Gtk.Label(label='MWX 7 is installed again from the recovery copy, at the version you have now, for '
+                                       'when something is broken. Everything stays: accounts, files, apps and their '
+                                       'settings. Takes a few minutes, then MWX 7 restarts.', xalign=0, wrap=True,
+                                 max_width_chars=60))
+        else:
+            box.append(Gtk.Label(label='Reset to factory?', xalign=0, css_classes=['section']))
+            box.append(Gtk.Label(label='Absolutely clean, like a new PC: accounts, files, apps, settings, Wi-Fi networks '
+                                       'and logs are deleted for good. MWX 7 stays at the version you have now and starts '
+                                       'with the first-start setup.', xalign=0, wrap=True, max_width_chars=60))
+        msg = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        bar = Gtk.ProgressBar(visible=False)
         btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
         cancel = Gtk.Button(label='Cancel')
         cancel.connect('clicked', lambda *_: dlg.close())
-        go = Gtk.Button(label='Reset and restart')
-        go.add_css_class('destructive-action')
-        msg = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
-        bar = Gtk.ProgressBar(visible=False)
-        box.append(Gtk.Label(label='It downloads MWX 7 (about 900 MB) and takes 10–20 minutes; you can keep working '
-                                   'until it restarts. Nothing changes if it stops on the way.', xalign=0, wrap=True,
-                             max_width_chars=60, css_classes=['dim-label']))
+        go = Gtk.Button(label='Repair and restart' if keep_all else 'Delete everything and restart')
+        go.add_css_class('suggested-action' if keep_all else 'destructive-action')
+        box.append(Gtk.Label(label='Nothing is downloaded. You can keep working until it restarts; if it stops on the '
+                                   'way, nothing has changed.', xalign=0, wrap=True, max_width_chars=60,
+                             css_classes=['dim-label']))
 
         def do_reset(*_):
             go.set_sensitive(False)
             cancel.set_sensitive(False)
-            keep.set_sensitive(False)
-            wipe.set_sensitive(False)
             bar.set_visible(True)
             msg.set_label('Starting…')
 
             def work():
-                p = subprocess.Popen(['pkexec', ADMIN, 'reset'] + (['keep'] if keep.get_active() else []),
+                p = subprocess.Popen(['pkexec', ADMIN, 'reset'] + (['keep'] if keep_all else []),
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 err = ''
                 for line in p.stdout:
@@ -755,7 +790,7 @@ class Settings(Gtk.Application):
 
                 def done():
                     if not ok:
-                        msg.set_label(err or 'Reset did not work. Nothing was changed.')
+                        msg.set_label(err or 'It did not work. Nothing was changed.')
                         cancel.set_sensitive(True)
                         bar.set_visible(False)
                     return False

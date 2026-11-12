@@ -1,0 +1,5 @@
+[Unit]
+Description=MWX 7: Repair (boot menu)
+Requires=sysinit.target mwx7-repair.service
+After=sysinit.target mwx7-repair.service
+AllowIsolate=yes

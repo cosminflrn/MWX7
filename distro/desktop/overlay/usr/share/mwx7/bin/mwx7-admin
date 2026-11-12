@@ -5,6 +5,7 @@
   mwx7-admin password              set a new password, read from standard input
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
+  mwx7-admin recovery-prepare      completes the recovery copy (downloads MWX 7 once on PCs set up before it existed)
   mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
                                    restart. Plain: absolutely clean (the first-start setup runs and offers the newest
                                    version). keep: accounts, files, apps and settings stay
@@ -47,6 +48,8 @@ def main():
         os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
         shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
+    elif cmd == ['recovery-prepare'] and os.path.exists('/etc/mwx7/installed'):
+        os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'recovery', 'prepare'])
     elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
         reset(keep=cmd[1:] == ['keep'])
     else:

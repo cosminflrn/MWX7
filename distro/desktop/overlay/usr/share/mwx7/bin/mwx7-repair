@@ -1,0 +1,17 @@
+#!/bin/sh
+# "Repair MWX 7" in the boot menu: rebuilds MWX 7 from the recovery copy, keeping accounts, files, apps and settings
+# (the same as Settings -> Updates -> Repair MWX 7), showing its progress on the splash, then restarts.
+say() { plymouth display-message --text="$1" 2>/dev/null || echo "$1"; }
+say "Repairing MWX 7… Don't turn off your PC."
+python3 /usr/share/mwx7/oobe/install.py reinstall keep 2>&1 | while read -r kind rest; do
+  case "$kind" in
+    STEP) say "$rest…" ;;
+    PROGRESS) plymouth system-update --progress="$rest" 2>/dev/null || true ;;
+    ERROR) say "Repair did not work: $rest"; echo "$rest" > /run/mwx7-repair-error ;;
+  esac
+done
+if [ -e /run/mwx7-repair-error ]; then
+  # Nothing was changed: start MWX 7 normally after a moment to read the message.
+  sleep 20
+  systemctl reboot
+fi

@@ -1,0 +1,40 @@
+#!/bin/sh
+# MWX 7's own boot menu entries (shown with the menu: hold Esc while the PC starts):
+#   Repair MWX 7                 rebuilds MWX 7 from the recovery copy, keeping everything (mwx7-repair)
+#   MWX 7 (previous version)     the system as it was before the last update (mwx7-update keeps it)
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+[ "$(grub-probe --target=fs / 2>/dev/null)" = btrfs ] || exit 0
+findmnt -no SOURCE / | grep -q '\[/@\]$' || exit 0
+dev=$(grub-probe --target=device /)
+uuid=$(grub-probe --target=fs_uuid /)
+boot=$(make_system_path_relative_to_its_root /boot)  # /@/boot
+prep=$(prepare_grub_to_access_device "$dev" | grub_add_tab)
+k=$(ls /boot/vmlinuz-* 2>/dev/null | sort -V | tail -n 1)
+[ -n "$k" ] || exit 0
+v=${k#/boot/vmlinuz-}
+cat <<ENTRY
+menuentry 'Repair MWX 7' --class mwx7 {
+$prep
+	echo 'Repairing MWX 7...'
+	linux $boot/vmlinuz-$v root=UUID=$uuid ro rootflags=subvol=@ quiet splash loglevel=3 mwx7.repair systemd.unit=mwx7-repair.target
+	initrd $boot/initrd.img-$v
+}
+ENTRY
+m=$(mktemp -d)
+if mount -o subvolid=5,ro "$(findmnt -no SOURCE / | cut -d[ -f1)" "$m" 2>/dev/null; then
+  pk=$(ls "$m"/@previous/boot/vmlinuz-* 2>/dev/null | sort -V | tail -n 1)
+  if [ -n "$pk" ]; then
+    pv=${pk##*/vmlinuz-}
+    pver=$(cat "$m/@previous/usr/share/mwx7/version" 2>/dev/null || echo '')
+    cat <<ENTRY
+menuentry 'MWX 7 ${pver:+$pver }(previous version)' --class mwx7 {
+$prep
+	linux /@previous/boot/vmlinuz-$pv root=UUID=$uuid ro rootflags=subvol=@previous quiet splash loglevel=3 vt.global_cursor_default=0
+	initrd /@previous/boot/initrd.img-$pv
+}
+ENTRY
+  fi
+  umount "$m"
+fi
+rmdir "$m" 2>/dev/null || true

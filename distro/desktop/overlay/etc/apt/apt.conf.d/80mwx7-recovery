@@ -1,0 +1,3 @@
+// Keeps the recovery copy (Repair / Reset to factory) at the installed version: after every package change, the new
+// package files are copied there from apt's cache (quick, no download).
+DPkg::Post-Invoke { "[ ! -f /etc/mwx7/installed ] || /usr/bin/python3 /usr/share/mwx7/oobe/install.py recovery sync >/dev/null 2>&1 || true"; };

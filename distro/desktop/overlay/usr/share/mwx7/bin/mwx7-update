@@ -10,9 +10,26 @@ STATE=/var/lib/mwx7
 # Package versions now installed, one "name version" per line (for the before/after diff of an install).
 snapshot() { dpkg-query -W -f '${Package} ${Version}\n' | sort; }
 
+# "MWX 7 (previous version)" in the boot menu: a copy of the system as it was before this update (btrfs shares
+# everything unchanged, so it costs only what the update replaces). Replaced at the next update.
+keep_previous() {
+  [ "$(findmnt -no FSTYPE /)" = btrfs ] && findmnt -no SOURCE / | grep -q '\[/@\]$' || return 0
+  apt-get -s -o Dpkg::Options::=--force-confold full-upgrade 2>/dev/null | grep -q '^Inst ' || return 0
+  m=/run/mwx7-previous
+  mkdir -p "$m"
+  mount -o subvolid=5 "$(findmnt -no SOURCE / | cut -d[ -f1)" "$m" || return 0
+  [ ! -d "$m/@previous" ] || btrfs -q subvolume delete "$m/@previous" || true
+  if btrfs -q subvolume snapshot "$m/@" "$m/@previous"; then
+    # It starts as itself: its own subvolume as /, and no Settings action that would treat it as the current system.
+    sed -i 's#subvol=/@,#subvol=/@previous,#' "$m/@previous/etc/fstab"
+  fi
+  umount "$m"
+}
+
 # Our config files win over a package's new defaults (and nothing stops to ask).
 do_install() {
   mkdir -p "$STATE"
+  keep_previous
   before=$(mktemp)
   after=$(mktemp)
   snapshot >"$before"
@@ -26,6 +43,8 @@ do_install() {
   [ "$rc" = 0 ] || return "$rc"
   apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
   apt-get clean
+  # The boot menu gets the previous version's entry (and the current kernel).
+  update-grub >/dev/null 2>&1 || true
 }
 
 case "$1" in

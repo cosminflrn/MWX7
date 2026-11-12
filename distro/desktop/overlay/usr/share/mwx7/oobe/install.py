@@ -6,6 +6,8 @@
                                     "STEP <text>" and "PROGRESS <0-100>" lines for the setup's progress bar
   install.py finish ANSWERS.json    the person's choices: account, language, keyboard, time zone; then unmounts
   install.py finish ANSWERS --here  the same on the running system (first start after Settings -> Reset MWX 7)
+  install.py recovery sync|prepare  the recovery copy: keep its packages at the installed versions (apt hook) /
+                                    make it complete (downloads the ISO once on PCs set up before it existed)
   install.py reinstall keep|clean   Settings -> Reset MWX 7 (through mwx7-admin): MWX 7 again from the newest ISO on
                                     GitHub at the version this PC has; keep: accounts, files, apps and settings come
                                     along; clean: nothing does, the first-start setup runs. Then a restart.
@@ -311,6 +313,8 @@ def copy(mode, disk):
     else:
         chroot('grub-install', '--target=i386-pc', disk)
     chroot('update-grub')
+    say('STEP', 'Keeping a recovery copy')
+    store_install_medium(root)
     with open(STATE + '/state.json', 'w') as f:
         json.dump({'disk': disk, 'root': root, 'esp': esp}, f)
     say('PROGRESS', 100)
@@ -423,9 +427,12 @@ def recovery_sync(fetch):
         with open(rec + '/debs/Packages', 'w') as f:
             subprocess.run(['apt-ftparchive', 'packages', '.'], cwd=rec + '/debs', stdout=f, check=True)
         n = len([d for d in os.listdir(rec + '/debs') if d.endswith('.deb')])
-        with open(rec + '/state.json', 'w') as f:
-            json.dump({'version': open('/usr/share/mwx7/version').read().strip(), 'packages': n,
-                       'missing': len(want) - n}, f)
+        state = {'version': open('/usr/share/mwx7/version').read().strip(), 'packages': n, 'missing': len(want) - n}
+        # Settings reads this copy (it can't look inside @recovery) to say whether Repair and Reset are ready.
+        os.makedirs('/var/lib/mwx7', exist_ok=True)
+        for path in (rec + '/state.json', '/var/lib/mwx7/recovery.json'):
+            with open(path, 'w') as f:
+                json.dump(state, f)
 
 
 def fetch_iso(dest):
@@ -516,6 +523,7 @@ def store_install_medium(root):
         os.replace(rec + '/mwx7.iso.part', rec + '/mwx7.iso')
         with open(rec + '/manifest.json', 'w') as f:
             json.dump(iso_manifest(rec + '/mwx7.iso'), f)
+    write('var/lib/mwx7/recovery.json', json.dumps({'packages': 0, 'missing': 0}) + '\n')
 
 
 def keep_everything(old, new):
@@ -726,15 +734,16 @@ GRUB_DEFAULTS = '''# MWX 7 boot menu settings. Run "sudo update-grub" after chan
 # Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
 # ("error: sparse file not allowed" on every start).
 GRUB_DEFAULT=0
-GRUB_TIMEOUT=0
+GRUB_TIMEOUT=1
 GRUB_DISTRIBUTOR="MWX 7"
 # loglevel=3 after "quiet" (which sets 4): only critical kernel messages may cover the splash.
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 vt.global_cursor_default=0"
 GRUB_CMDLINE_LINUX=""
 GRUB_DISABLE_OS_PROBER=false
 GRUB_DISABLE_RECOVERY=true
-# The menu in MWX 7's look. Hidden (straight into MWX 7) unless another system such as Windows is there to choose:
-# then it shows for 5 seconds (mwx7-grub-names turns that on in GRUB's os-prober script).
+# The menu in MWX 7's look. Hidden (straight into MWX 7; holding Esc during that one second shows it, with Repair MWX 7
+# and the previous version) unless another system such as Windows is there to choose: then it shows for 5 seconds
+# (mwx7-grub-names turns that on in GRUB's os-prober script).
 GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
 GRUB_GFXMODE=1920x1080,1280x800,auto
 GRUB_GFXPAYLOAD_LINUX=keep
@@ -874,6 +883,8 @@ if __name__ == '__main__':
             finish(args[0])
         elif cmd == 'finish' and args[1:] == ['--here'] and os.path.exists('/etc/mwx7/firstboot'):
             finish(args[0], here=True)
+        elif cmd == 'recovery' and args in (['sync'], ['prepare']) and os.path.exists('/etc/mwx7/installed'):
+            recovery_sync(fetch=False) if args == ['sync'] else recovery_prepare()
         elif cmd == 'reinstall' and args in (['keep'], ['clean']) and os.path.exists('/etc/mwx7/installed'):
             reinstall(args[0] == 'keep')
         elif cmd == 'update' and args in (['check'], ['install']) and os.path.exists('/etc/mwx7/firstboot'):
