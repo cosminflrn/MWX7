@@ -174,7 +174,7 @@ def apps_windows(views):
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
     'google-chrome': 'browser', 'thunar': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
-    'chromium': 'browser', 'mwx7-settings': 'settings',
+    'chromium': 'browser', 'mwx7-settings': 'settings', 'org.mwx7.snip': 'snip',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}

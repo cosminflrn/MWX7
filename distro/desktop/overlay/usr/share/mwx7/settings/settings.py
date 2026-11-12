@@ -220,13 +220,13 @@ class Settings(Gtk.Application):
         w.present()
 
     @staticmethod
-    def titlebar(win, title):
+    def titlebar(win, title, icon_name='settings'):
         # GTK 4 always draws its own title bar (it doesn't let the window manager frame it), so MWX 7's own apps draw
         # one that matches the Wayfire frames: Aero gloss, title on the left, glossy traffic lights on the right.
         bar = Gtk.HeaderBar()
         bar.add_css_class('mwx7-titlebar')
         bar.set_show_title_buttons(False)
-        icon = Gtk.Image.new_from_file(os.path.join(ICONS, 'settings.png'))
+        icon = Gtk.Image.new_from_file(os.path.join(ICONS, icon_name + '.png'))
         icon.set_pixel_size(16)
         icon.set_margin_end(6)
         bar.pack_start(icon)
