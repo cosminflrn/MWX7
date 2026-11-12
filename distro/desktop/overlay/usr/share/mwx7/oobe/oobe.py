@@ -174,7 +174,7 @@ class Setup(Gtk.Application):
         overlay.add_overlay(card)
         win.set_child(overlay)
 
-        first = (('update', 'Getting the newest MWX 7', self.page_update),) if FIRSTBOOT else ()
+        first = (('update', 'Updates', self.page_update),) if FIRSTBOOT else ()
         disk = () if FIRSTBOOT else (('disk', 'Where should MWX 7 go?', self.page_disk),)
         for pid, title, build in first + (('welcome', 'Hi! Let’s set up MWX 7', self.page_welcome),) + disk + (
                 ('wifi', 'Connect to the internet', self.page_wifi),
@@ -236,7 +236,7 @@ class Setup(Gtk.Application):
         pid = self.pages[self.index][0]
         ok = True
         if pid == 'update':
-            ok = self.update_state in ('done', 'failed')
+            ok = self.update_state in ('done', 'failed', 'asked')
         elif pid == 'disk':
             ok = self.disk is not None and self.mode is not None and (self.mode != 'erase' or self.disk['empty'] or
                                                                       self.erase_ok.get_active())
@@ -265,7 +265,7 @@ class Setup(Gtk.Application):
     def page_update(self):
         p = self.page()
         p.set_valign(Gtk.Align.CENTER)
-        self.update_text = Gtk.Label(label='MWX 7 was reset. First it gets the newest version, so you start up to date.',
+        self.update_text = Gtk.Label(label='MWX 7 was reset. Looking for a newer version…',
                                      wrap=True, max_width_chars=60, justify=Gtk.Justification.CENTER)
         self.update_text.add_css_class('big')
         p.append(self.update_text)
@@ -274,35 +274,58 @@ class Setup(Gtk.Application):
         self.update_step = Gtk.Label(wrap=True, max_width_chars=70)
         self.update_step.add_css_class('hint')
         p.append(self.update_step)
+        self.update_btn = Gtk.Button(label='Install updates', halign=Gtk.Align.CENTER, margin_top=14, visible=False)
+        self.update_btn.add_css_class('suggested-action')
+        self.update_btn.connect('clicked', lambda *_: self.run_update('install'))
+        p.append(self.update_btn)
         self.update_state = 'idle'
         return p
 
     def start_update(self):
-        if self.update_state != 'idle':
-            return
+        if self.update_state == 'idle':
+            self.run_update('check')
+
+    def run_update(self, action):
+        """check: what is new, then the person chooses (Install updates, or Next to skip); install: installs it."""
         self.update_state = 'running'
+        self.update_btn.set_visible(False)
+        self.validate()
         GLib.timeout_add(120, lambda: self.update_state == 'running' and (self.update_bar.pulse() or True))
 
         def work():
-            p = subprocess.Popen(sudo('update'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            err = ''
+            p = subprocess.Popen(sudo('update', action), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            err, newest, count = '', '', 0
             for line in p.stdout:
                 kind, _, value = line.strip().partition(' ')
                 if kind == 'STEP':
                     GLib.idle_add(self.update_step.set_label, value)
                 elif kind == 'ERROR':
                     err = value
+                elif kind == 'NEWEST':
+                    newest = value
+                elif kind == 'COUNT':
+                    count = int(value or 0)
             ok = p.wait() == 0
-            GLib.idle_add(self.updated, ok, err)
+            GLib.idle_add(self.updated, action, ok, err, newest, count)
         threading.Thread(target=work, daemon=True).start()
 
-    def updated(self, ok, err):
-        self.update_state = 'done' if ok else 'failed'
+    def updated(self, action, ok, err, newest, count):
         self.update_bar.set_fraction(1 if ok else 0)
-        self.update_text.set_label('MWX 7 is up to date.' if ok else err or 'Updates could not be installed now.')
-        self.validate()
-        if ok:
+        self.update_step.set_label('')
+        if not ok:
+            self.update_state = 'failed'
+            self.update_text.set_label(err or 'Updates could not be installed now. Settings → Updates can do it later.')
+        elif action == 'check' and count:
+            self.update_state = 'asked'
+            what = f'MWX 7 {newest} is available' if newest else f'{count} updates are available'
+            self.update_text.set_label(f'{what}. Install it now? Recommended: you start with the newest version and '
+                                       'its fixes. Next skips it; Settings → Updates can install it later.')
+            self.update_btn.set_visible(True)
+        else:
+            self.update_state = 'done'
+            self.update_text.set_label('MWX 7 is up to date.')
             GLib.timeout_add(1200, lambda: (self.pages[self.index][0] == 'update' and self.go(1)) and False)
+        self.validate()
         return False
 
     # ---- 1. language, keyboard, time zone ----------------------------------------------------------------------

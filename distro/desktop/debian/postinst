@@ -61,13 +61,28 @@ if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_DEFAULT=saved' /etc/default/grub
 fi
 # Before 1.9.0.207 the boot menu showed on every start; now only when there is another system to choose.
 if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_TIMEOUT_STYLE=menu' /etc/default/grub 2>/dev/null; then
-  sed -i -e 's/^GRUB_TIMEOUT_STYLE=menu$/GRUB_TIMEOUT_STYLE=hidden/' -e 's/^GRUB_TIMEOUT=5$/GRUB_TIMEOUT=0/' /etc/default/grub
+  sed -i -e 's/^GRUB_TIMEOUT_STYLE=menu$/GRUB_TIMEOUT_STYLE=hidden/' -e 's/^GRUB_TIMEOUT=5$/GRUB_TIMEOUT=1/' /etc/default/grub
 fi
-# Systems set up before Reset existed get their factory copy now, so Settings -> Updates offers Reset MWX 7.
-if [ -f /etc/mwx7/installed ] && [ ! -f /etc/mwx7/factory ] && [ ! -f /etc/mwx7/firstboot ]; then
-  # In the background: it waits for this update to finish, so the copy never holds half-installed packages.
-  systemd-run --quiet --no-block --unit=mwx7-factory-$$ /usr/bin/python3 /usr/share/mwx7/oobe/install.py factory \
-    >/dev/null 2>&1 || true
+# 1.9.0.207 hid it with no time at all to press Esc (Repair MWX 7 lives in that menu now): one second.
+if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_TIMEOUT_STYLE=hidden' /etc/default/grub 2>/dev/null; then
+  sed -i 's/^GRUB_TIMEOUT=0$/GRUB_TIMEOUT=1/' /etc/default/grub
+fi
+# 1.9.0.207 kept a factory snapshot for Reset; Reset now installs MWX 7 again from GitHub, so it goes.
+if [ -f /etc/mwx7/factory ]; then
+  rm -f /etc/mwx7/factory
+  d=$(findmnt -no SOURCE / | cut -d[ -f1)
+  mkdir -p /run/mwx7-postinst && mount -o subvolid=5 "$d" /run/mwx7-postinst 2>/dev/null && {
+    if [ -d /run/mwx7-postinst/@factory ]; then
+      btrfs property set -ts /run/mwx7-postinst/@factory ro false 2>/dev/null
+      btrfs -q subvolume delete /run/mwx7-postinst/@factory 2>/dev/null || true
+    fi
+    umount /run/mwx7-postinst; }
+fi
+# The recovery copy (Repair / Reset to factory): PCs set up before it existed download MWX 7 once, in the
+# background, a few minutes after this update.
+if [ -f /etc/mwx7/installed ] && [ ! -f /etc/mwx7/firstboot ] && [ ! -f /var/lib/mwx7/recovery.json ]; then
+  systemd-run --quiet --no-block --unit=mwx7-recovery-prepare-$$ --on-active=120 \
+    /usr/bin/python3 /usr/share/mwx7/oobe/install.py recovery prepare >/dev/null 2>&1 || true
 fi
 for f in /etc/grub.d/[0-9]*; do if [ -x "$f" ]; then sh -n "$f"; fi; done
 if [ -f /etc/mwx7/installed ] && [ -f /boot/grub/grub.cfg ] && command -v update-grub >/dev/null; then

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Runs from mwx7-offline-update.service in system-update.target (see systemd.offline-updates(7)): installs updates
+# before any session exists, then restarts or shuts down as chosen in "Update and restart / shut down".
+STATE=/var/lib/mwx7
+LOG=/var/log/mwx7-update.log
+
+# Removed FIRST: if anything below crashes or the power fails, the next boot must be a normal one, never a loop.
+rm -f /system-update
+action=$(cat "$STATE/offline-update" 2>/dev/null)
+rm -f "$STATE/offline-update"
+case "$action" in poweroff) ;; *) action=reboot ;; esac
+
+progress() {
+  command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null || return 0
+  plymouth display-message --text="Installing updates… Don't turn off your PC" 2>/dev/null
+  plymouth system-update --progress="$1" 2>/dev/null
+  return 0
+}
+
+progress 0
+# system-update.target is a minimal boot: bring the network up ourselves, apt needs it.
+systemctl start NetworkManager.service 2>/dev/null
+command -v nm-online >/dev/null 2>&1 && nm-online -q -t 60
+progress 5
+
+{
+  date
+  # The same install as Settings -> Updates; apt's progress lines drive the splash bar (5..95).
+  /usr/share/mwx7/bin/mwx7-update install 2>&1 | while IFS= read -r line; do
+    echo "$line"
+    case "$line" in
+      Get:*) progress 20 ;;
+      Unpacking*) progress 50 ;;
+      Setting\ up*) progress 80 ;;
+    esac
+  done
+  echo "offline update finished, then: $action"
+} >>"$LOG" 2>&1
+
+progress 100
+exec systemctl "$action"

@@ -1,0 +1,19 @@
+[Unit]
+Description=Install MWX 7 updates before the desktop starts
+Documentation=man:systemd.offline-updates(7)
+DefaultDependencies=no
+Requires=sysinit.target
+After=sysinit.target local-fs.target
+Before=shutdown.target system-update.target
+ConditionPathExists=/system-update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/mwx7/bin/mwx7-offline-update
+# apt can take a while on a slow connection; the script ends the run itself with a restart or shutdown.
+TimeoutStartSec=infinity
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=system-update.target

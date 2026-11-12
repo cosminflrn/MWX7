@@ -1,0 +1,13 @@
+[Unit]
+Description=MWX 7: rebuild MWX 7 from the recovery copy, keeping everything
+DefaultDependencies=no
+Requires=sysinit.target
+After=sysinit.target local-fs.target systemd-udev-settle.service
+ConditionKernelCommandLine=mwx7.repair
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/mwx7/bin/mwx7-repair
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=infinity

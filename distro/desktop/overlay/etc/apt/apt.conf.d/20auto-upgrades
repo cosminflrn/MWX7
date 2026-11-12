@@ -1,4 +1,5 @@
-// MWX 7 installs security fixes by itself, once a day.
+// Security fixes install by themselves, quietly, once a day (51mwx7-unattended says which). Everything else waits
+// for the person: the status bar's update icon, Settings -> Updates, or "Update and shut down".
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";

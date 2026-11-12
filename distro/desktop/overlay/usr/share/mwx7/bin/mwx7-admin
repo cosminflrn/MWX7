@@ -5,12 +5,13 @@
   mwx7-admin password              set a new password, read from standard input
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
-  mwx7-admin reset                 Reset MWX 7: back to the factory copy made at setup (all accounts, files and
-                                   settings go), then a restart into the first-start setup, which updates first
+  mwx7-admin recovery-prepare      completes the recovery copy (downloads MWX 7 once on PCs set up before it existed)
+  mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
+                                   restart. Plain: absolutely clean (the first-start setup runs and offers the newest
+                                   version). keep: accounts, files, apps and settings stay
 """
 import os
 import pwd
-import time
 import shutil
 import subprocess
 import sys
@@ -47,35 +48,18 @@ def main():
         os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
         shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
-    elif cmd == ['reset'] and os.path.exists('/etc/mwx7/factory'):
-        reset()
+    elif cmd == ['recovery-prepare'] and os.path.exists('/etc/mwx7/installed'):
+        os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'recovery', 'prepare'])
+    elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
+        reset(keep=cmd[1:] == ['keep'])
     else:
         sys.exit(__doc__)
 
 
-def reset():
-    # Subvolume names are what boots: the boot menu and fstab mount "@" and "@home", so swapping the directories on
-    # the top level of the btrfs disk is the whole reset. The old ones are deleted by the next first-start setup.
-    root = subprocess.run(['findmnt', '-no', 'SOURCE', '/'], capture_output=True, text=True).stdout.strip()
-    dev = root.split('[')[0]
-    top = '/run/mwx7-reset'
-    os.makedirs(top, exist_ok=True)
-    subprocess.run(['mount', '-o', 'subvolid=5', dev, top], check=True)
-    try:
-        if not os.path.isdir(f'{top}/@factory'):
-            sys.exit('no factory copy on this disk')
-        for old in ('@old', '@home-old', '@new'):
-            if os.path.isdir(f'{top}/{old}'):
-                subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}'], check=True)
-        subprocess.run(['btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@factory', f'{top}/@new'], check=True)
-        os.rename(f'{top}/@', f'{top}/@old')
-        os.rename(f'{top}/@new', f'{top}/@')
-        os.rename(f'{top}/@home', f'{top}/@home-old')
-        subprocess.run(['btrfs', '-q', 'subvolume', 'create', f'{top}/@home'], check=True)
-    finally:
-        subprocess.run(['umount', top])
-    time.sleep(1)
-    subprocess.Popen(['systemctl', 'reboot'])
+def reset(keep):
+    # The work is the setup's own installer, which knows how MWX 7 is put on a disk. Its progress lines go straight
+    # through to Settings.
+    os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'reinstall', 'keep' if keep else 'clean'])
 
 
 main()
