@@ -44,6 +44,57 @@ fi
 # Selawik (OFL) as TTF: Pango loads fonts through HarfBuzz, which can't read the website's WOFF2.
 cp -a "$HERE/fonts/selawik/." "$PKG/usr/share/fonts/selawik/"
 echo "$V" > "$S/version"
+# MWX 7's icon theme: the web concept's folder, drive, file and trash pictures under the names apps ask for (Files,
+# file dialogs); everything else falls back to Adwaita. Links, so the pictures are stored once.
+T="$PKG/usr/share/icons/MWX7"; mkdir -p "$T/256x256/places" "$T/256x256/mimetypes" "$T/256x256/devices" "$T/256x256/apps"
+cat > "$T/index.theme" <<THEME
+[Icon Theme]
+Name=MWX 7
+Comment=The icons of MWX 7
+Inherits=Adwaita,hicolor
+Directories=256x256/places,256x256/mimetypes,256x256/devices,256x256/apps
+
+[256x256/places]
+Size=256
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Places
+
+[256x256/mimetypes]
+Size=256
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=MimeTypes
+
+[256x256/devices]
+Size=256
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Devices
+
+[256x256/apps]
+Size=256
+MinSize=16
+MaxSize=512
+Type=Scalable
+Context=Applications
+THEME
+icon() { ln -sf "/usr/share/mwx7/icons/$1.png" "$T/256x256/$2/$3.png"; }
+for n in folder folder-download folder-videos folder-templates folder-publicshare folder-remote inode-directory; do
+  icon folder places "$n"; done
+icon folder-documents places folder-documents; icon folder-pictures places folder-pictures
+icon folder-music places folder-music; icon desktop places user-desktop; icon user places user-home
+icon trash-empty places user-trash; icon trash-full places user-trash-full; icon computer places computer
+icon computer devices computer; icon drive devices drive-harddisk; icon drive devices drive-harddisk-system
+for n in text-x-generic text-plain text-x-script application-x-shellscript; do icon text mimetypes "$n"; done
+icon image mimetypes image-x-generic; icon audio mimetypes audio-x-generic; icon video mimetypes video-x-generic
+for n in package-x-generic application-x-archive application-zip application-x-compressed-tar; do icon archive mimetypes "$n"; done
+for n in application-octet-stream unknown application-x-generic; do icon file-blank mimetypes "$n"; done
+icon explorer apps system-file-manager; icon explorer apps org.xfce.thunar; icon explorer apps thunar
+icon browser apps web-browser; icon settings apps preferences-system
 # What's new (Settings -> Updates): the newest section of CHANGELOG.md, bullets only.
 awk '/^## /{n++; next} n!=1{next} /^- /{if (b) print b; b=substr($0,3); next} /^  /{sub(/^ +/," "); b=b $0; next}
      END{if (b) print b}' "$REPO/CHANGELOG.md" | sed 's/\*\*//g' > "$S/whats-new" 2>/dev/null || true
