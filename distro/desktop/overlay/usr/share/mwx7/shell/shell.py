@@ -273,6 +273,8 @@ class Shell(Gtk.Application):
         self.views = []
 
     def do_activate(self):
+        if getattr(self, 'bar', None):  # a second start of the shell only activates this one: never a second bar
+            return
         css = Gtk.CssProvider()
         css.load_from_path(os.path.join(HERE, 'style.css'))
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
