@@ -514,7 +514,8 @@ def reinstall(keep):
             write('etc/greetd/config.toml', greetd_config(None, firstboot=True))
         bind_system()
         try:
-            if os.path.isdir('/boot/efi') and os.path.ismount('/boot/efi'):
+            if os.path.ismount('/boot/efi'):
+                os.makedirs(TARGET + '/boot/efi', exist_ok=True)
                 sh('mount', '--bind', '/boot/efi', TARGET + '/boot/efi')
             say('PROGRESS', 78)
             chroot('apt-get', 'purge', '-y', '-qq', '--autoremove', '-o', 'Dpkg::Use-Pty=0', 'live-boot',
