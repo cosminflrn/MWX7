@@ -129,7 +129,7 @@ void decoration_theme_t::render_background(const wf::render_target_t& fb,
  * The caller is responsible for freeing the memory afterwards.
  */
 cairo_surface_t*decoration_theme_t::render_text(std::string text,
-    int width, int height, bool active) const
+    int width, int height, bool active, const std::string& icon) const
 {
     const auto format = CAIRO_FORMAT_ARGB32;
     auto surface = cairo_image_surface_create(format, width, height);
@@ -151,11 +151,33 @@ cairo_surface_t*decoration_theme_t::render_text(std::string text,
     PangoLayout *layout = pango_cairo_create_layout(cr);
     pango_layout_set_font_description(layout, font_desc);
     pango_layout_set_text(layout, text.c_str(), text.size());
-    pango_layout_set_width(layout, std::max(0, width - 8) * PANGO_SCALE);
+    // The app's icon before the caption, as on the web: about two thirds of the title bar's height.
+    double x = 6;
+    if (!icon.empty())
+    {
+        cairo_surface_t *png = cairo_image_surface_create_from_png(icon.c_str());
+        if (cairo_surface_status(png) == CAIRO_STATUS_SUCCESS)
+        {
+            const double side = std::round(height * 0.66);
+            const double sc   = side / std::max(1, cairo_image_surface_get_width(png));
+            cairo_save(cr);
+            cairo_translate(cr, 4, std::round((height - side) / 2.0));
+            cairo_scale(cr, sc, sc);
+            cairo_set_source_surface(cr, png, 0, 0);
+            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
+            cairo_paint_with_alpha(cr, active ? 1.0 : 0.75);
+            cairo_restore(cr);
+            x = 4 + side + 6;
+        }
+
+        cairo_surface_destroy(png);
+    }
+
+    pango_layout_set_width(layout, std::max(0, width - (int)x - 2) * PANGO_SCALE);
     pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
     int tw, th;
     pango_layout_get_pixel_size(layout, &tw, &th);
-    const double x = 6, y = (height - th) / 2.0;
+    const double y = (height - th) / 2.0;
 
     // Caption glow: a white halo keeps dark text readable on any glass tint (MWX 7's "glow plate").
     for (int dx = -1; dx <= 1; dx++)

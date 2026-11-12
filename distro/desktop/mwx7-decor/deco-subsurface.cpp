@@ -47,11 +47,15 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
             int target_width  = width * scale;
             int target_height = height * scale;
             const bool active = view->activated;
+            auto icon_data = view->get_data<wf::decor::view_icon_t>();
+            const std::string icon = icon_data ? icon_data->path : "";
             if ((title_texture.tex.width != target_width) || (title_texture.tex.height != target_height) ||
-                (title_texture.current_text != view->get_title()) || (title_texture.active != active))
+                (title_texture.current_text != view->get_title()) || (title_texture.active != active) ||
+                (title_texture.icon != icon))
             {
-                auto surface = theme.render_text(view->get_title(), target_width, target_height, active);
+                auto surface = theme.render_text(view->get_title(), target_width, target_height, active, icon);
                 title_texture.active = active;
+                title_texture.icon = icon;
                 cairo_surface_upload_to_texture(surface, title_texture.tex);
                 cairo_surface_destroy(surface);
                 title_texture.current_text = view->get_title();
@@ -63,6 +67,7 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
     {
         wf::simple_texture_t tex;
         std::string current_text = "";
+        std::string icon = "";
         bool active = true;
     } title_texture;
 
