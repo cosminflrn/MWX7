@@ -31,6 +31,8 @@ cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sie
 # The concept's apps (Notepad, Paint, ...) as a local web app; mwx7-app opens one per window (index.html?app=<id>).
 if [ -f "$REPO/dist/index.html" ]; then
   mkdir -p "$S/web" && cp -a "$REPO/dist/." "$S/web/"
+  # The live video wallpapers (58 MB) belong to the web desktop, not to its apps: every update would carry them.
+  rm -f "$S/web/media/wallpapers/"*.mp4
   # One page name per app: Chrome names an app window after its page, so each app gets its own window id (the dock
   # tells them apart); the query string alone would give them all the same one.
   for d in "$HERE"/overlay/usr/share/applications/mwx7-*.desktop; do
