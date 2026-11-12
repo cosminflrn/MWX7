@@ -27,6 +27,12 @@
 
 #include <cairo.h>
 
+/** No frame: full screen, and maximized (MWX 7's Full Screen, whose title bar is the top bar). */
+static bool frameless(const wf::toplevel_state_t& state)
+{
+    return state.fullscreen || state.tiled_edges == wf::TILED_EDGES_ALL;
+}
+
 class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_interaction_t,
     public wf::touch_interaction_t
 {
@@ -319,7 +325,7 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
             view->damage();
             size = dims;
             layout.resize(size.width, size.height);
-            if (!view->toplevel()->current().fullscreen)
+            if (!frameless(view->toplevel()->pending()))
             {
                 this->cached_region = layout.calculate_region();
             }
@@ -330,8 +336,12 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
 
     void update_decoration_size()
     {
-        bool fullscreen = _view.lock()->toplevel()->current().fullscreen;
-        if (fullscreen)
+        // Full screen in MWX 7 (maximized) has no frame either: as in the concept, the window's title bar merges into
+        // the top bar, which then shows its name and its traffic lights.
+        // The pending state: this runs as maximize/restore is requested, before Wayfire commits the new size, and the
+        // frame must agree with the margins chosen for that size.
+        const auto& state = _view.lock()->toplevel()->pending();
+        if (frameless(state))
         {
             current_thickness = 0;
             current_titlebar  = 0;
@@ -364,13 +374,15 @@ wf::simple_decorator_t::simple_decorator_t(wayfire_toplevel_view view)
 
     on_view_geometry_changed = [this] (auto)
     {
+        // Maximize and restore show up here once they are committed: the frame goes or comes back with them.
+        deco->update_decoration_size();
         deco->resize(wf::dimensions(this->view->get_geometry()));
     };
 
     on_view_fullscreen = [this] (auto)
     {
         deco->update_decoration_size();
-        if (!this->view->toplevel()->current().fullscreen)
+        if (!frameless(this->view->toplevel()->current()))
         {
             deco->resize(wf::dimensions(this->view->get_geometry()));
         }
@@ -384,7 +396,7 @@ wf::simple_decorator_t::~simple_decorator_t()
 
 wf::decoration_margins_t wf::simple_decorator_t::get_margins(const wf::toplevel_state_t& state)
 {
-    if (state.fullscreen)
+    if (frameless(state))
     {
         return {0, 0, 0, 0};
     }

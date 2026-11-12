@@ -243,6 +243,9 @@ class Settings(Gtk.Application):
             b.set_valign(Gtk.Align.CENTER)
             b.connect('clicked', lambda *_a, f=fn: f())
             bar.pack_end(b)
+        # Full screen (maximized): as in the concept the title bar merges into the top bar, which shows the name and
+        # the traffic lights then.
+        win.connect('notify::maximized', lambda w, _p: bar.set_visible(not w.is_maximized()))
         return bar
 
     # ---- Themes, Wallpapers, Window Color (the web Settings' three Personalization pages) ----------------------------
