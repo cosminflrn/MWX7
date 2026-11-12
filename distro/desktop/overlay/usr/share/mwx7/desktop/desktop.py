@@ -742,6 +742,10 @@ class Desktop(Gtk.Application):
         for g in (self.clock, self.cal, self.meter, self.weather):
             self.gadget_col.append(g)
         self.gadget_col.set_visible(self.gadgets_on)
+        self.fixed.set_visible(self.cfg.get('icons', True) is not False)
+        # Settings -> Desktop writes the same file: follow it (icons, gadgets, weather city) without a restart.
+        self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.cfg_mon.connect('changed', lambda *_a: GLib.timeout_add(200, self.reload_config))
         # halign END / valign START: the column takes only the space of its tiles, the desktop gets the rest.
         self.root.add_overlay(self.gadget_col)
 
@@ -893,6 +897,26 @@ class Desktop(Gtk.Application):
         pop.popup()
 
     # -- gadgets
+    def reload_config(self):
+        cfg = load_json(CONFIG)
+        if not isinstance(cfg, dict) or cfg == self.cfg:
+            return False
+        self.cfg = cfg
+        self.fixed.set_visible(cfg.get('icons', True) is not False)
+        on = cfg.get('gadgets', True) is not False
+        if on != self.gadgets_on:
+            self.gadgets_on = on
+            self.gadget_col.set_visible(on)
+            self.start_timers() if on else self.stop_timers()
+        lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
+        if (lat, lon) != (self.weather.lat, self.weather.lon):
+            self.weather.city = str(cfg.get('city') or 'Bucharest')
+            self.weather.lat, self.weather.lon = lat, lon
+            self.weather.temp = None
+            self.weather.queue_draw()
+            self.weather.refresh()
+        return False
+
     def toggle_gadgets(self):
         self.gadgets_on = not self.gadgets_on
         self.cfg['gadgets'] = self.gadgets_on

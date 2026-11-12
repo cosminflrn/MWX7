@@ -182,10 +182,12 @@ class Settings(Gtk.Application):
             ('wallpapers', 'Wallpapers', 'image', self.page_wallpapers),
             ('account', 'User account', 'user', self.page_account),
             ('wincolor', 'Window Color', 'paint', self.page_wincolor),
+            ('desktop', 'Desktop', 'desktop', self.page_desktop),
             ('display', 'Display', 'computer', self.page_display),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
             ('datetime', 'Date & time', 'about', self.page_datetime),
+            ('sound', 'Sound', 'audio', self.page_sound),
             ('updates', 'Updates', 'drive', self.page_updates),
             ('about', 'About', 'about', self.page_about),
         ]
@@ -511,6 +513,120 @@ class Settings(Gtk.Application):
         left.set_active(ini_get('input', 'left_handed_mode', 'false') == 'true')
         left.connect('toggled', lambda c: ini_set('input', 'left_handed_mode', 'true' if c.get_active() else 'false'))
         p.append(left)
+        return p
+
+    # ---- Desktop (icons and gadgets; the desktop layer watches its settings file) ---------------------------------------
+    def page_desktop(self):
+        p = page()
+        p.append(heading('Desktop icons and gadgets'))
+        p.append(note('What the desktop shows. Right-click the desktop for the same choices.'))
+        path = os.path.join(CONF_DIR, 'desktop.json')
+
+        def load():
+            try:
+                return json.load(open(path))
+            except (OSError, ValueError):
+                return {}
+
+        def save(**kw):
+            cfg = load()
+            cfg.update(kw)
+            os.makedirs(CONF_DIR, exist_ok=True)
+            with open(path + '.tmp', 'w') as f:
+                json.dump(cfg, f)
+            os.replace(path + '.tmp', path)
+        cfg = load()
+        icons = Gtk.CheckButton(label='Show desktop icons')
+        icons.set_active(cfg.get('icons', True) is not False)
+        icons.connect('toggled', lambda c: save(icons=c.get_active()))
+        p.append(icons)
+        gadgets = Gtk.CheckButton(label='Show gadgets (clock, calendar, CPU and memory, weather)')
+        gadgets.set_active(cfg.get('gadgets', True) is not False)
+        gadgets.connect('toggled', lambda c: save(gadgets=c.get_active()))
+        p.append(gadgets)
+        p.append(section('Weather'))
+        row = Gtk.Box(spacing=8)
+        row.append(Gtk.Label(label='City', css_classes=['key']))
+        city = Gtk.Entry(text=str(cfg.get('city') or 'Bucharest'), width_chars=24)
+        row.append(city)
+        status = note('')
+        row.append(status)
+
+        def set_city(*_):
+            name = city.get_text().strip()
+            if not name:
+                return
+            status.set_label('Looking it up…')
+
+            def work():
+                import urllib.parse
+                import urllib.request
+                try:
+                    url = ('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + urllib.parse.quote(name))
+                    hit = (json.load(urllib.request.urlopen(url, timeout=10)).get('results') or [None])[0]
+                except (OSError, ValueError):
+                    hit = None
+
+                def done():
+                    if hit:
+                        save(city=hit['name'], lat=hit['latitude'], lon=hit['longitude'])
+                        status.set_label(f"Weather for {hit['name']}, {hit.get('country', '')}.")
+                    else:
+                        status.set_label('Not found (or no internet).')
+                    return False
+                GLib.idle_add(done)
+            threading.Thread(target=work, daemon=True).start()
+        city.connect('activate', set_city)
+        p.append(row)
+        return p
+
+    # ---- Sound (PipeWire, through wpctl) --------------------------------------------------------------------------------
+    def page_sound(self):
+        p = page()
+        p.append(heading('Sound'))
+        p.append(section('Volume'))
+        out = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@']).split()
+        try:
+            level = round(float(out[1]) * 100)
+        except (IndexError, ValueError):
+            level = 50
+        vol = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        vol.set_value(level)
+        vol.set_size_request(320, -1)
+        vol.set_halign(Gtk.Align.START)
+        vol.connect('value-changed', lambda s: run(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@',
+                                                    f'{s.get_value() / 100:.2f}']))
+        p.append(vol)
+        mute = Gtk.CheckButton(label='Mute')
+        mute.set_active('[MUTED]' in out)
+        mute.connect('toggled', lambda c: run(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if c.get_active() else '0']))
+        p.append(mute)
+        # Outputs: the "Sinks" part of wpctl status ("│  *   46. Speakers [vol: 0.40]").
+        sinks, cur, in_sinks = [], None, False
+        for line in run(['wpctl', 'status']).splitlines():
+            t = line.strip(' │├└─')
+            if 'Sinks:' in line:
+                in_sinks = True
+                continue
+            if in_sinks and (not t or t.endswith(':')):
+                if sinks:
+                    break
+                continue
+            m = re.match(r'(\*)?\s*(\d+)\.\s+(.*?)(\s+\[vol:.*)?$', t)
+            if in_sinks and m:
+                sinks.append((m.group(2), m.group(3)))
+                if m.group(1):
+                    cur = len(sinks) - 1
+        if len(sinks) > 1:
+            p.append(section('Play sound through'))
+            dd = Gtk.DropDown.new_from_strings([n for _i, n in sinks])
+            dd.set_halign(Gtk.Align.START)
+            if cur is not None:
+                dd.set_selected(cur)
+            dd.connect('notify::selected', lambda d, _p: run(['wpctl', 'set-default', sinks[d.get_selected()][0]]))
+            p.append(dd)
+        elif not sinks:
+            p.append(note('No sound output was found.'))
         return p
 
     # ---- Date & time ------------------------------------------------------------------------------------------------
