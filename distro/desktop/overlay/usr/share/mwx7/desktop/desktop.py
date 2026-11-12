@@ -40,7 +40,6 @@ ITEMS = [
     ('Space Pinball', 'pinball', [APP, 'pinball'], None),
     # shell.py's own About entry points at a PINNED slot that does not exist yet; Settings has an About page.
     ('About MWX 7', 'about', [APP, 'about'], [SETTINGS]),
-    ('Trash', 'trash-empty', ['thunar', 'trash:///'], None),
 ]
 
 # Same grid as the concept's desktop icons.
@@ -703,9 +702,8 @@ class Desktop(Gtk.Application):
         for g in (self.clock, self.cal, self.meter, self.weather):
             self.gadget_col.append(g)
         self.gadget_col.set_visible(self.gadgets_on)
+        # halign END / valign START: the column takes only the space of its tiles, the desktop gets the rest.
         self.root.add_overlay(self.gadget_col)
-        # Only the tiles take pointer events; the rest of the column is transparent to the desktop underneath.
-        self.root.set_overlay_pass_through(self.gadget_col, True)
 
         click = Gtk.GestureClick()
         click.set_button(0)
