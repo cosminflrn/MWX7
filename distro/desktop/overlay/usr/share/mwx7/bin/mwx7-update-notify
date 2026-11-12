@@ -1,19 +1,14 @@
 #!/bin/sh
-# Says when updates are waiting, like Windows does: a notification that opens Settings -> Updates. Debian's own daily
-# timer (apt-daily) refreshes the package lists, so this only reads them: no root, no network of its own. Checks
-# 3 minutes after login and then every 6 hours; each version is announced once.
-SEEN="${XDG_STATE_HOME:-$HOME/.local/state}/mwx7/update-notified"
-mkdir -p "$(dirname "$SEEN")"
-sleep 180
+# Keeps the status bar's "updates ready" icon current: writes $XDG_RUNTIME_DIR/mwx7-updates ("<count> <MWX 7 version
+# or ->") while updates are waiting and removes it when there are none. Nothing pops up and nothing installs by itself:
+# the person installs from the icon (Settings -> Updates) or with "Update and shut down". Debian's daily timer
+# (apt-daily) refreshes the package lists, so this only reads them: no root, no network of its own.
+STATE="${XDG_RUNTIME_DIR:-/tmp}/mwx7-updates"
+sleep 60
 while :; do
-  ours=$(apt list --upgradable 2>/dev/null | sed -n 's|^mwx7-desktop/[^ ]* \([^ ]*\) .*|\1|p')
-  count=$(apt list --upgradable 2>/dev/null | grep -c /)
-  key="$ours:$count"
-  if [ "$count" -gt 0 ] && [ "$key" != "$(cat "$SEEN" 2>/dev/null)" ]; then
-    echo "$key" > "$SEEN"
-    if [ -n "$ours" ]; then body="MWX 7 $ours is ready to install."; else body="$count updates are ready to install."; fi
-    action=$(notify-send -a "Settings" -i system-software-update -A open="Open Updates" "Updates available" "$body")
-    [ "$action" = open ] && /usr/share/mwx7/settings/mwx7-settings --updates &
-  fi
-  sleep 21600
+  list=$(apt list --upgradable 2>/dev/null | grep /)
+  count=$(printf '%s' "$list" | grep -c /)
+  ours=$(printf '%s\n' "$list" | sed -n 's|^mwx7-desktop/[^ ]* \([^ ]*\) .*|\1|p')
+  if [ "$count" -gt 0 ]; then echo "$count ${ours:--}" > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"; else rm -f "$STATE"; fi
+  sleep 600
 done

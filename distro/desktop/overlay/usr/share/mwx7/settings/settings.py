@@ -572,8 +572,9 @@ class Settings(Gtk.Application):
             version = '?'
         current = note(f'You have MWX 7 {version}.')
         p.append(current)
-        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. Security fixes '
-                      'also install by themselves every day.'))
+        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. They never install '
+                      'by themselves: an icon in the status bar says when some are ready, and Shut Down and Restart '
+                      'offer to install them first.'))
         status = Gtk.Label(xalign=0, wrap=True)
         status.add_css_class('status')
         detail = note('')
@@ -664,6 +665,10 @@ class Settings(Gtk.Application):
                 except OSError:
                     pass
                 status.set_label('Updates installed. Restart to use everything that changed.')
+                try:  # the status bar's "updates ready" icon goes away now rather than at its next check
+                    os.unlink(os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-updates'))
+                except OSError:
+                    pass
                 show_news()
                 detail.set_label('')
                 restart.set_visible(True)
@@ -676,8 +681,8 @@ class Settings(Gtk.Application):
 
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Reset MWX 7'))
-            p.append(note('Back to a fresh MWX 7, no ISO needed. You choose: keep your files and account, or delete '
-                          'everything and start with the first-start setup.'))
+            p.append(note('Back to a fresh MWX 7, no ISO needed. You choose: reinstall MWX 7 and keep everything, or '
+                          'delete everything and start clean.'))
             reset = Gtk.Button(label='Reset MWX 7…', halign=Gtk.Align.START)
             reset.add_css_class('destructive-action')
             reset.connect('clicked', self.confirm_reset)
@@ -704,16 +709,18 @@ class Settings(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
                       margin_start=20, margin_end=20)
         box.append(Gtk.Label(label='Reset MWX 7', xalign=0, css_classes=['section']))
-        keep = Gtk.CheckButton(label='Keep my files')
+        keep = Gtk.CheckButton(label='Keep everything')
         keep.set_active(True)
         box.append(keep)
-        box.append(Gtk.Label(label='MWX 7 itself is made fresh. Your account, files and settings stay; apps you added '
-                                   'go. You sign in as before.', xalign=0, wrap=True, max_width_chars=60,
+        box.append(Gtk.Label(label='Reinstalls MWX 7 itself, for when something is broken. Your accounts, files, apps '
+                                   'and settings stay; you sign in as before. Apps you added install again by themselves '
+                                   'right after the restart.', xalign=0, wrap=True, max_width_chars=60,
                              margin_start=26, css_classes=['dim-label']))
         wipe = Gtk.CheckButton(label='Delete everything', group=keep)
         box.append(wipe)
-        box.append(Gtk.Label(label='Accounts, files, apps and settings are deleted for good. MWX 7 starts with the '
-                                   'first-start setup, like a new PC.', xalign=0, wrap=True, max_width_chars=60,
+        box.append(Gtk.Label(label='Absolutely clean, like a new PC: accounts, files, apps, settings, Wi-Fi networks and '
+                                   'logs are deleted for good. MWX 7 starts with the first-start setup.', xalign=0,
+                             wrap=True, max_width_chars=60,
                              margin_start=26, css_classes=['dim-label']))
         btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
         cancel = Gtk.Button(label='Cancel')

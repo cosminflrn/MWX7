@@ -338,6 +338,7 @@ def make_factory(root, from_running=False):
             sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'false')
             try:
                 shutil.copytree('/usr/share/mwx7/oobe', f'{f}/usr/share/mwx7/oobe', dirs_exist_ok=True)
+                make_clean(f)  # copies made by 1.9.0.207 kept Wi-Fi, apps and this PC's name: cleaned now
             finally:
                 sh('btrfs', 'property', 'set', '-ts', f, 'ro', 'true')
             return
@@ -346,15 +347,7 @@ def make_factory(root, from_running=False):
             sh('btrfs', '-q', 'subvolume', 'delete', work)
         sh('btrfs', '-q', 'subvolume', 'snapshot', f'{top}/@', work)
         if from_running:
-            for line in open(f'{work}/etc/passwd').read().splitlines():
-                name, _x, uid = line.split(':')[:3]
-                if 1000 <= int(uid) < 60000:
-                    subprocess.run(['userdel', '-R', work, name], capture_output=True)
-            for d in ('var/lib/AccountsService/icons', 'var/lib/AccountsService/users'):
-                shutil.rmtree(f'{work}/{d}', ignore_errors=True)
-            groups = [g for g in ('video', 'render', 'input', 'audio', 'netdev')
-                      if subprocess.run(['chroot', work, 'getent', 'group', g], capture_output=True).returncode == 0]
-            sh('useradd', '-R', work, '-s', '/bin/bash', '-c', 'MWX 7 Setup', '-G', ','.join(groups), 'mwx')
+            make_clean(work)
         # Started from the factory copy, MWX 7 goes straight into the first-start setup (without the disk page).
         for rel, text, mode in (('etc/mwx7/factory', 'This system has a factory copy.\n', 0o644),
                                 ('etc/mwx7/firstboot', 'Start into the first-start setup.\n', 0o644),
@@ -367,6 +360,70 @@ def make_factory(root, from_running=False):
         os.rename(work, f)
     finally:
         sh('umount', top)
+
+
+def user_installed():
+    """Apps a person installed with apt (sudo apt install ...): apt's history marks those with Requested-By.
+    MWX 7's own build and its updates never are, so this is exactly what was added after the setup."""
+    import gzip
+    pkgs = set()
+    for path in sorted(glob.glob('/var/log/apt/history.log*')):
+        try:
+            text = (gzip.open(path, 'rt') if path.endswith('.gz') else open(path)).read()
+        except OSError:
+            continue
+        for entry in text.split('\n\n'):
+            if 'Requested-By:' not in entry:
+                continue
+            m = re.search(r'^Install: (.*)$', entry, re.M)
+            if m:
+                for item in re.findall(r'([^ ,()]+):[a-z0-9]+ \(([^)]*)\)', m.group(1)):
+                    if 'automatic' not in item[1]:
+                        pkgs.add(item[0])
+    return sorted(pkgs)
+
+
+def make_clean(f):
+    """Makes a factory copy taken from a running system as clean as a new install: no accounts, pictures, Wi-Fi,
+    machine identity, PC name or apps a person installed; the setup's own user back in place. Safe to repeat."""
+    for line in open(f'{f}/etc/passwd').read().splitlines():
+        name, _x, uid = line.split(':')[:3]
+        if 1000 <= int(uid) < 60000 and name != 'mwx':
+            subprocess.run(['userdel', '-R', f, name], capture_output=True)
+    for d in ('var/lib/AccountsService/icons', 'var/lib/AccountsService/users', 'var/lib/NetworkManager',
+              'var/lib/bluetooth', 'var/lib/flatpak', 'root'):
+        shutil.rmtree(f'{f}/{d}', ignore_errors=True)
+    os.makedirs(f'{f}/root', mode=0o700, exist_ok=True)
+    for c in glob.glob(f'{f}/etc/NetworkManager/system-connections/*'):
+        os.unlink(c)
+    with open(f'{f}/etc/machine-id', 'w'):
+        pass  # empty: the next start makes a new identity
+    with open(f'{f}/etc/hostname', 'w') as out:
+        out.write('mwx7\n')
+    hosts = [l for l in open(f'{f}/etc/hosts').read().splitlines() if not l.startswith('127.0.1.1')]
+    with open(f'{f}/etc/hosts', 'w') as out:
+        out.write('\n'.join(hosts + ['127.0.1.1\tmwx7']) + '\n')
+    if not re.search(r'^mwx:', open(f'{f}/etc/passwd').read(), re.M):
+        groups = [g for g in ('video', 'render', 'input', 'audio', 'netdev')
+                  if subprocess.run(['chroot', f, 'getent', 'group', g], capture_output=True).returncode == 0]
+        sh('useradd', '-R', f, '-s', '/bin/bash', '-c', 'MWX 7 Setup', '-G', ','.join(groups), 'mwx')
+    added = [p for p in user_installed()
+             if subprocess.run(['chroot', f, 'dpkg-query', '-W', p], capture_output=True).returncode == 0]
+    if added:
+        binds = [d for d in ('proc', 'sys', 'dev') if os.path.isdir(f'{f}/{d}')]
+        for d in binds:
+            subprocess.run(['mount', '--bind', f'/{d}', f'{f}/{d}'], capture_output=True)
+        try:
+            env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
+            plan = subprocess.run(['chroot', f, 'apt-get', 'purge', '-s', '--autoremove', *added], capture_output=True,
+                                  text=True, env=env).stdout
+            # Never if it would take MWX 7 itself along (someone reinstalled one of its parts by hand).
+            if not re.search(r'^(Remv|Purg) mwx7-desktop ', plan, re.M):
+                subprocess.run(['chroot', f, 'apt-get', 'purge', '-y', '-q', '--autoremove', *added],
+                               capture_output=True, env=env)
+        finally:
+            for d in reversed(binds):
+                subprocess.run(['umount', '-l', f'{f}/{d}'], capture_output=True)
 
 
 def factory_here():
@@ -541,7 +598,7 @@ def finish_reset():
     os.makedirs(top, exist_ok=True)
     sh('mount', '-o', 'subvolid=5', root, top)
     try:
-        for old in ('@old', '@home-old'):
+        for old in ('@old', '@home-old', '@log-old', '@cache-old'):
             if os.path.isdir(f'{top}/{old}'):
                 subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}'], capture_output=True)
     finally:

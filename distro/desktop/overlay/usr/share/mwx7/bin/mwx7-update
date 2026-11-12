@@ -1,6 +1,7 @@
 #!/bin/sh
 # Settings -> Updates, run as root through pkexec: MWX 7's own updates (the MWX 7 update channel), Debian's and
-# Chrome's, all through apt. "check" lists what would change; "install" installs it.
+# Chrome's, all through apt. "check" lists what would change; "install" installs it; "install-then reboot|poweroff"
+# installs, then restarts or shuts down (Restart / Shut Down with "Update and ...").
 set -e
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
 case "$1" in
@@ -12,5 +13,10 @@ case "$1" in
     apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 full-upgrade
     apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
     apt-get clean ;;
-  *) echo "usage: mwx7-update check|install" >&2; exit 2 ;;
+  install-then)
+    # Restart / Shut Down with "Update and ...": install, then do it (whatever the install's outcome).
+    case "$2" in reboot|poweroff) ;; *) echo "usage: mwx7-update install-then reboot|poweroff" >&2; exit 2 ;; esac
+    "$0" install >/var/log/mwx7-update.log 2>&1 || true
+    systemctl "$2" ;;
+  *) echo "usage: mwx7-update check|install|install-then reboot|poweroff" >&2; exit 2 ;;
 esac

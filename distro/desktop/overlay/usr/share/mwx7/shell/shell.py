@@ -37,6 +37,61 @@ POWER_ACTIONS = [('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock'
                  ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']),
                  ('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
 
+# Written by mwx7-update-notify when updates are waiting: "<count> <MWX 7 version or ->". Gone when there are none.
+UPDATES_FILE = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-updates')
+
+
+def pending_updates():
+    try:
+        count, version = open(UPDATES_FILE).read().split()[:2]
+        return int(count), ('' if version == '-' else version)
+    except (OSError, ValueError):
+        return 0, ''
+
+
+def power(cmd):
+    """Restart and Shut Down offer to install waiting updates first (never on their own): the person chooses."""
+    action = {'reboot': 'restart', 'poweroff': 'shut down'}.get(cmd[-1]) if cmd[:1] == ['systemctl'] else None
+    count, version = pending_updates()
+    if not action or not count:
+        subprocess.Popen(cmd)
+        return
+    dlg = Gtk.Window(title='Updates', modal=True, resizable=False)
+    dlg.add_css_class('mwx7-power')
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16, margin_start=20,
+                  margin_end=20)
+    what = f'MWX 7 {version}' if version else f'{count} updates'
+    title = Gtk.Label(label=f'{what} ready to install', xalign=0)
+    title.add_css_class('power-title')
+    box.append(title)
+    text = Gtk.Label(label=f'Install now and then {action}? It takes a few minutes; don\'t turn off the PC meanwhile.',
+                     xalign=0, wrap=True, max_width_chars=50)
+    box.append(text)
+    bar = Gtk.ProgressBar(visible=False)
+    box.append(bar)
+    btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
+    cancel = Gtk.Button(label='Cancel')
+    plain = Gtk.Button(label=action.capitalize())
+    upd = Gtk.Button(label=f'Update and {action}')
+    upd.add_css_class('suggested-action')
+    for b in (cancel, plain, upd):
+        btns.append(b)
+    box.append(btns)
+    dlg.set_child(box)
+    cancel.connect('clicked', lambda *_: dlg.close())
+    plain.connect('clicked', lambda *_: (dlg.close(), subprocess.Popen(cmd)))
+
+    def update(*_):
+        btns.set_visible(False)
+        text.set_label(f'Installing updates, then MWX 7 will {action}. Don\'t turn off the PC.')
+        bar.set_visible(True)
+        GLib.timeout_add(150, lambda: bar.pulse() or True)
+        # Root does the rest (pkexec, MWX 7's update rule): it installs, then restarts or shuts down even if this
+        # session ends meanwhile.
+        subprocess.Popen(['pkexec', '/usr/share/mwx7/bin/mwx7-update', 'install-then', cmd[-1]], start_new_session=True)
+    upd.connect('clicked', update)
+    dlg.present()
+
 
 class Ipc:
     """Wayfire IPC: 4-byte little-endian length, then a JSON body; one request at a time per socket."""
@@ -209,7 +264,7 @@ class StartMenu(Gtk.Popover):
             img = icon_image(icon)
             img.set_pixel_size(22)
             b.set_child(img)
-            b.connect('clicked', lambda *_, c=cmd: subprocess.Popen(c))
+            b.connect('clicked', lambda *_, c=cmd: power(c))
             foot.append(b)
         root.append(foot)
         self.set_child(root)
@@ -337,6 +392,12 @@ class Shell(Gtk.Application):
         self.title.add_css_class('app-title')
         left.append(self.title)
         right = Gtk.Box(spacing=10)
+        # Updates waiting: a quiet icon (no pop-ups); click for Settings -> Updates. Shut Down and Restart also offer them.
+        self.upd_btn = Gtk.Button(visible=False)
+        self.upd_btn.add_css_class('flat-ico')
+        self.upd_btn.set_child(Gtk.Image.new_from_icon_name('software-update-available-symbolic'))
+        self.upd_btn.connect('clicked', lambda *_: self.launch(['/usr/share/mwx7/settings/mwx7-settings', '--updates']))
+        right.append(self.upd_btn)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
         self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
         net_btn = Gtk.Button()
@@ -401,7 +462,7 @@ class Shell(Gtk.Application):
         col.append(self.menu_row('About MWX 7', 'about', lambda *_: (pop.popdown(), self.launch(PINNED[3][2]))))
         col.append(Gtk.Separator())
         for label, icon, cmd in POWER_ACTIONS:
-            col.append(self.menu_row(label, icon, lambda *_a, c=cmd: subprocess.Popen(c)))
+            col.append(self.menu_row(label, icon, lambda *_a, c=cmd: (pop.popdown(), power(c))))
         pop.set_child(col)
         return pop
 
@@ -617,6 +678,11 @@ class Shell(Gtk.Application):
 
     def apply_status(self, vol, net):
         self.status_busy = False
+        count, version = pending_updates()
+        self.upd_btn.set_visible(count > 0)
+        if count:
+            self.upd_btn.set_tooltip_text(f'MWX 7 {version} is ready to install' if version else
+                                          f'{count} updates are ready to install')
         # None means the tool did not answer in time (a busy system): keep showing what was last known rather than
         # flashing "muted" / "not connected".
         if vol is None and net is None:

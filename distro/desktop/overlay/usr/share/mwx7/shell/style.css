@@ -87,3 +87,11 @@ menubutton.tray-btn > button { min-height: 0; min-width: 0; padding: 1px 4px; ba
 menubutton.tray-btn > button:hover { background: rgba(255, 255, 255, 0.5); }
 .menu-head { padding: 2px 10px 4px; font-weight: 600; color: #3a587c; }
 button.menu-row > label { padding: 2px 4px; }
+
+/* "Updates ready" before Restart / Shut Down. */
+window.mwx7-power { background: #f7fafd; color: #0b2440; font-family: Selawik, "DejaVu Sans", sans-serif; }
+window.mwx7-power .power-title { font-size: 15px; font-weight: 600; color: #1c4f8f; }
+window.mwx7-power button.suggested-action {
+  color: #ffffff; font-weight: 600; border: 1px solid #154a96; border-radius: 4px; padding: 3px 14px;
+  background: linear-gradient(to bottom, #7fc1ff, #2f7fe0 50%, #1c62c4 51%, #3f93f0);
+}
