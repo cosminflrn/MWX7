@@ -9,6 +9,7 @@ import pwd
 import re
 import shutil
 import subprocess
+import sys
 import threading
 
 import gi
@@ -163,7 +164,9 @@ class Settings(Gtk.Application):
             scroll.set_child(build())
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
-        nav.select_row(nav.get_row_at_index(0))
+        # "--updates" (the update notification) opens straight at Updates.
+        start = next((i for i, pg in enumerate(pages) if pg[0] == 'updates'), 0) if '--updates' in sys.argv else 0
+        nav.select_row(nav.get_row_at_index(start))
         root.append(nav)
         root.append(self.stack)
         w.set_child(root)
@@ -686,4 +689,4 @@ class Settings(Gtk.Application):
 
 
 if __name__ == '__main__':
-    Settings().run(None)
+    Settings().run(None)  # arguments are read from sys.argv above, not by GApplication

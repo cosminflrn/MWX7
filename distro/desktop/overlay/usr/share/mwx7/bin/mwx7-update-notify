@@ -1,0 +1,19 @@
+#!/bin/sh
+# Says when updates are waiting, like Windows does: a notification that opens Settings -> Updates. Debian's own daily
+# timer (apt-daily) refreshes the package lists, so this only reads them: no root, no network of its own. Checks
+# 3 minutes after login and then every 6 hours; each version is announced once.
+SEEN="${XDG_STATE_HOME:-$HOME/.local/state}/mwx7/update-notified"
+mkdir -p "$(dirname "$SEEN")"
+sleep 180
+while :; do
+  ours=$(apt list --upgradable 2>/dev/null | sed -n 's|^mwx7-desktop/[^ ]* \([^ ]*\) .*|\1|p')
+  count=$(apt list --upgradable 2>/dev/null | grep -c /)
+  key="$ours:$count"
+  if [ "$count" -gt 0 ] && [ "$key" != "$(cat "$SEEN" 2>/dev/null)" ]; then
+    echo "$key" > "$SEEN"
+    if [ -n "$ours" ]; then body="MWX 7 $ours is ready to install."; else body="$count updates are ready to install."; fi
+    action=$(notify-send -a "Settings" -i system-software-update -A open="Open Updates" "Updates available" "$body")
+    [ "$action" = open ] && /usr/share/mwx7/settings/mwx7-settings --updates &
+  fi
+  sleep 21600
+done
