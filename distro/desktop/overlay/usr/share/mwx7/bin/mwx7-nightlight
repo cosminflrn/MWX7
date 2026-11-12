@@ -1,0 +1,18 @@
+#!/bin/sh
+# Night light (Settings -> Display): warmer colours from sunset to sunrise where the person lives (the weather gadget's
+# city, Bucharest by default). wlsunset follows the sun by itself; this only starts it when night light is on.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
+[ -e "$CONF/nightlight" ] || exit 0
+pkill -u "$(id -u)" -x wlsunset 2>/dev/null
+eval "$(python3 - "$CONF/desktop.json" <<'PY'
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    c = {}
+lat = c.get('lat') if isinstance(c.get('lat'), (int, float)) else 44.43
+lon = c.get('lon') if isinstance(c.get('lon'), (int, float)) else 26.10
+print(f'LAT={lat} LON={lon}')
+PY
+)"
+exec wlsunset -l "$LAT" -L "$LON" -t 3800 -T 6500
