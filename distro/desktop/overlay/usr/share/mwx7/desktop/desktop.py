@@ -46,6 +46,8 @@ ITEMS = [
 
 # Same grid as the concept's desktop icons.
 CELL_W, CELL_H, ORIGIN = 96, 92, 10
+# View -> Large / Medium / Small icons: (icon px, cell width, cell height).
+SIZES = {'large': (64, 112, 112), 'medium': (48, 96, 92), 'small': (32, 84, 72)}
 GADGET_W, GADGET_GAP, GADGET_TOP, GADGET_RIGHT = 148, 10, 10, 16
 
 
@@ -655,12 +657,12 @@ class Weather(Gadget):
 
 # ---- the desktop surface -------------------------------------------------------------------------------------------
 class DesktopIcon(Gtk.Box):
-    def __init__(self, label, icon, on_select, on_open):
+    def __init__(self, label, icon, on_select, on_open, px=48, width=94):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=3)
         self.add_css_class('desk-icon')
-        self.set_size_request(94, -1)
+        self.set_size_request(width - 2, -1)
         img = icon if isinstance(icon, Gtk.Image) else Gtk.Image.new_from_file(os.path.join(ICONS, icon + '.png'))
-        img.set_pixel_size(48)
+        img.set_pixel_size(px)
         self.append(img)
         lab = Gtk.Label(label=label, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
                         max_width_chars=11)
@@ -692,6 +694,10 @@ class Desktop(Gtk.Application):
         self.timers = []
         self.cfg = load_json(CONFIG)
         self.gadgets_on = self.cfg.get('gadgets', True) is not False
+        self.set_sizes()
+
+    def set_sizes(self):
+        self.icon_px, self.cell_w, self.cell_h = SIZES.get(self.cfg.get('icon_size'), SIZES['medium'])
 
     def do_activate(self):
         if self.win:  # a second start only activates the first: never a second desktop layer
@@ -721,11 +727,7 @@ class Desktop(Gtk.Application):
         self.fixed = Gtk.Fixed()
         self.root.set_child(self.fixed)
         self.icons = []
-        for label, icon, cmd, fallback in ITEMS:
-            item = DesktopIcon(label, icon, self.select, lambda c=cmd, f=fallback: launch(c, f))
-            self.icons.append(item)
-            self.fixed.put(item, ORIGIN, ORIGIN)
-        self.fixed_count = len(self.icons)
+        self.put_fixed_icons()
         # The files and folders in the Desktop folder follow MWX 7's own icons, as on the web; watched, not polled.
         os.makedirs(desktop_dir(), exist_ok=True)
         self.desk_mon = Gio.File.new_for_path(desktop_dir()).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
@@ -766,15 +768,37 @@ class Desktop(Gtk.Application):
         return float(v) if isinstance(v, (int, float)) else default
 
     # -- icons
+    def put_fixed_icons(self):
+        for label, icon, cmd, fallback in ITEMS:
+            item = DesktopIcon(label, icon, self.select, lambda c=cmd, f=fallback: launch(c, f), self.icon_px, self.cell_w)
+            self.icons.append(item)
+            self.fixed.put(item, ORIGIN, ORIGIN)
+        self.fixed_count = len(self.icons)
+
+    def rebuild_icons(self):
+        """After View or Sort by: every icon again at the new size / in the new order."""
+        self.selected = None
+        for item in self.icons:
+            self.fixed.remove(item)
+        self.icons = []
+        self.put_fixed_icons()
+        self.load_files()
+
+    def set_view(self, key, value):
+        self.cfg[key] = value
+        save_json(CONFIG, self.cfg)
+        self.set_sizes()
+        self.rebuild_icons()
+
     def relayout(self, height, force=False):
         self.height = height
-        rows = max(1, (height - ORIGIN) // CELL_H)
+        rows = max(1, (height - ORIGIN) // self.cell_h)
         if rows == self.rows and not force:
             return
         self.rows = rows
         # Column-major like Windows: fill a column top to bottom, then the next one.
         for i, item in enumerate(self.icons):
-            self.fixed.move(item, ORIGIN + (i // rows) * CELL_W, ORIGIN + (i % rows) * CELL_H)
+            self.fixed.move(item, ORIGIN + (i // rows) * self.cell_w, ORIGIN + (i % rows) * self.cell_h)
 
     def files_later(self):
         # A burst of changes (a copy of many files) reloads once.
@@ -790,6 +814,12 @@ class Desktop(Gtk.Application):
         del self.icons[self.fixed_count:]
         try:
             names = sorted((n for n in os.listdir(desktop_dir()) if not n.startswith('.')), key=str.lower)
+            order = self.cfg.get('sort')
+            if order == 'date':
+                names.sort(key=lambda n: -os.path.getmtime(os.path.join(desktop_dir(), n)))
+            elif order == 'type':
+                names.sort(key=lambda n: (not os.path.isdir(os.path.join(desktop_dir(), n)),
+                                          os.path.splitext(n)[1].lower(), n.lower()))
         except OSError:
             names = []
         for name in names[:60]:
@@ -801,7 +831,7 @@ class Desktop(Gtk.Application):
             except GLib.Error:
                 img, label = Gtk.Image.new_from_icon_name('text-x-generic'), name
             item = DesktopIcon(label, img, self.select,
-                               lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None))
+                               lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None), self.icon_px, self.cell_w)
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
         if getattr(self, 'height', 0):
@@ -881,6 +911,40 @@ class Desktop(Gtk.Application):
             line = Gtk.Box()
             line.add_css_class('menu-sep')
             box.append(line)
+
+        def sub(label, choices, current, key):
+            """A row that opens its choices beside it, the current one ticked (Windows 7's View / Sort by)."""
+            b = Gtk.Button()
+            b.add_css_class('menu-row')
+            r = Gtk.Box(spacing=8)
+            r.append(Gtk.Box(width_request=16))
+            r.append(Gtk.Label(label=label, xalign=0, hexpand=True))
+            r.append(Gtk.Label(label='\u25b6'))
+            b.set_child(r)
+            inner = Gtk.Popover()
+            inner.add_css_class('desk-menu')
+            inner.set_has_arrow(False)
+            inner.set_position(Gtk.PositionType.RIGHT)
+            inner.set_parent(b)
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            for value, text in choices:
+                c = Gtk.Button()
+                c.add_css_class('menu-row')
+                cr = Gtk.Box(spacing=8)
+                cr.append(Gtk.Label(label='\u2713' if value == current else '', width_chars=2))
+                cr.append(Gtk.Label(label=text, xalign=0))
+                c.set_child(cr)
+                c.connect('clicked', lambda *_a, v=value: (inner.popdown(), pop.popdown(), self.set_view(key, v)))
+                col.append(c)
+            inner.set_child(col)
+            b.connect('clicked', lambda *_a: inner.popup())
+            box.append(b)
+        sub('View', [('large', 'Large icons'), ('medium', 'Medium icons'), ('small', 'Small icons')],
+            self.cfg.get('icon_size', 'medium'), 'icon_size')
+        sub('Sort by', [('name', 'Name'), ('date', 'Date modified'), ('type', 'Item type')],
+            self.cfg.get('sort', 'name'), 'sort')
+        row('Refresh', 'refresh', self.rebuild_icons)
+        sep()
         row('Next Wallpaper', 'wallpaper', self.next_wallpaper)
         row('Personalize…', 'settings', lambda: launch([SETTINGS, '--page', 'themes']))
         sep()
@@ -901,7 +965,11 @@ class Desktop(Gtk.Application):
         cfg = load_json(CONFIG)
         if not isinstance(cfg, dict) or cfg == self.cfg:
             return False
+        relook = (cfg.get('icon_size'), cfg.get('sort')) != (self.cfg.get('icon_size'), self.cfg.get('sort'))
         self.cfg = cfg
+        if relook:
+            self.set_sizes()
+            self.rebuild_icons()
         self.fixed.set_visible(cfg.get('icons', True) is not False)
         on = cfg.get('gadgets', True) is not False
         if on != self.gadgets_on:

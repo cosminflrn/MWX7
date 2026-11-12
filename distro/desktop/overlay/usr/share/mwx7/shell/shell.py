@@ -269,6 +269,36 @@ def app_icon_widget(app, size):
     return img
 
 
+# The Start menu's most-used programs: how often each app was started from it (and from search).
+USAGE_FILE = os.path.join(GLib.get_user_config_dir(), 'mwx7', 'start-usage.json')
+FREQUENT = 9
+STARTER = ['mwx7-explorer.desktop', 'mwx7-notepad.desktop', 'mwx7-calculator.desktop', 'mwx7-paint.desktop',
+           'mwx7-mediaplayer.desktop', 'mwx7-photos.desktop', 'mwx7-snip.desktop', 'mwx7-stickynotes.desktop',
+           'mwx7-taskmgr.desktop']
+
+
+def load_usage():
+    try:
+        data = json.load(open(USAGE_FILE))
+        return {k: int(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def count_use(app_id):
+    if not app_id:
+        return
+    usage = load_usage()
+    usage[app_id] = usage.get(app_id, 0) + 1
+    try:
+        os.makedirs(os.path.dirname(USAGE_FILE), exist_ok=True)
+        with open(USAGE_FILE + '.tmp', 'w') as f:
+            json.dump(usage, f)
+        os.replace(USAGE_FILE + '.tmp', USAGE_FILE)
+    except OSError:
+        pass
+
+
 class StartMenu(Gtk.Popover):
     """The MWX 7 Start menu, as on the web (Windows 7's): the account on the glass, programs and search on the white
     left pane, places on the dark glass right pane, Log off and Shut down underneath. Opens above the dock orb."""
@@ -408,26 +438,57 @@ class StartMenu(Gtk.Popover):
         return b
 
     def fill(self):
+        """Windows 7's left pane: the programs used most (a starter set at first), then All Programs, which turns the
+        list into every installed app, A to Z. Searching always looks through every app."""
         while (row := self.listbox.get_row_at_index(0)) is not None:
             self.listbox.remove(row)
         apps = [a for a in Gio.AppInfo.get_all() if a.should_show()
                 and not (a.get_id() or '').lower().startswith(HIDDEN_APPS)]
         apps.sort(key=lambda a: app_name(a).lower())
+        by_id = {a.get_id(): a for a in apps}
+        usage = load_usage()
+        ranked = sorted((i for i in usage if i in by_id), key=lambda i: -usage[i])
+        freq = (ranked + [i for i in STARTER if i in by_id and i not in ranked])[:FREQUENT]
+        for aid in freq:
+            self.listbox.append(self.app_row(by_id[aid], 'freq', 32))
+        toggle = Gtk.ListBoxRow()
+        toggle.kind = 'toggle'
+        toggle.add_css_class('sm-allprogs')
+        self.toggle_label = Gtk.Label(xalign=0, hexpand=True)
+        tbox = Gtk.Box(spacing=8)
+        tbox.append(self.toggle_label)
+        self.toggle_arrow = Gtk.Label()
+        tbox.append(self.toggle_arrow)
+        toggle.set_child(tbox)
         for app in apps:
-            row = Gtk.ListBoxRow()
-            row.app = app
-            row.terms = ' '.join(filter(None, [app_name(app), app.get_display_name(), app.get_description() or '',
-                                               ' '.join(getattr(app, 'get_keywords', lambda: [])() or [])])).lower()
-            box = Gtk.Box(spacing=10)
-            box.append(app_icon_widget(app, 32))
-            box.append(Gtk.Label(label=app_name(app), xalign=0))
-            row.set_child(box)
-            self.listbox.append(row)
+            self.listbox.append(self.app_row(app, 'all', 24))
+        self.listbox.append(toggle)
+        self.set_mode(getattr(self, 'mode', 'freq'))
         return False
+
+    def app_row(self, app, kind, size):
+        row = Gtk.ListBoxRow()
+        row.app, row.kind = app, kind
+        row.terms = ' '.join(filter(None, [app_name(app), app.get_display_name(), app.get_description() or '',
+                                           ' '.join(getattr(app, 'get_keywords', lambda: [])() or [])])).lower()
+        box = Gtk.Box(spacing=10)
+        box.append(app_icon_widget(app, size))
+        box.append(Gtk.Label(label=app_name(app), xalign=0))
+        row.set_child(box)
+        return row
+
+    def set_mode(self, mode):
+        self.mode = mode
+        self.toggle_label.set_label('Back' if mode == 'all' else 'All Programs')
+        self.toggle_arrow.set_label('\u25c0' if mode == 'all' else '\u25b6')
+        self.listbox.invalidate_filter()
 
     def filter_row(self, row):
         q = self.search.get_text().strip().lower()
-        return not q or all(w in row.terms for w in q.split())
+        kind = getattr(row, 'kind', 'all')
+        if q:
+            return kind == 'all' and all(w in row.terms for w in q.split())
+        return kind == 'toggle' or kind == self.mode
 
     def first_visible(self):
         i = 0
@@ -443,13 +504,20 @@ class StartMenu(Gtk.Popover):
             self.on_row(self.listbox, row)
 
     def on_row(self, _lb, row):
+        if getattr(row, 'kind', '') == 'toggle':
+            self.set_mode('freq' if self.mode == 'all' else 'all')
+            return
         self.popdown()
+        count_use(row.app.get_id())
+        GLib.timeout_add(400, self.fill)
         try:
             row.app.launch([], None)
         except GLib.Error:
             pass
 
     def on_show(self, *_):
+        if self.mode != 'freq':
+            self.set_mode('freq')
         self.search.set_text('')
         self.listbox.invalidate_filter()
         GLib.idle_add(self.search.grab_focus)
