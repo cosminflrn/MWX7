@@ -2,7 +2,21 @@
 
 Derived from the git history. Newest first.
 
-## v1.9.0
+## v1.10.0
+- **Aero glass, as on the web**: window frames are clear tinted glass over the blurred desktop, with the top sheen, the
+  diagonal light streaks and the bright and dark rings. Settings → Personalize has the web's 16 window colours and a
+  colour-intensity slider; the status bar, the dock and the Start menu use the same glass
+- **The Windows 7 Start menu**: your account on the glass, programs and search on the left, your folders, Computer,
+  Settings and Search on the dark glass on the right, Log off and Shut down underneath
+- **The dock as on the web**: flush with the bottom edge, My Computer, Internet, Media Player, Notepad, Calculator and
+  Settings, Trash at the end; icons grow when you point at them
+- **Desktop icons and gadgets**: My Computer, Internet, Notepad, Calculator, Space Pinball and About on the desktop; the
+  clock, calendar, CPU and memory meters and the weather on the right (right-click the desktop to hide them)
+- **The web's apps on your PC**: Notepad, Calculator, Paint, Photo Viewer, Media Player, Mines, Solitaire, Space
+  Pinball and Sticky Notes, each in its own window
+- The status bar's orb menu, the clock's calendar, the app's name in the bar, a logon screen like the web's (click your
+  picture to sign in), a welcome on your first sign-in, and the web's icons in Files
+
 - **Reset MWX 7** (Settings → Updates): MWX 7 installed again from GitHub at the version you have. "Keep everything"
   repairs a broken system and keeps accounts, files, apps and settings; "Delete everything" is a clean new PC whose
   setup offers the newest version
