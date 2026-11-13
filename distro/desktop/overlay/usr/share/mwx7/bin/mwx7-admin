@@ -9,6 +9,9 @@
   mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
                                    restart. Plain: absolutely clean (the first-start setup runs and offers the newest
                                    version). keep: accounts, files, apps and settings stay
+  mwx7-admin flatpak setup         adds the Flathub remote (system-wide) if it is missing
+  mwx7-admin flatpak install REF   Get Apps: installs one of the curated Flathub apps for everyone (REF is on FLATPAK_REFS)
+  mwx7-admin flatpak remove REF    removes it again
 """
 import os
 import pwd
@@ -17,6 +20,14 @@ import subprocess
 import sys
 
 GREETD = '/etc/greetd/config.toml'
+# Get Apps' catalogue. An allow-list, not just a format check: this runs as root, so only these exact apps can ever be
+# installed through it. Keep in step with CATALOG in apps/store.py.
+FLATPAK_REFS = {
+    'org.videolan.VLC', 'org.gimp.GIMP', 'org.libreoffice.LibreOffice', 'com.obsproject.Studio', 'com.valvesoftware.Steam',
+    'com.discordapp.Discord', 'com.spotify.Client', 'org.mozilla.firefox', 'org.chromium.Chromium', 'org.inkscape.Inkscape',
+    'org.audacityteam.Audacity', 'org.telegram.desktop', 'us.zoom.Zoom', 'com.visualstudio.code',
+}
+FLATHUB_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
 
 
 def main():
@@ -52,6 +63,8 @@ def main():
         os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'recovery', 'prepare'])
     elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
         reset(keep=cmd[1:] == ['keep'])
+    elif cmd[:1] == ['flatpak'] and (cmd[1:] == ['setup'] or (len(cmd) == 3 and cmd[1] in ('install', 'remove'))):
+        flatpak(cmd[1], cmd[2] if len(cmd) == 3 else None)
     else:
         sys.exit(__doc__)
 
@@ -60,6 +73,23 @@ def reset(keep):
     # The work is the setup's own installer, which knows how MWX 7 is put on a disk. Its progress lines go straight
     # through to Settings.
     os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'reinstall', 'keep' if keep else 'clean'])
+
+
+def flatpak(action, ref):
+    # Plain, parseable output: Get Apps reads the progress lines (percentages) from stdout.
+    env = dict(os.environ, LC_ALL='C', LANG='C')
+
+    def run(*a):
+        return subprocess.run(['flatpak', *a], env=env, stdin=subprocess.DEVNULL, stderr=subprocess.STDOUT).returncode
+    if ref is not None and ref not in FLATPAK_REFS:
+        sys.exit(f'{ref} is not in the Get Apps catalogue')
+    # Always make sure Flathub is there, so the first install on a fresh PC needs no separate step.
+    code = run('remote-add', '--system', '--if-not-exists', 'flathub', FLATHUB_URL)
+    if code == 0 and action == 'install':
+        code = run('install', '--system', '--noninteractive', '-y', 'flathub', ref)
+    elif code == 0 and action == 'remove':
+        code = run('uninstall', '--system', '--noninteractive', '-y', ref)
+    sys.exit(code)
 
 
 main()
