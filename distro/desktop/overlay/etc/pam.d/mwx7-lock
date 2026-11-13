@@ -1,0 +1,2 @@
+# PAM service of the MWX 7 lock screen: the same checks as signing in at a console.
+auth include login
