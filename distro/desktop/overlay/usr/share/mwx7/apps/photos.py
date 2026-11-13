@@ -3,6 +3,7 @@ previous/next (arrows, Home/End), zoom (wheel, fit / 100%, double-click) and pan
 lossless for JPEG when jpegtran is installed), slideshow with a fade, file info (with the date taken from EXIF when Pillow or
 GExiv2 is there), crop with Save as copy, and Delete to the Trash with Undo. Opens a picture given to it, with its folder
 around it."""
+import io
 import os
 import re
 import shutil
@@ -14,6 +15,7 @@ from datetime import datetime
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7ui  # noqa: E402
 from mwx7ui import Gdk, Gio, GLib, Gtk  # noqa: E402
+import cairo  # noqa: E402
 import gi  # noqa: E402
 
 gi.require_version('GdkPixbuf', '2.0')
@@ -347,6 +349,7 @@ class Photos:
         self.pixbuf = None
         self.trashed, self.consented, self.declined = [], set(), set()
         self.toast_timer = 0
+        self.print_settings = self.page_setup = None
 
     # ---- window ------------------------------------------------------------------------------------------------------
     def build(self, app, win):
@@ -357,7 +360,7 @@ class Photos:
         root.append(app.menubar([
             ('File', [('Open Pictures Folder', 'folder', lambda: Gio.AppInfo.launch_default_for_uri(
                 Gio.File.new_for_path(pictures_dir()).get_uri(), None)),
-                ('Save Cropped Copy…', 'savecopy', self.crop_save), None,
+                ('Save Cropped Copy…', 'savecopy', self.crop_save), ('Print…', 'print', self.print_photo), None,
                 ('Move to Trash', 'trash', self.remove), ('Undo Move to Trash', 'undotrash', self.undo_delete)]),
             ('View', [('Slideshow', 'slideshow', self.slideshow), None,
                       ('Fit to Window', 'fit', lambda: self.viewer.set_fit()),
@@ -370,7 +373,8 @@ class Photos:
         for action, accels in (('slideshow', ['F11']), ('fit', ['<Ctrl>0']), ('actual', ['<Ctrl>1']),
                                ('zoomin', ['<Ctrl>plus', '<Ctrl>equal']), ('zoomout', ['<Ctrl>minus']),
                                ('info', ['<Ctrl>i']), ('rotl', ['<Ctrl>comma']), ('rotr', ['<Ctrl>period']),
-                               ('crop', ['<Ctrl>k']), ('undotrash', ['<Ctrl>z']), ('savecopy', ['<Ctrl>s'])):
+                               ('crop', ['<Ctrl>k']), ('undotrash', ['<Ctrl>z']), ('savecopy', ['<Ctrl>s']),
+                               ('print', ['<Ctrl>p'])):
             app.set_accels_for_action('app.' + action, accels)
 
         stage = Gtk.Overlay(vexpand=True)
@@ -551,6 +555,61 @@ class Photos:
         pb = self.pixbuf.rotate_simple(GdkPixbuf.PixbufRotation(self.rot % 360)) if self.rot % 360 else self.pixbuf
         self.viewer.set_pixbuf(pb)
         self.zoom_changed()
+
+    def print_photo(self, export=None):
+        """Prints the picture as shown (so a rotation not yet saved is honoured)."""
+        pb = self.viewer.pixbuf
+        if self.index < 0 or not pb:
+            return None
+        long_side = max(pb.get_width(), pb.get_height())
+        if long_side > 3200:  # ~300 dpi on A4 is plenty; spares memory on a 24-megapixel photo
+            k = 3200 / long_side
+            pb = pb.scale_simple(max(1, int(pb.get_width() * k)), max(1, int(pb.get_height() * k)), GdkPixbuf.InterpType.BILINEAR)
+        ok, png = pb.save_to_bufferv('png', [], [])
+        surf = cairo.ImageSurface.create_from_png(io.BytesIO(png))
+        return self.print_image(surf, os.path.basename(self.pics[self.index]), export)
+
+    # ---- print ----------------------------------------------------------------------------------------------------
+    def print_image(self, surf, name, export=None, shrink_only=False):
+        """File > Print: GTK's own dialog (printers, page range, preview). One page, the picture centred and scaled to fit
+        inside the margins; the page turns to landscape for a wide picture (the dialog can still change it). `export` prints
+        to that PDF without a dialog (used by the tests)."""
+        iw, ih = surf.get_width(), surf.get_height()
+        op = Gtk.PrintOperation(job_name=name, n_pages=1, embed_page_setup=True, allow_async=export is None)
+        op.set_unit(Gtk.Unit.POINTS)
+        ps = self.page_setup.copy() if self.page_setup else Gtk.PageSetup()
+        ps.set_orientation(Gtk.PageOrientation.LANDSCAPE if iw > ih else Gtk.PageOrientation.PORTRAIT)
+        op.set_default_page_setup(ps)
+        if self.print_settings:
+            op.set_print_settings(self.print_settings)
+        if export:
+            op.set_export_filename(export)
+
+        def draw(_op, ctx, _n):
+            cr = ctx.get_cairo_context()
+            w, h = ctx.get_width(), ctx.get_height()
+            s = min(w / iw, h / ih)
+            if shrink_only:
+                s = min(s, 72 / 96)  # a pixel is 1/96 inch on screen: print at that size unless it will not fit
+            cr.translate((w - iw * s) / 2, (h - ih * s) / 2)
+            cr.scale(s, s)
+            cr.set_source_rgb(1, 1, 1)
+            cr.paint()
+            cr.set_source_surface(surf, 0, 0)
+            cr.get_source().set_filter(cairo.FILTER_BEST)
+            cr.paint()
+
+        def finished(_op, result):
+            if result == Gtk.PrintOperationResult.APPLY:
+                self.print_settings = _op.get_print_settings()
+            self.page_setup = _op.get_default_page_setup()
+        op.connect('draw-page', draw)
+        op.connect('done', finished)
+        try:
+            op.run(Gtk.PrintOperationAction.EXPORT if export else Gtk.PrintOperationAction.PRINT_DIALOG, self.win)
+        except GLib.Error as e:
+            Gtk.AlertDialog(message='Could not print', detail=e.message).show(self.win)
+        return op
 
     def step(self, d):
         if self.pics:

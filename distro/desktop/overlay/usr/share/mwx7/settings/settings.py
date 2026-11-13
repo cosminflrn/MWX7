@@ -5,6 +5,7 @@ changes apply immediately. The wallpaper is painted by the desktop layer, which 
 """
 import datetime
 import glob
+import grp
 import json
 import os
 import pwd
@@ -212,6 +213,7 @@ class Settings(Gtk.Application):
             ('bluetooth', 'Bluetooth', 'bluetooth', self.page_bluetooth),
             ('printers', 'Printers', 'printer', self.page_printers),
             ('account', 'User account', 'user', self.page_account),
+            ('defaults', 'Default apps', 'settings', self.page_defaults),
             ('datetime', 'Date & time', 'about', self.page_datetime),
             ('power', 'Power', 'shutdown', self.page_power),
             ('storage', 'Storage', 'drive', self.page_storage),
@@ -1552,7 +1554,7 @@ class Settings(Gtk.Application):
         name = Gtk.Label(label=(me.pw_gecos or '').split(',')[0] or USER, xalign=0)
         name.add_css_class('section')
         v.append(name)
-        v.append(note(f'Signs in as “{USER}” (administrator)'))
+        v.append(note(f'Signs in as “{USER}” ({"administrator" if self.is_admin() else "standard user"})'))
         head.append(v)
         p.append(head)
         status = note('')
@@ -1592,30 +1594,50 @@ class Settings(Gtk.Application):
             remove_btn.set_visible(has)
 
         def ask_password(*_):
+            # With a password already set the current one is asked for and checked (PAM, in mwx7-admin) before the new
+            # one is accepted: someone at an unlocked screen cannot quietly take the account over.
+            has = self.has_password()
             dlg = self.small_window('Password', 'user')
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16,
                           margin_start=18, margin_end=18)
+            cur = Gtk.PasswordEntry(placeholder_text='Current password', show_peek_icon=True)
             a = Gtk.PasswordEntry(placeholder_text='New password', show_peek_icon=True)
-            b = Gtk.PasswordEntry(placeholder_text='Type it again', show_peek_icon=True)
+            b = Gtk.PasswordEntry(placeholder_text='Type the new password again', show_peek_icon=True)
             msg = note('')
             btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
             cancel = Gtk.Button(label='Cancel')
             ok = Gtk.Button(label='Save')
             ok.add_css_class('suggested-action')
             ok.set_sensitive(False)
-            for e in (a, b):
-                e.connect('changed', lambda *_: ok.set_sensitive(bool(a.get_text()) and a.get_text() == b.get_text()))
+
+            def check(*_):
+                good = bool(a.get_text()) and a.get_text() == b.get_text() and (bool(cur.get_text()) or not has)
+                ok.set_sensitive(good)
+                msg.set_label('' if not b.get_text() or a.get_text() == b.get_text() else 'The two passwords differ.')
+            for e in (cur, a, b):
+                e.connect('changed', check)
             cancel.connect('clicked', lambda *_: dlg.close())
 
             def save(*_):
                 ok.set_sensitive(False)
                 msg.set_label('Saving…')
-                self.admin(['password'], lambda good, err: (status.set_label('Password saved.' if good else err),
-                                                            refresh(), dlg.close()), stdin=a.get_text() + '\n')
+
+                def done(good, err):
+                    status.set_label('Password saved.' if good else err)
+                    refresh()
+                    if good:
+                        dlg.close()
+                    else:
+                        msg.set_label(err)
+                        ok.set_sensitive(True)
+                if has:
+                    self.admin(['password-change'], done, stdin=cur.get_text() + '\n' + a.get_text() + '\n')
+                else:
+                    self.admin(['password'], done, stdin=a.get_text() + '\n')
             ok.connect('clicked', save)
             btns.append(cancel)
             btns.append(ok)
-            for w in (a, b, msg, btns):
+            for w in ((cur,) if has else ()) + (a, b, msg, btns):
                 box.append(w)
             dlg.set_child(box)
             dlg.present()
@@ -1640,8 +1662,219 @@ class Settings(Gtk.Application):
         auto.connect('toggled', on_auto)
         p.append(auto)
         p.append(note('Logging off or locking still shows the logon or lock screen.'))
+        self.account_list(p, status)
         p.append(status)
         return p
+
+    # ---- Other accounts ---------------------------------------------------------------------------------------------
+    NAME_OK = re.compile(r'[a-z_][a-z0-9_-]{0,31}\Z')
+
+    @staticmethod
+    def is_admin(name=None):
+        try:
+            g = grp.getgrnam('sudo')
+            e = pwd.getpwnam(name or USER)
+            return e.pw_name in g.gr_mem or e.pw_gid == g.gr_gid
+        except KeyError:
+            return False
+
+    @staticmethod
+    def people():
+        """Accounts that sign in (ids from 1000 with a login shell), as mwx7-admin sees them."""
+        return sorted((e.pw_name, (e.pw_gecos or '').split(',')[0] or e.pw_name) for e in pwd.getpwall()
+                      if 1000 <= e.pw_uid < 60000 and not e.pw_shell.endswith(('nologin', 'false')))
+
+    def account_list(self, p, status):
+        p.append(section('Accounts on this PC'))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        p.append(box)
+        admin = self.is_admin()
+
+        def fill():
+            while box.get_first_child():
+                box.remove(box.get_first_child())
+            for name, full in self.people():
+                r = Gtk.Box(spacing=10)
+                r.append(Gtk.Label(label=f'{full} ({name})', xalign=0, hexpand=True))
+                r.append(note('Administrator' if self.is_admin(name) else 'Standard user'))
+                if admin and name != USER:
+                    rm = Gtk.Button(label='Remove…')
+                    rm.connect('clicked', lambda _b, n=name, f=full: self.confirm_remove(n, f, status, fill))
+                    r.append(rm)
+                box.append(r)
+        fill()
+        if admin:
+            add = Gtk.Button(label='Add another account…', halign=Gtk.Align.START)
+            add.connect('clicked', lambda *_: self.add_account(status, fill))
+            p.append(add)
+        else:
+            p.append(note('Only an administrator can add or remove accounts.'))
+
+    def add_account(self, status, refill):
+        dlg = self.small_window('Add an account', 'user')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16,
+                      margin_start=18, margin_end=18)
+        full = Gtk.Entry(placeholder_text='Full name', width_chars=28)
+        name = Gtk.Entry(placeholder_text='Account name (lowercase letters, digits, - and _)', max_length=32)
+        kind = Gtk.DropDown.new_from_strings(['Standard user', 'Administrator'])
+        a = Gtk.PasswordEntry(placeholder_text='Password', show_peek_icon=True)
+        b = Gtk.PasswordEntry(placeholder_text='Type the password again', show_peek_icon=True)
+        msg = note('')
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancel = Gtk.Button(label='Cancel')
+        ok = Gtk.Button(label='Create')
+        ok.add_css_class('suggested-action')
+        ok.set_sensitive(False)
+        filling = [False]
+        auto = [True]  # the account name follows the first word of the full name until it is typed by hand
+
+        def check(*_):
+            n = name.get_text()
+            taken = n in [x for x, _f in self.people()]
+            if n and not self.NAME_OK.match(n):
+                msg.set_label('The account name needs lowercase letters, digits, - and _, starting with a letter.')
+            elif taken:
+                msg.set_label('That account name is taken.')
+            elif b.get_text() and a.get_text() != b.get_text():
+                msg.set_label('The two passwords differ.')
+            else:
+                msg.set_label('')
+            ok.set_sensitive(bool(self.NAME_OK.match(n)) and not taken and bool(a.get_text()) and a.get_text() == b.get_text())
+
+        def on_full(*_):
+            if auto[0]:
+                words = full.get_text().lower().split()
+                filling[0] = True
+                name.set_text(re.sub(r'[^a-z0-9_-]', '', words[0])[:32] if words else '')
+                filling[0] = False
+            check()
+
+        def on_name(*_):
+            if not filling[0]:
+                auto[0] = False
+            check()
+        full.connect('changed', on_full)
+        name.connect('changed', on_name)
+        for e in (a, b):
+            e.connect('changed', check)
+        cancel.connect('clicked', lambda *_: dlg.close())
+
+        def create(*_):
+            ok.set_sensitive(False)
+            msg.set_label('Creating…')
+            role = 'admin' if kind.get_selected() == 1 else 'standard'
+
+            def done(good, err):
+                status.set_label('Account created.' if good else err)
+                refill()
+                if good:
+                    dlg.close()
+                else:
+                    msg.set_label(err)
+            self.admin(['user', 'add', name.get_text(), role], done,
+                       stdin=full.get_text().strip() + '\n' + a.get_text() + '\n')
+        ok.connect('clicked', create)
+        btns.append(cancel)
+        btns.append(ok)
+        for w in (full, name, kind, a, b, msg, btns):
+            box.append(w)
+        dlg.set_child(box)
+        dlg.present()
+
+    def confirm_remove(self, name, full, status, refill):
+        dlg = self.small_window('Remove account', 'user')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16,
+                      margin_start=18, margin_end=18)
+        box.append(Gtk.Label(label=f'Remove the account of {full}?', xalign=0))
+        keep = Gtk.CheckButton(label=f'Keep their files (in /home/{name})', active=True)
+        gone = Gtk.CheckButton(label='Delete their files too', group=keep)
+        msg = note('')
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancel = Gtk.Button(label='Cancel')
+        ok = Gtk.Button(label='Remove')
+        ok.add_css_class('destructive-action')
+        cancel.connect('clicked', lambda *_: dlg.close())
+
+        def go(*_):
+            ok.set_sensitive(False)
+
+            def done(good, err):
+                status.set_label('Account removed.' if good else err)
+                refill()
+                if good:
+                    dlg.close()
+                else:
+                    msg.set_label(err)
+                    ok.set_sensitive(True)
+            self.admin(['user', 'remove', name, 'keep' if keep.get_active() else 'delete'], done)
+        ok.connect('clicked', go)
+        btns.append(cancel)
+        btns.append(ok)
+        for w in (keep, gone, msg, btns):
+            box.append(w)
+        dlg.set_child(box)
+        dlg.present()
+
+    # ---- Default apps -----------------------------------------------------------------------------------------------
+    # (label, MIME types the choice covers; the first one is read to show the current default.) Setting one sets them all, so
+    # a different browser also opens .html files and links, a different player every common audio format, and so on.
+    DEFAULT_KINDS = [
+        ('Web browser', ['x-scheme-handler/http', 'x-scheme-handler/https', 'text/html', 'application/xhtml+xml']),
+        ('Email', ['x-scheme-handler/mailto']),
+        ('Music', ['audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/x-wav', 'audio/mp4', 'audio/aac', 'audio/opus',
+                   'audio/x-vorbis+ogg', 'audio/x-flac', 'audio/webm', 'audio/x-m4a']),
+        ('Video', ['video/mp4', 'video/x-matroska', 'video/webm', 'video/mpeg', 'video/quicktime', 'video/x-msvideo',
+                   'video/ogg', 'video/x-flv']),
+        ('Photos', ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff', 'image/svg+xml',
+                    'image/avif', 'image/heif']),
+        ('Text editor', ['text/plain', 'text/markdown', 'text/x-python', 'text/x-csrc', 'text/x-shellscript', 'text/css',
+                         'application/json', 'application/xml', 'text/xml']),
+        ('File manager', ['inode/directory']),
+    ]
+
+    @staticmethod
+    def apps_for(mimes):
+        """Installed apps that open any of these types (Flatpak apps included: their exports are in XDG_DATA_DIRS), by name."""
+        seen = {}
+        for m in mimes:
+            for app in Gio.AppInfo.get_all_for_type(m):
+                if app.get_id() and app.should_show():
+                    seen.setdefault(app.get_id(), app)
+        return sorted(seen.values(), key=lambda a: a.get_display_name().lower())
+
+    def page_defaults(self):
+        p = page('Default apps', 'The app that opens each kind of file or link.')
+        status = note('')
+        status.add_css_class('status')
+        for label, mimes in self.DEFAULT_KINDS:
+            apps = self.apps_for(mimes)
+            if not apps:
+                p.append(field(label, Gtk.Label(label='No app installed', css_classes=['note']), 14))
+                continue
+            current = Gio.AppInfo.get_default_for_type(mimes[0], False)
+            dd = Gtk.DropDown.new_from_strings([a.get_display_name() for a in apps])
+            dd.set_size_request(260, -1)
+            ids = [a.get_id() for a in apps]
+            if current and current.get_id() in ids:
+                dd.set_selected(ids.index(current.get_id()))
+            # Connected after the initial selection, so showing the page never rewrites anyone's defaults.
+            dd.connect('notify::selected', lambda d, _p, apps=apps, mimes=mimes, label=label:
+                       self.set_default(label, apps[d.get_selected()], mimes, status))
+            p.append(field(label, dd, 14))
+        p.append(status)
+        return p
+
+    def set_default(self, label, app, mimes, status):
+        failed = 0
+        for m in mimes:
+            try:
+                app.set_as_default_for_type(m)
+            except GLib.Error:
+                failed += 1
+        if label == 'Web browser' and app.get_id():
+            # Also the desktop-wide setting that xdg-open and Chrome-like apps read, besides the MIME entries.
+            run(['xdg-settings', 'set', 'default-web-browser', app.get_id()])
+        status.set_label(f'{label}: {app.get_display_name()}.' if failed < len(mimes) else 'Could not save that choice.')
 
     def swap_pic(self, head, path):
         self.account_pic = thumb(path, 64, 64)

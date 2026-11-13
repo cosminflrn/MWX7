@@ -185,6 +185,88 @@ def ensure_x11():
         except (OSError, ValueError):
             continue
 
+def set_a11y_name(widget, text):
+    """The name a screen reader or keyboard tool announces; icon-only buttons have none of their own."""
+    try:
+        widget.update_property([Gtk.AccessibleProperty.LABEL], [text])
+    except (AttributeError, TypeError):
+        pass
+
+
+def has_visible_text(widget):
+    """True when a label that is more than a badge shows inside the widget (GTK names such buttons from it)."""
+    child = widget.get_first_child()
+    while child is not None:
+        if isinstance(child, Gtk.Label) and child.get_label() and child.get_can_target():
+            return True
+        if has_visible_text(child):
+            return True
+        child = child.get_next_sibling()
+    return False
+
+
+def name_icon_buttons(root):
+    """Icon-only buttons are announced by their tooltip. Walks the widget tree once; cheap, and run when a flyout
+    opens because their rows are rebuilt then."""
+    stack = [root]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, (Gtk.Button, Gtk.MenuButton)) and not has_visible_text(w):
+            tip = w.get_tooltip_text()
+            if tip:
+                set_a11y_name(w, tip)
+        child = w.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+
+
+def flyout_keys(pop, focus=True):
+    """Makes a popover usable from the keyboard: focus moves into it when it opens (arrows and Tab then move between
+    its buttons), Escape closes it, and focus goes back to the button that opened it. Nothing here runs on a timer."""
+    if getattr(pop, '_mwx_keys', False):
+        return
+    pop._mwx_keys = True
+
+    def shown(_p):
+        name_icon_buttons(pop)
+        if focus:
+            GLib.idle_add(lambda: pop.child_focus(Gtk.DirectionType.TAB_FORWARD) and False)
+
+    def closed(_p):
+        owner = pop.get_parent()
+        if owner is not None:
+            GLib.idle_add(lambda: owner.grab_focus() and False)
+
+    def key(_c, keyval, _code, _state):
+        if keyval == Gdk.KEY_Escape:
+            pop.popdown()
+            return True
+        return False
+    keys = Gtk.EventControllerKey()
+    keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+    keys.connect('key-pressed', key)
+    pop.add_controller(keys)
+    pop.connect('show', shown)
+    pop.connect('closed', closed)
+
+
+def harden_flyouts(root):
+    """flyout_keys for every menu button under root, and the popovers nested inside theirs (the Start menu's power menu)."""
+    stack = [root]
+    while stack:
+        w = stack.pop()
+        if isinstance(w, Gtk.MenuButton) and w.get_popover() is not None:
+            pop = w.get_popover()
+            flyout_keys(pop, focus=not isinstance(pop, StartMenu))
+            if pop.get_child() is not None:
+                stack.append(pop.get_child())
+        child = w.get_first_child()
+        while child is not None:
+            stack.append(child)
+            child = child.get_next_sibling()
+
+
 class Ipc:
     """Wayfire IPC: 4-byte little-endian length, then a JSON body; one request at a time per socket."""
 
@@ -324,6 +406,7 @@ SETTINGS_PAGES = [
     ('bluetooth', 'Bluetooth', 'wireless headphones speakers devices pair'),
     ('printers', 'Printers', 'print printing scanner test page'),
     ('account', 'User account', 'name password picture avatar login profile'),
+    ('defaults', 'Default apps', 'default program browser mail email music video photos editor files file manager open with'),
     ('datetime', 'Date & time', 'clock time zone 24-hour seconds date calendar'),
     ('power', 'Power', 'sleep screen off turn off lock lid power button battery saver idle'),
     ('storage', 'Storage', 'disk space free up trash cache clean drive usage'),
@@ -441,6 +524,12 @@ class StartMenu(Gtk.Popover):
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)  # before the entry's own Escape (which only clears)
         keys.connect('key-pressed', self.on_key)
         self.search.add_controller(keys)
+        set_a11y_name(self.search, 'Search programs, settings and files')
+        # Up on the first program goes back to the search box, as Down from it goes into the list.
+        list_keys = Gtk.EventControllerKey()
+        list_keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        list_keys.connect('key-pressed', self.on_list_key)
+        self.listbox.add_controller(list_keys)
         self.index, self.index_at, self.index_busy = [], 0.0, False
         left.append(self.search)
         body.append(left)
@@ -473,6 +562,8 @@ class StartMenu(Gtk.Popover):
         more = Gtk.MenuButton()
         more.add_css_class('sm-more')
         more.set_icon_name('pan-end-symbolic')
+        more.set_tooltip_text('Shut down options')
+        set_a11y_name(more, 'Shut down options')
         more_pop = Gtk.Popover()
         more_pop.add_css_class('start')
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
@@ -715,9 +806,21 @@ class StartMenu(Gtk.Popover):
         if row:
             self.on_row(self.listbox, row)
 
+    def on_list_key(self, _c, keyval, _code, _state):
+        row = self.listbox.get_focus_child()
+        if keyval == Gdk.KEY_Up and row is not None and row.get_index() == 0:
+            self.search.grab_focus()
+            return True
+        return False
+
     def on_key(self, _c, keyval, _code, _state):
         if keyval == Gdk.KEY_Escape:
             self.popdown()
+            return True
+        if keyval == Gdk.KEY_Down and self.stack.get_visible_child_name() == 'all':
+            row = self.listbox.get_row_at_index(0)
+            if row:
+                row.grab_focus()
             return True
         if keyval in (Gdk.KEY_Down, Gdk.KEY_Up) and self.stack.get_visible_child_name() == 'results':
             rows, i = [], 0
@@ -1094,6 +1197,11 @@ class Shell(Gtk.Application):
             b.connect('clicked', lambda _b, fn=fn: (v := getattr(self, 'focused_view', None)) and fn(v))
             self.wc.append(b)
         right.append(self.wc)
+        for btn, name in ((self.upd_btn, 'Updates'), (net_btn, 'Network'), (self.vol_btn, 'Volume'),
+                          (clock_btn, 'Date and time'), (app_btn, 'Application menu')):
+            set_a11y_name(btn, name)
+        set_a11y_name(self.vol_scale, 'Volume')
+        set_a11y_name(self.vol_mute, 'Mute')
         box.set_start_widget(left)
         box.set_end_widget(right)
         box.set_hexpand(True)
@@ -1102,6 +1210,8 @@ class Shell(Gtk.Application):
         plate.add_css_class('bar-plate')
         plate.append(box)
         w.set_child(plate)
+        name_icon_buttons(plate)
+        harden_flyouts(plate)
         return w
 
     @staticmethod
@@ -1133,6 +1243,7 @@ class Shell(Gtk.Application):
         bar.get_first_child().set_pixel_size(22)
         entry = Gtk.Text(hexpand=True)
         entry.add_css_class('sp-input')
+        set_a11y_name(entry, 'Search apps and documents')
         entry.set_placeholder_text('Search apps and documents')
         bar.append(entry)
         box.append(bar)
@@ -1472,6 +1583,9 @@ class Shell(Gtk.Application):
         self.trash_mon = tdir.monitor_directory(Gio.FileMonitorFlags.NONE, None)
         self.trash_mon.connect('changed', lambda *_: GLib.timeout_add(200, lambda: self.update_trash() and False))
         w.set_child(shelf)
+        set_a11y_name(start, 'Start')
+        name_icon_buttons(shelf)
+        harden_flyouts(shelf)
         return w
 
     def update_trash(self):
@@ -1516,6 +1630,7 @@ class Shell(Gtk.Application):
         b = Gtk.Button()
         b.add_css_class('dock-item')
         b.set_tooltip_text(label)
+        set_a11y_name(b, label)
         v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.END)
         img.set_pixel_size(Shell.dock_px)
         dot = Gtk.Box()
@@ -1531,6 +1646,16 @@ class Shell(Gtk.Application):
         right_click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         right_click.connect('pressed', lambda *_a: self.dock_menu(b, label, launch, ids))
         b.add_controller(right_click)
+        # The same menu from the keyboard: Menu key or Shift+F10 on the focused icon.
+        menu_key = Gtk.EventControllerKey()
+
+        def on_menu_key(_c, keyval, _code, state):
+            if keyval == Gdk.KEY_Menu or (keyval == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK):
+                self.dock_menu(b, label, launch, ids)
+                return True
+            return False
+        menu_key.connect('key-pressed', on_menu_key)
+        b.add_controller(menu_key)
         self.dock_box.append(b)
         # Files dropped on an app open in it (Notepad, Photos, Media Player...), as on a Mac's dock.
         if launch:
@@ -1628,6 +1753,8 @@ class Shell(Gtk.Application):
             item('Close window' if len(wins) == 1 else f'Close all {len(wins)} windows',
                  lambda: [self.act('window-rules/close-view', {'id': w['id']}) for w in wins])
         pop.set_child(col)
+        flyout_keys(pop)
+        # After flyout_keys' own 'closed' handler, which still needs the parent to give focus back to the icon.
         pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
         pop.popup()
 
@@ -1753,7 +1880,7 @@ class Shell(Gtk.Application):
 
     # ---- shell commands: Wayfire key bindings reach the shell through mwx7-shellctl ---------------------------------
     def listen_commands(self):
-        """Lines such as "clipboard", "start" or "search" on $XDG_RUNTIME_DIR/mwx7-shell (written by mwx7-shellctl,
+        """Lines such as "clipboard", "start", "search", "dock" or "tray" on $XDG_RUNTIME_DIR/mwx7-shell (written by mwx7-shellctl,
         which the Wayfire [command] bindings run): the shell is a layer-shell client, so it cannot grab keys itself."""
         path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-shell')
         try:
@@ -1762,7 +1889,8 @@ class Shell(Gtk.Application):
             os.mkfifo(path, 0o600)
         except OSError:
             return
-        commands = {'clipboard': self.show_clipboard, 'start': self.show_start, 'search': self.open_search}
+        commands = {'clipboard': self.show_clipboard, 'start': self.show_start, 'search': self.open_search,
+                    'dock': self.focus_dock, 'tray': self.focus_tray}
 
         def work():
             while True:
@@ -1775,6 +1903,53 @@ class Shell(Gtk.Application):
                 except OSError:
                     time.sleep(1)
         threading.Thread(target=work, daemon=True).start()
+
+    def focus_surface(self, win, first):
+        """Keyboard focus into the dock or the bar (Super+T, Super+B, as Windows 7 does for its taskbar): they only take
+        focus on a click otherwise. Arrows and Tab move, Enter activates, Menu opens an icon's menu; Escape (or Enter,
+        once the click is done) gives the keyboard back, so no window is left without one."""
+        def release(*_):
+            Layer.set_keyboard_mode(win, Layer.KeyboardMode.ON_DEMAND)
+            return False
+        Layer.set_keyboard_mode(win, Layer.KeyboardMode.EXCLUSIVE)
+        # Safety net: exclusive focus also keeps clicked windows from typing, so it never outlives 20 s (one shot).
+        GLib.timeout_add_seconds(20, release)
+        if not getattr(win, '_mwx_focus_keys', False):
+            win._mwx_focus_keys = True
+            kc = Gtk.EventControllerKey()
+            kc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+            def key(_c, keyval, _code, _state):
+                if keyval == Gdk.KEY_Escape and not any(p.is_visible() for p in self.open_popovers(win)):
+                    release()
+                    return True
+                if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space):
+                    GLib.timeout_add(300, release)  # one shot, after the activation has run
+                return False
+            kc.connect('key-pressed', key)
+            win.add_controller(kc)
+        GLib.idle_add(lambda: first.grab_focus() and False)
+
+    @staticmethod
+    def open_popovers(win):
+        out, stack = [], [win]
+        while stack:
+            w = stack.pop()
+            if isinstance(w, Gtk.MenuButton) and w.get_popover() is not None:
+                out.append(w.get_popover())
+            child = w.get_first_child()
+            while child is not None:
+                stack.append(child)
+                child = child.get_next_sibling()
+        return out
+
+    def focus_dock(self):
+        if getattr(self, 'start_button', None):
+            self.focus_surface(self.dock, self.start_button)
+
+    def focus_tray(self):
+        if getattr(self, 'net_btn', None):
+            self.focus_surface(self.bar, self.net_btn)
 
     def show_start(self):
         """The Start menu from the keyboard. The dock only takes keyboard focus on a click, and without focus GTK
@@ -1818,6 +1993,7 @@ class Shell(Gtk.Application):
         card.append(head)
         lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=True)
         lst.add_css_class('sp-results')
+        set_a11y_name(lst, 'Clipboard history')
 
         def fill():
             while (child := lst.get_row_at_index(0)) is not None:
@@ -1896,7 +2072,8 @@ class Shell(Gtk.Application):
         for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
             Layer.set_anchor(w, e, True)
         Layer.set_exclusive_zone(w, -1)
-        Layer.set_keyboard_mode(w, Layer.KeyboardMode.ON_DEMAND)
+        # Exclusive: the layer covers the screen (a click anywhere closes it), and the menu is usable from the keyboard.
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.EXCLUSIVE)
         w.add_css_class('winmenu-layer')
         spot = Gtk.Fixed(hexpand=True, vexpand=True)
         w.set_child(spot)
@@ -1904,6 +2081,7 @@ class Shell(Gtk.Application):
         # the screen's corner); a click anywhere else closes it.
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class('winmenu-card')
+        set_a11y_name(card, 'Window menu')
         spot.put(card, max(0, x), max(0, y))
 
         def item(label, fn, sensitive=True):
@@ -1927,7 +2105,12 @@ class Shell(Gtk.Application):
                 w.destroy()
         outside.connect('pressed', pressed)
         spot.add_controller(outside)
+        kc = Gtk.EventControllerKey()
+        kc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        kc.connect('key-pressed', lambda _c, keyval, *_a: (w.destroy(), True)[1] if keyval == Gdk.KEY_Escape else False)
+        w.add_controller(kc)
         w.present()
+        card.child_focus(Gtk.DirectionType.TAB_FORWARD)  # first enabled item; arrows and Tab move, Enter activates
         return False
 
     def fill_network(self, pop):
@@ -2310,6 +2493,7 @@ class Shell(Gtk.Application):
         pop.connect('show', lambda p: self.fill_power(p))
         btn.set_popover(pop)
         self.pwr_btn = btn
+        set_a11y_name(btn, 'Battery and power')
         right.append(btn)
         if self.bat_dir:
             GLib.timeout_add_seconds(30, self.poll_battery)  # repeats on purpose
@@ -2383,6 +2567,7 @@ class Shell(Gtk.Application):
             col.append(head)
             self.bright_updating = True
             self.bright_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 100, 1)
+            set_a11y_name(self.bright_scale, 'Brightness')
             self.bright_scale.set_draw_value(False)
             self.bright_scale.add_css_class('bright-scale')
             self.bright_scale.set_margin_start(10)
@@ -2585,6 +2770,7 @@ class Shell(Gtk.Application):
         dnd = Gtk.Box(spacing=8, margin_start=10, margin_end=10, margin_top=2, margin_bottom=4)
         dnd.append(Gtk.Label(label='Do Not Disturb', xalign=0, hexpand=True))
         self.nc_switch = Gtk.Switch(active=self.nc_dnd, valign=Gtk.Align.CENTER)
+        set_a11y_name(self.nc_switch, 'Do Not Disturb')
         self.nc_switch.connect('state-set', self.nc_set_dnd)
         dnd.append(self.nc_switch)
         col.append(dnd)

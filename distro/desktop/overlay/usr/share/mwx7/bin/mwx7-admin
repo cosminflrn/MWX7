@@ -1,9 +1,16 @@
 #!/usr/bin/python3
 """Settings -> Account, run as root through pkexec. Each action only ever changes the account of the person who asked
-(pkexec says who that is), never another one.
+(pkexec says who that is), except `user add|remove|list`, which administrators use to manage accounts.
   mwx7-admin autologin on|off      start straight to this person's desktop when the PC starts (off: logon screen)
   mwx7-admin password              set a new password, read from standard input
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
+  mwx7-admin password-change       change the password: the current one, then the new one (two lines on standard input); the
+                                   current one is checked with PAM first
+  mwx7-admin user list             the accounts that sign in: name, full name, standard|admin (tab-separated)
+  mwx7-admin user add NAME standard|admin   new account; full name and password come as two lines on standard input
+                                   (administrators only)
+  mwx7-admin user remove NAME keep|delete   remove an account, keeping its files in /home or deleting them
+                                   (administrators only; never yourself, anyone signed in, or the last administrator)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
   mwx7-admin recovery-prepare      completes the recovery copy (downloads MWX 7 once on PCs set up before it existed)
   mwx7-admin printer discover      list printers found on the network and USB (tab-separated: URI, name)
@@ -28,15 +35,23 @@
   mwx7-admin autoupdates on|off    install security updates by themselves
   mwx7-admin cleanup apt|flatpak   Settings -> Storage: empty the package cache / remove Flatpak runtimes nothing uses
 """
+import ctypes
+import ctypes.util
 import glob
+import grp
 import os
 import pwd
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 GREETD = '/etc/greetd/config.toml'
+# A person's login name: what useradd accepts and what the logon screen shows, nothing that could be read as an option.
+USERNAME = re.compile(r'[a-z_][a-z0-9_-]{0,31}\Z')
+# Same groups as the first-start setup gives the first account (oobe/install.py GROUPS); "sudo" only for administrators.
+USER_GROUPS = ('cdrom', 'audio', 'dip', 'video', 'render', 'input', 'plugdev', 'netdev', 'users', 'lpadmin')
 # Get Apps may install any app from Flathub, so the id is checked strictly instead of listed: a reverse-DNS style Flatpak id
 # (letters, digits, _ . -), at least one dot, not starting with - or ., and it is only ever passed as one argument to the
 # `flathub` remote that this script itself adds.
@@ -51,19 +66,28 @@ def main():
     user = pwd.getpwuid(int(uid)).pw_name
     cmd = sys.argv[1:]
     if cmd[:1] == ['autologin'] and cmd[1:] in (['on'], ['off']):
-        text = ('# Written by MWX 7 (first-start setup, Settings -> Account).\n[terminal]\nvt = 1\n\n'
-                '[default_session]\ncommand = "/usr/local/bin/mwx7-greeter-session"\nuser = "_greetd"\n')
-        if cmd[1] == 'on':
-            text += f'\n[initial_session]\ncommand = "/usr/local/bin/mwx7-session"\nuser = "{user}"\n'
-        with open(GREETD + '.tmp', 'w') as f:
-            f.write(text)
-        os.chmod(GREETD + '.tmp', 0o644)
-        os.replace(GREETD + '.tmp', GREETD)
+        write_greetd(user if cmd[1] == 'on' else None)
     elif cmd == ['password']:
         new = sys.stdin.readline().rstrip('\n')
         if not new:
             sys.exit('empty password')
         subprocess.run(['chpasswd'], input=f'{user}:{new}\n', text=True, check=True)
+    elif cmd == ['password-change']:
+        old, new = sys.stdin.readline().rstrip('\n'), sys.stdin.readline().rstrip('\n')
+        check_password_text(new)
+        if not pam_check(user, old):
+            time.sleep(1)  # a wrong guess is not answered faster than once a second
+            sys.exit('The current password is not right.')
+        subprocess.run(['chpasswd'], input=f'{user}:{new}\n', text=True, check=True)
+    elif cmd[:2] == ['user', 'list'] and len(cmd) == 2:
+        for name, full, admin in accounts():
+            print(f"{name}\t{full}\t{'admin' if admin else 'standard'}")
+    elif cmd[:2] == ['user', 'add'] and len(cmd) == 4 and cmd[3] in ('standard', 'admin'):
+        require_admin(user)
+        user_add(cmd[2], cmd[3] == 'admin')
+    elif cmd[:2] == ['user', 'remove'] and len(cmd) == 4 and cmd[3] in ('keep', 'delete'):
+        require_admin(user)
+        user_remove(user, cmd[2], cmd[3] == 'delete')
     elif cmd == ['nopassword']:
         subprocess.run(['passwd', '-d', user], check=True, capture_output=True)
     elif cmd[:1] == ['picture'] and len(cmd) == 2:
@@ -148,6 +172,137 @@ def firewall(on):
     else:
         ufw('disable')
         subprocess.run(['systemctl', 'disable', '--now', 'nftables.service'], check=False, capture_output=True)
+
+def write_greetd(autologin_user):
+    text = ('# Written by MWX 7 (first-start setup, Settings -> Account).\n[terminal]\nvt = 1\n\n'
+            '[default_session]\ncommand = "/usr/local/bin/mwx7-greeter-session"\nuser = "_greetd"\n')
+    if autologin_user:
+        text += f'\n[initial_session]\ncommand = "/usr/local/bin/mwx7-session"\nuser = "{autologin_user}"\n'
+    with open(GREETD + '.tmp', 'w') as f:
+        f.write(text)
+    os.chmod(GREETD + '.tmp', 0o644)
+    os.replace(GREETD + '.tmp', GREETD)
+
+
+def check_password_text(pw):
+    # chpasswd reads one "name:password" line, so a line break (or NUL) could never be part of one.
+    if not pw or len(pw) > 256 or '\n' in pw or '\r' in pw or '\0' in pw:
+        sys.exit('That password cannot be used.')
+
+
+def pam_check(name, password):
+    """True when PAM (the lock screen's own service: the same checks as signing in) accepts this password for this account.
+    Done through libpam directly, because python's crypt module is gone and unix_chkpwd is not a public interface."""
+    libpam = ctypes.CDLL(ctypes.util.find_library('pam') or 'libpam.so.0')
+    libc = ctypes.CDLL(None)
+    libc.calloc.restype = ctypes.c_void_p
+    libc.strdup.restype = ctypes.c_void_p
+
+    class Msg(ctypes.Structure):
+        _fields_ = [('style', ctypes.c_int), ('msg', ctypes.c_char_p)]
+
+    class Resp(ctypes.Structure):
+        _fields_ = [('resp', ctypes.c_void_p), ('retcode', ctypes.c_int)]
+
+    conv_t = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(Msg)),
+                              ctypes.POINTER(ctypes.POINTER(Resp)), ctypes.c_void_p)
+
+    class Conv(ctypes.Structure):
+        _fields_ = [('conv', conv_t), ('data', ctypes.c_void_p)]
+    pw = password.encode()
+
+    def talk(n, msgs, out, _data):
+        # PAM frees this array and the strings itself; styles 1 and 2 are the password prompts.
+        arr = libc.calloc(n, ctypes.sizeof(Resp))
+        resp = ctypes.cast(arr, ctypes.POINTER(Resp))
+        for i in range(n):
+            if msgs[i].contents.style in (1, 2):
+                resp[i].resp = libc.strdup(pw)
+        out[0] = resp
+        return 0
+    cb = conv_t(talk)
+    handle = ctypes.c_void_p()
+    conv = Conv(cb, None)
+    libpam.pam_start.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(Conv), ctypes.POINTER(ctypes.c_void_p)]
+    libpam.pam_authenticate.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    libpam.pam_end.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    if libpam.pam_start(b'mwx7-lock', name.encode(), ctypes.byref(conv), ctypes.byref(handle)) != 0:
+        sys.exit('Could not check the password.')
+    code = libpam.pam_authenticate(handle, 0)
+    libpam.pam_end(handle, code)
+    return code == 0
+
+
+def in_group(name, group):
+    try:
+        g = grp.getgrnam(group)
+        return name in g.gr_mem or pwd.getpwnam(name).pw_gid == g.gr_gid
+    except KeyError:
+        return False
+
+
+def accounts():
+    """People's accounts: ids from 1000 up with a login shell (system accounts and 'nobody' have neither)."""
+    out = []
+    for e in pwd.getpwall():
+        if 1000 <= e.pw_uid < 60000 and not e.pw_shell.endswith(('nologin', 'false')):
+            out.append((e.pw_name, (e.pw_gecos or '').split(',')[0].replace('\t', ' '), in_group(e.pw_name, 'sudo')))
+    return sorted(out)
+
+
+def require_admin(caller):
+    if not in_group(caller, 'sudo'):
+        sys.exit('Only an administrator can add or remove accounts.')
+
+
+def user_add(name, admin):
+    if not USERNAME.match(name):
+        sys.exit('The account name needs lowercase letters, digits, - and _ (starting with a letter), up to 32.')
+    try:
+        pwd.getpwnam(name)
+        sys.exit('An account with that name exists already.')
+    except KeyError:
+        pass
+    if name in ('root', 'nobody') or any(g.gr_name == name for g in grp.getgrall()):
+        sys.exit('That name is taken.')
+    full = sys.stdin.readline().rstrip('\n').strip()
+    pw = sys.stdin.readline().rstrip('\n')
+    if len(full) > 64 or any(c in full for c in ':,\\\0') or not full.isprintable():
+        sys.exit('That full name cannot be used.')
+    check_password_text(pw)
+    groups = [g for g in USER_GROUPS + (('sudo',) if admin else ()) if any(x.gr_name == g for x in grp.getgrall())]
+    subprocess.run(['useradd', '-m', '-s', '/bin/bash', '-c', full or name, '-G', ','.join(groups), name],
+                   check=True, capture_output=True)
+    r = subprocess.run(['chpasswd'], input=f'{name}:{pw}\n', text=True, capture_output=True)
+    if r.returncode != 0:
+        subprocess.run(['userdel', '-r', name], capture_output=True)
+        sys.exit('Could not set the password.')
+
+
+def user_remove(caller, name, delete_files):
+    if not USERNAME.match(name):
+        sys.exit('Not an account name.')
+    try:
+        e = pwd.getpwnam(name)
+    except KeyError:
+        sys.exit('There is no such account.')
+    if name == caller:
+        sys.exit('You cannot remove the account you are using.')
+    if not (1000 <= e.pw_uid < 60000):
+        sys.exit('That is not a person\'s account.')
+    sessions = subprocess.run(['loginctl', 'list-users', '--no-legend'], capture_output=True, text=True).stdout
+    if any(ln.split()[:1] == [str(e.pw_uid)] for ln in sessions.splitlines()):
+        sys.exit(f'{name} is signed in right now. Sign them out first.')
+    try:
+        if f'user = "{name}"' in open(GREETD).read().split('[initial_session]', 1)[1]:
+            write_greetd(None)  # otherwise the PC would start to a desktop that is gone
+    except (OSError, IndexError):
+        pass
+    subprocess.run(['userdel'] + (['-r'] if delete_files else []) + [name], check=True, capture_output=True)
+    try:
+        os.unlink(f'/var/lib/AccountsService/icons/{name}')
+    except OSError:
+        pass
 
 
 # Everything that reaches lpadmin is checked here: the queue name is plain, the address is an IPP/DNS-SD one and cannot be

@@ -16,12 +16,12 @@ window.bar .bar-plate > centerbox { min-height: 28px; }
 .app-title { font-weight: 700; padding: 0 6px; text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), 0 0 12px rgba(255, 255, 255, 0.75); }
 .clock { padding: 0 4px; text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), 0 0 12px rgba(255, 255, 255, 0.75); }
 
-menubutton.orb > button, button.flat-ico {
+menubutton.orb > button, button.flat-ico, menubutton.flat-ico > button {
   min-height: 0; min-width: 0; padding: 2px 6px;
   background: none; border: none; box-shadow: none; border-radius: 4px; color: #000000;
 }
 menubutton.orb image { -gtk-icon-size: 22px; }
-menubutton.orb > button:hover, button.flat-ico:hover { background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6); }
+menubutton.orb > button:hover, button.flat-ico:hover, menubutton.flat-ico > button:hover { background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6); }
 
 /* The dock: flush with the bottom edge, the frames' glass, top corners rounded, as on the web. */
 .dock-shelf {
@@ -303,3 +303,23 @@ label.upd-badge {
 button.nc-x { min-width: 0; min-height: 0; padding: 4px; background: none; border: none; box-shadow: none; border-radius: 4px; color: #6a7f99; }
 button.nc-x:hover { background: linear-gradient(to bottom, #ff8d86, #e0443a); color: #ffffff; }
 popover.ncflyout switch:checked { background: linear-gradient(to bottom, #6fb0f5, #2f7fe0); border-color: #1c62c4; }
+
+/* Keyboard focus, Aero style: a white inner line and a blue ring with a soft glow (Windows 7's focus rectangle, solid),
+   instead of Adwaita's outline. Only for keyboard focus (:focus-visible), so mouse clicks leave no ring. */
+window button:focus-visible, popover button:focus-visible,
+window menubutton > button:focus-visible, popover menubutton > button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.95), inset 0 0 0 2px #3d85e0, 0 0 6px 1px rgba(90, 170, 255, 0.85);
+}
+window row:focus-visible, popover row:focus-visible, window switch:focus-visible, popover switch:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.95), inset 0 0 0 2px #3d85e0;
+}
+window scale:focus-visible, popover scale:focus-visible { outline: none; }
+window scale:focus-visible slider, popover scale:focus-visible slider {
+  box-shadow: 0 0 0 2px #3d85e0, 0 0 6px 2px rgba(90, 170, 255, 0.85);
+}
+window entry:focus-within, popover entry:focus-within, window searchentry:focus-within, popover searchentry:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 2px #3d85e0, 0 0 6px 1px rgba(90, 170, 255, 0.85);
+}
