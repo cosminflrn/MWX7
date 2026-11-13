@@ -6,12 +6,19 @@
   mwx7-admin nopassword            remove the password (the logon screen lets this account straight in)
   mwx7-admin picture FILE          the account picture (logon screen, lock screen, Start menu)
   mwx7-admin recovery-prepare      completes the recovery copy (downloads MWX 7 once on PCs set up before it existed)
+  mwx7-admin printer discover      list printers found on the network and USB (tab-separated: URI, name)
+  mwx7-admin printer add NAME URI  add a driverless (IPP Everywhere) printer; NAME is letters, numbers, - and _
+  mwx7-admin printer default NAME  make it the default printer
+  mwx7-admin printer remove NAME   remove it
+  mwx7-admin nvidia install|remove the NVIDIA driver from Debian's non-free components (a restart finishes it)
   mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
                                    restart. Plain: absolutely clean (the first-start setup runs and offers the newest
                                    version). keep: accounts, files, apps and settings stay
 """
+import glob
 import os
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -48,12 +55,70 @@ def main():
         os.makedirs('/var/lib/AccountsService/icons', exist_ok=True)
         shutil.copyfile(src, f'/var/lib/AccountsService/icons/{user}')
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
+    elif cmd[:1] == ['printer'] and len(cmd) >= 2:
+        printer(cmd[1:])
+    elif cmd in (['nvidia', 'install'], ['nvidia', 'remove']):
+        nvidia(cmd[1] == 'install')
     elif cmd == ['recovery-prepare'] and os.path.exists('/etc/mwx7/installed'):
         os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'recovery', 'prepare'])
     elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
         reset(keep=cmd[1:] == ['keep'])
     else:
         sys.exit(__doc__)
+
+
+# Everything that reaches lpadmin is checked here: the queue name is plain, the address is an IPP/DNS-SD one and cannot be
+# read as an option (no shell is used either, only argument lists).
+PRINTER_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z')
+PRINTER_URI = re.compile(r'(ipps?|dnssd)://[A-Za-z0-9._~%:/?=&@+\[\]-]{1,300}\Z')
+
+
+def printer(args):
+    op = args[0]
+    if op == 'discover' and len(args) == 1:
+        out = subprocess.run(['lpinfo', '-l', '-v'], capture_output=True, text=True, timeout=60).stdout
+        for block in out.split('Device:')[1:]:
+            fields = dict(ln.strip().split(' = ', 1) for ln in block.splitlines() if ' = ' in ln)
+            uri = fields.get('uri', '')
+            if PRINTER_URI.match(uri):
+                print(f"{uri}\t{(fields.get('info') or fields.get('make-and-model') or uri).replace(chr(9), ' ')}")
+    elif op == 'add' and len(args) == 3 and PRINTER_NAME.match(args[1]) and PRINTER_URI.match(args[2]):
+        subprocess.run(['lpadmin', '-p', args[1], '-E', '-v', args[2], '-m', 'everywhere'], check=True, timeout=120)
+    elif op in ('default', 'remove') and len(args) == 2 and PRINTER_NAME.match(args[1]):
+        subprocess.run(['lpadmin', '-d' if op == 'default' else '-x', args[1]], check=True, timeout=60)
+    else:
+        sys.exit(__doc__)
+
+
+def enable_non_free():
+    """Debian's own sources only: add contrib and non-free to the one-line and the deb822 forms."""
+    for path in ['/etc/apt/sources.list'] + glob.glob('/etc/apt/sources.list.d/*.sources'):
+        try:
+            old = open(path).read()
+        except OSError:
+            continue
+        lines = old.split('\n')
+        deb822 = path.endswith('.sources')
+        debian = deb822 and any(l.startswith('URIs:') and 'debian.org' in l for l in lines)
+        for i, l in enumerate(lines):
+            if (deb822 and debian and l.startswith('Components:')) or (
+                    not deb822 and re.match(r'deb\s', l) and 'debian.org' in l):
+                lines[i] = l + ''.join(f' {c}' for c in ('contrib', 'non-free') if c not in l.split())
+        if '\n'.join(lines) != old:
+            with open(path + '.tmp', 'w') as f:
+                f.write('\n'.join(lines))
+            os.replace(path + '.tmp', path)
+
+
+def nvidia(install):
+    env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
+    if install:
+        enable_non_free()
+        subprocess.run(['apt-get', 'update'], check=True, env=env)
+        subprocess.run(['apt-get', 'install', '-y', 'nvidia-driver', 'firmware-misc-nonfree'], check=True, env=env)
+    else:
+        # Only the driver goes: the firmware package is harmless and other hardware may use it.
+        subprocess.run(['apt-get', 'remove', '--purge', '-y', 'nvidia-driver'], check=True, env=env)
 
 
 def reset(keep):
