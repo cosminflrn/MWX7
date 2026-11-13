@@ -28,6 +28,7 @@ window.mwx7-photos > box { background: #1a2333; }
   box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 12px rgba(60,150,255,.45); }
 .ph-bar button.ph-del:hover { background: linear-gradient(180deg, #ff9a8f, #d23b33); }
 .ph-count { color: #b8c8de; margin-right: 6px; }
+.ph-bar separator { background: rgba(255,255,255,.22); min-width: 1px; margin: 8px 6px; }
 window.ph-slideshow { background: #000000; }
 """
 
@@ -91,21 +92,24 @@ class Photos:
         self.count = Gtk.Label()
         self.count.add_css_class('ph-count')
         left.append(self.count)
-        left.append(self.button('go-previous-symbolic', 'Previous', lambda *_: self.step(-1)))
         self.zoom_btn = self.button('zoom-original-symbolic', 'Actual size', lambda *_: self.toggle_zoom())
         left.append(self.zoom_btn)
         show = self.button('media-playback-start-symbolic', 'Play slideshow', lambda *_: self.slideshow())
         show.add_css_class('ph-show')
+        # Previous and next flank the slideshow button, as in Windows Photo Viewer, instead of sitting on opposite sides.
+        mid = Gtk.Box(spacing=10, valign=Gtk.Align.CENTER)
+        mid.append(self.button('go-previous-symbolic', 'Previous', lambda *_: self.step(-1)))
+        mid.append(show)
+        mid.append(self.button('go-next-symbolic', 'Next', lambda *_: self.step(1)))
         right = Gtk.Box(spacing=4)
         right.append(self.button('object-rotate-left-symbolic', 'Rotate counterclockwise', lambda *_: self.rotate(90)))
         right.append(self.button('object-rotate-right-symbolic', 'Rotate clockwise', lambda *_: self.rotate(-90)))
-        right.append(self.button('go-next-symbolic', 'Next', lambda *_: self.step(1)))
         right.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
         d = self.button('user-trash-symbolic', 'Delete', lambda *_: self.remove())
         d.add_css_class('ph-del')
         right.append(d)
         bar.set_start_widget(left)
-        bar.set_center_widget(show)
+        bar.set_center_widget(mid)
         bar.set_end_widget(right)
         root.append(bar)
 

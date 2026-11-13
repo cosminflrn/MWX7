@@ -56,8 +56,11 @@ def build(app, win):
     except OSError:
         version = ''
     d = shutil.disk_usage('/')
+    # The margins go on an inner box: on the window's own child they'd be see-through (the window is transparent).
+    outer = Gtk.Box()
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=14, margin_bottom=12,
-                  margin_start=22, margin_end=22)
+                  margin_start=22, margin_end=22, hexpand=True)
+    outer.append(box)
     box.append(mwx7ui.icon('orb', 84))
     name = Gtk.Label(use_markup=True, label='MWX <span weight="light" foreground="#2a72d6">7</span>')
     name.add_css_class('about-name')
@@ -79,15 +82,16 @@ def build(app, win):
     new = Gtk.Expander(label=f'What’s new in {version or "this version"}', halign=Gtk.Align.CENTER, margin_top=8)
     lst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=4)
     for t in WHATS_NEW:
-        lst.append(Gtk.Label(label='• ' + t, xalign=0, wrap=True, max_width_chars=48))
+        lst.append(Gtk.Label(label='• ' + t, xalign=0, wrap=True, max_width_chars=40))
     new.set_child(lst)
     box.append(new)
-    small = Gtk.Label(label='Icons: Crystal Clear (LGPL, Everaldo Coelho) · Font: Selawik (OFL) · '
-                            'Photos: Pexels · Sounds: FluidR3 (MIT)', wrap=True, justify=Gtk.Justification.CENTER,
-                      max_width_chars=52, vexpand=True, valign=Gtk.Align.END)
+    # Two explicit lines: a wrapping label this wide made the window grow past its set width and clipped the credits.
+    small = Gtk.Label(label='Icons: Crystal Clear (LGPL, Everaldo Coelho) · Font: Selawik (OFL)\n'
+                            'Photos: Pexels · Sounds: FluidR3 (MIT)', justify=Gtk.Justification.CENTER,
+                      vexpand=True, valign=Gtk.Align.END, margin_top=10)
     small.add_css_class('about-small')
     box.append(small)
-    return box
+    return outer
 
 
 if __name__ == '__main__':

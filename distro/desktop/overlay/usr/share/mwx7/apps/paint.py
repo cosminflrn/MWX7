@@ -125,6 +125,9 @@ class Paint:
     def group(self, label, child):
         g = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         g.add_css_class('pt-group')
+        # Centred in the room above the caption, so every group's label sits on one baseline.
+        child.set_vexpand(True)
+        child.set_valign(Gtk.Align.CENTER)
         g.append(child)
         lab = Gtk.Label(label=label)
         lab.add_css_class('pt-group-label')
@@ -155,17 +158,17 @@ class Paint:
             self.tool_btns['shape:' + sid] = b
             shapes.attach(b, i % 2, i // 2, 1, 1)
         r.append(self.group('Shapes', shapes))
-        sizes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        sizes = Gtk.Grid(row_spacing=2, column_spacing=2)
         self.size_btns = {}
-        for s in SIZES:
+        for i, s in enumerate(SIZES):
             b = Gtk.Button(focusable=False, tooltip_text=f'{s}px')
             line = Gtk.Box(valign=Gtk.Align.CENTER)
             line.add_css_class('pt-size-line')
-            line.set_size_request(40, s)
+            line.set_size_request(22, s)
             b.set_child(line)
             b.connect('clicked', lambda _b, s=s: self.set_size(s))
             self.size_btns[s] = b
-            sizes.append(b)
+            sizes.attach(b, i % 2, i // 2, 1, 1)
         r.append(self.group('Size', sizes))
         cols = Gtk.Box(spacing=8)
         self.big = []
