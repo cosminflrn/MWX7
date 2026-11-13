@@ -50,6 +50,17 @@ window.mwx7-settings button.suggested-action {
 }
 window.mwx7-settings button.suggested-action:hover { background: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); }
 window.mwx7-settings .status { font-weight: 600; color: #1c4f8f; }
+/* Storage and Security pages */
+window.mwx7-settings progressbar.usage-bar trough { min-height: 10px; border-radius: 5px; background: #dbe4f0; }
+window.mwx7-settings progressbar.usage-bar progress { min-height: 10px; border-radius: 5px; background: linear-gradient(#6fb1f0, #2f7fd6); }
+window.mwx7-settings progressbar.usage-bar.files-bar progress { background: linear-gradient(#8fd08f, #3f9a3f); }
+window.mwx7-settings progressbar.usage-bar.nearly-full progress { background: linear-gradient(#f08a8a, #c42b3a); }
+window.mwx7-settings .sec-row { padding: 8px 0; border-bottom: 1px solid #dbe4f0; }
+window.mwx7-settings .sec-title { font-weight: 600; }
+window.mwx7-settings .pill { padding: 2px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+window.mwx7-settings .pill.ok { background: #dff2df; color: #2b7a2b; }
+window.mwx7-settings .pill.off { background: #fbe3e3; color: #b0262f; }
+window.mwx7-settings .pill.na { background: #e8edf3; color: #5b6f86; }
 /* Reset MWX 7: the one button that deletes everything, in red glass. */
 window.mwx7-settings button.destructive-action {
   color: #ffffff; font-weight: 600; border: 1px solid #8e1b1b; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);

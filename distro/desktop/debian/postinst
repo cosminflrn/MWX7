@@ -35,6 +35,15 @@ if [ -z "$2" ]; then
   # image); installing packages refreshes the cache anyway.
   systemctl mask ldconfig.service >/dev/null 2>&1 || true
   plymouth-set-default-theme mwx7 || true
+  # Firewall (Settings -> Security): ufw with nothing unasked coming in and everything going out. Only on a fresh install;
+  # an update never switches a firewall on or off that the person may have chosen. The config files are written
+  # directly (ufw cannot "enable" inside the ISO build); ufw.service applies them at start, and ufw takes over from the
+  # older nftables rules, which would flush its rules.
+  if [ -f /etc/ufw/ufw.conf ] && [ -f /etc/default/ufw ]; then
+    sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf
+    sed -i -e 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' -e 's/^DEFAULT_OUTPUT_POLICY=.*/DEFAULT_OUTPUT_POLICY="ACCEPT"/' /etc/default/ufw
+    if systemctl enable ufw.service >/dev/null 2>&1; then systemctl disable nftables.service >/dev/null 2>&1 || true; fi
+  fi
 fi
 # Lighter and faster start: nothing here waits for the network at boot, scrubs ext4 (MWX 7 uses btrfs) or keeps a
 # terminal server and an audio filter chain running in every session.

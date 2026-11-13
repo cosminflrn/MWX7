@@ -22,6 +22,11 @@
   mwx7-admin flatpak install REF   Get Apps: installs a Flathub app for everyone (REF is a plain Flatpak app id, from flathub only)
   mwx7-admin flatpak remove REF    removes it again
   mwx7-admin flatpak update        updates every installed Flatpak app and runtime
+  mwx7-admin power button ACTION   Settings -> Power: what the power button does (poweroff, suspend, ignore)
+  mwx7-admin power lid ACTION      what closing the lid does (suspend, poweroff, lock, ignore)
+  mwx7-admin firewall on|off       Settings -> Security: the firewall (ufw: nothing unasked comes in, everything goes out)
+  mwx7-admin autoupdates on|off    install security updates by themselves
+  mwx7-admin cleanup apt|flatpak   Settings -> Storage: empty the package cache / remove Flatpak runtimes nothing uses
 """
 import glob
 import os
@@ -83,8 +88,66 @@ def main():
         os.execv('/usr/share/mwx7/bin/mwx7-backup', ['mwx7-backup'] + cmd[1:])
     elif cmd[:1] == ['flatpak'] and (cmd[1:] in (['setup'], ['update']) or (len(cmd) == 3 and cmd[1] in ('install', 'remove'))):
         flatpak(cmd[1], cmd[2] if len(cmd) == 3 else None)
+    elif cmd[:1] == ['power'] and len(cmd) == 3 and cmd[1] in POWER_KEYS and cmd[2] in POWER_KEYS[cmd[1]][1]:
+        power(cmd[1], cmd[2])
+    elif cmd[:1] == ['firewall'] and cmd[1:] in (['on'], ['off']):
+        firewall(cmd[1] == 'on')
+    elif cmd[:1] == ['autoupdates'] and cmd[1:] in (['on'], ['off']):
+        # Written last (99): it wins over the 20auto-upgrades that MWX 7 ships, which then never has to be edited.
+        with open(AUTOUPDATES + '.tmp', 'w') as f:
+            f.write(f'// Written by Settings -> Security.\nAPT::Periodic::Unattended-Upgrade "{1 if cmd[1] == "on" else 0}";\n')
+        os.replace(AUTOUPDATES + '.tmp', AUTOUPDATES)
+    elif cmd in (['cleanup', 'apt'], ['cleanup', 'flatpak']):
+        if cmd[1] == 'apt':
+            subprocess.run(['apt-get', 'clean'], check=True)
+        else:
+            flatpak('unused', None)
     else:
         sys.exit(__doc__)
+
+
+# Settings -> Power: logind reads a drop-in of ours, so the vendor files are never edited. Each setting is a fixed key with a
+# fixed list of values (nothing from the caller reaches the file as text).
+LOGIND_DROPIN = '/etc/systemd/logind.conf.d/50-mwx7-power.conf'
+POWER_KEYS = {'button': (['HandlePowerKey'], ['poweroff', 'suspend', 'ignore']),
+              'lid': (['HandleLidSwitch', 'HandleLidSwitchExternalPower', 'HandleLidSwitchDocked'],
+                      ['suspend', 'poweroff', 'lock', 'ignore'])}
+AUTOUPDATES = '/etc/apt/apt.conf.d/99mwx7-autoupdates'
+
+
+def power(what, action):
+    values = {}
+    try:
+        for line in open(LOGIND_DROPIN):
+            k, _, v = line.strip().partition('=')
+            if k and not k.startswith(('#', '[')):
+                values[k] = v
+    except OSError:
+        pass
+    for key in POWER_KEYS[what][0]:
+        values[key] = action
+    os.makedirs(os.path.dirname(LOGIND_DROPIN), exist_ok=True)
+    with open(LOGIND_DROPIN + '.tmp', 'w') as f:
+        f.write('# Written by MWX 7 (Settings -> Power).\n[Login]\n' + ''.join(f'{k}={v}\n' for k, v in sorted(values.items())))
+    os.chmod(LOGIND_DROPIN + '.tmp', 0o644)
+    os.replace(LOGIND_DROPIN + '.tmp', LOGIND_DROPIN)
+    # logind re-reads its configuration on SIGHUP (a plain reload is not supported for it).
+    subprocess.run(['systemctl', 'kill', '-s', 'HUP', 'systemd-logind.service'], check=False)
+
+
+def firewall(on):
+    """ufw is the firewall. The older nftables rules that MWX 7 started with are retired when ufw takes over (they would
+    flush ufw's rules at start) and when the firewall is switched off (they would keep blocking)."""
+    def ufw(*a):
+        subprocess.run(['ufw', *a], check=True, capture_output=True)
+    if on:
+        subprocess.run(['systemctl', 'disable', '--now', 'nftables.service'], check=False, capture_output=True)
+        ufw('default', 'deny', 'incoming')
+        ufw('default', 'allow', 'outgoing')
+        ufw('--force', 'enable')
+    else:
+        ufw('disable')
+        subprocess.run(['systemctl', 'disable', '--now', 'nftables.service'], check=False, capture_output=True)
 
 
 # Everything that reaches lpadmin is checked here: the queue name is plain, the address is an IPP/DNS-SD one and cannot be
@@ -187,6 +250,8 @@ def flatpak(action, ref):
         code = run('update', '--system', '--noninteractive', '-y')
     elif code == 0 and action == 'remove':
         code = run('uninstall', '--system', '--noninteractive', '-y', ref)
+    elif code == 0 and action == 'unused':
+        code = run('uninstall', '--system', '--unused', '--noninteractive', '-y')
     sys.exit(code)
 
 
