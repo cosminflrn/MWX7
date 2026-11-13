@@ -232,12 +232,13 @@ cairo_surface_t*decoration_theme_t::get_button_surface(button_type_t button,
         light = {1.00, 0.45, 0.42}; dark = {0.80, 0.16, 0.13};
         break;
 
+      // As on the web: green minimizes, yellow is Full Screen, red closes.
       case BUTTON_TOGGLE_MAXIMIZE:
-        light = {0.45, 0.88, 0.36}; dark = {0.13, 0.60, 0.13};
+        light = {1.00, 0.84, 0.34}; dark = {0.85, 0.58, 0.05};
         break;
 
       case BUTTON_MINIMIZE:
-        light = {1.00, 0.84, 0.34}; dark = {0.85, 0.58, 0.05};
+        light = {0.45, 0.88, 0.36}; dark = {0.13, 0.60, 0.13};
         break;
 
       default:
@@ -297,8 +298,12 @@ cairo_surface_t*decoration_theme_t::get_button_surface(button_type_t button,
             break;
 
           case BUTTON_TOGGLE_MAXIMIZE:
-            cairo_move_to(cr, cx - s, cy); cairo_line_to(cr, cx + s, cy);
-            cairo_move_to(cr, cx, cy - s); cairo_line_to(cr, cx, cy + s);
+            // The web's Full Screen glyph: two small corner triangles pointing apart.
+            cairo_move_to(cr, cx - s, cy - s); cairo_line_to(cr, cx + s * 0.35, cy - s);
+            cairo_line_to(cr, cx - s, cy + s * 0.35); cairo_close_path(cr);
+            cairo_move_to(cr, cx + s, cy + s); cairo_line_to(cr, cx - s * 0.35, cy + s);
+            cairo_line_to(cr, cx + s, cy - s * 0.35); cairo_close_path(cr);
+            cairo_fill(cr);
             break;
 
           case BUTTON_MINIMIZE:

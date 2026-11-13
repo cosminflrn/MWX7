@@ -32,7 +32,10 @@ def remember(path):
 
 def dialog(parent, title, icon_name='about'):
     """A small window of an MWX 7 app (Properties, Find, Rename...): the same Aero title bar as its app, not GTK's."""
-    w = Gtk.Window(title=title, transient_for=parent, resizable=False)
+    # Not transient: MWX 7's frames treat windows with a parent as GTK's own dialogs and leave them unframed.
+    w = Gtk.Window(title=title, resizable=False)
+    if parent is not None:
+        parent.connect('close-request', lambda *_a: w.destroy() and False)
     w.add_css_class('mwx7-settings')
     w.set_titlebar(base.Settings.titlebar(w, title, icon_name))
     return w
@@ -100,7 +103,7 @@ class App(Gtk.Application):
         self.tint_mon = Gio.File.new_for_path(base.WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
         self.tint_mon.connect('changed', lambda *_a: GLib.timeout_add(
             200, lambda: tint.load_from_data(tint_css().encode()) and False))
-        w = self.win = Gtk.ApplicationWindow(application=self, title=self.title)
+        w = self.win = Gtk.ApplicationWindow(application=self, title=self.title, show_menubar=False)
         w.set_default_size(*self.size)
         w.set_resizable(self.resizable)
         w.add_css_class('mwx7-settings')
@@ -125,7 +128,10 @@ class App(Gtk.Application):
             stack += [c.get_first_child(), c.get_next_sibling()]
 
     def menubar(self, menus):
-        """menus: [(label, [(item label, action name, callback) | None for a separator, ...]), ...]"""
+        """menus: [(label, [(item label, action name, callback) | None for a separator, ...]), ...]
+
+        The menus go to the top bar, as on the web (and a Mac): GtkApplication publishes them on the session bus and
+        the shell shows the focused app's. The window itself shows none; this returns an empty placeholder."""
         model = Gio.Menu()
         for label, items in menus:
             sub, section = Gio.Menu(), Gio.Menu()
@@ -142,7 +148,10 @@ class App(Gtk.Application):
                 section.append(text, 'app.' + name)
             sub.append_section(None, section)
             model.append_submenu(label, sub)
-        return Gtk.PopoverMenuBar.new_from_model(model)
+        self.set_menubar(model)
+        if self.win:
+            self.win.set_show_menubar(False)
+        return Gtk.Box(visible=False)
 
     def run_main(self):
         return self.run(sys.argv)

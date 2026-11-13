@@ -154,6 +154,7 @@ def thumb(path, w, h):
 class Settings(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='org.mwx7.settings')
+        GLib.set_prgname('org.mwx7.settings')  # the window's app id without a session bus too (frames, dock, bar)
 
     def do_activate(self):
         if self.get_windows():
@@ -178,7 +179,6 @@ class Settings(Gtk.Application):
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=120)
         self.stack.set_hexpand(True)
         pages = [
-            ('themes', 'Themes', 'desktop', self.page_themes),
             ('wallpapers', 'Wallpapers', 'image', self.page_wallpapers),
             ('account', 'User account', 'user', self.page_account),
             ('wincolor', 'Window Color', 'paint', self.page_wincolor),
@@ -222,8 +222,11 @@ class Settings(Gtk.Application):
 
     @staticmethod
     def titlebar(win, title, icon_name='settings'):
-        # GTK 4 always draws its own title bar (it doesn't let the window manager frame it), so MWX 7's own apps draw
-        # one that matches the Wayfire frames: Aero gloss, title on the left, glossy traffic lights on the right.
+        # MWX 7's frames (mwx7-decor) draw the title bar: the same Aero glass, icon, title, buttons and window menu as
+        # every other window. GTK draws none of its own then (it sees the compositor prefers server-side frames).
+        # MWX7_CSD=1 brings back the GTK-drawn bar below, for a compositor without MWX 7's frames.
+        if os.environ.get('MWX7_CSD') != '1':
+            return None
         bar = Gtk.HeaderBar()
         bar.add_css_class('mwx7-titlebar')
         bar.set_show_title_buttons(False)
