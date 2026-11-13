@@ -1,0 +1,625 @@
+#!/usr/bin/python3
+"""MWX 7 lock screen: an ext-session-lock-v1 client (GTK 3 + libgtk-session-lock, the only GTK binding for that protocol).
+Windows 7 logon + macOS lock screen: big clock and date, the account picture and name, a password field that appears on
+the first key or click, power buttons, small status icons, and the NUMBER of waiting notifications (never their text).
+
+Security: the session is unlocked from exactly one place, unlock(), reached only when PAM says PAM_SUCCESS. If this
+process dies the compositor keeps the screen locked (that is the protocol's job). Exit codes: 0 = unlocked, 3 = the
+lock could not be taken (mwx7-lock then falls back to swaylock).
+
+  mwx7-lockscreen          lock for real; returns once the screen IS locked (the unlocking process stays behind)
+  mwx7-lockscreen --test   plain window, no lock, fake password "mwx7": for screenshots and development only
+"""
+import ctypes
+import ctypes.util
+import glob
+import json
+import os
+import pwd
+import re
+import subprocess
+import sys
+import threading
+import time
+
+TEST = '--test' in sys.argv
+
+# Without a pipe-based hand-off the caller (swayidle -w, before-sleep) would wait until the user unlocks. Fork first,
+# before any Wayland connection exists; the parent only waits to hear whether the lock was taken.
+READY = None
+if not TEST:
+    rfd, wfd = os.pipe()
+    if os.fork():
+        os.close(wfd)
+        import select
+        ok = select.select([rfd], [], [], 10)[0] and os.read(rfd, 1) == b'1'
+        if not ok:
+            os.system('pkill -u %d -f "[m]wx7-lockscreen" >/dev/null 2>&1' % os.getuid())
+        sys.exit(0 if ok else 3)
+    os.close(rfd)
+    os.setsid()
+    READY = wfd
+
+import gi  # noqa: E402
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+if not TEST:
+    gi.require_version('GtkSessionLock', '0.1')
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
+import cairo  # noqa: E402
+
+
+def ready(ok):
+    global READY
+    if READY is not None:
+        try:
+            os.write(READY, b'1' if ok else b'0')
+            os.close(READY)
+        except OSError:
+            pass
+        READY = None
+
+
+# ---------------------------------------------------------------- PAM (ctypes: no extra package needed)
+class _Msg(ctypes.Structure):
+    _fields_ = [('style', ctypes.c_int), ('msg', ctypes.c_char_p)]
+
+
+class _Resp(ctypes.Structure):
+    _fields_ = [('resp', ctypes.c_void_p), ('retcode', ctypes.c_int)]
+
+
+_CONV = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(_Msg)),
+                         ctypes.POINTER(ctypes.POINTER(_Resp)), ctypes.c_void_p)
+
+
+class _Conv(ctypes.Structure):
+    _fields_ = [('conv', _CONV), ('data', ctypes.c_void_p)]
+
+
+def pam_check(user, password):
+    """True only when PAM returns PAM_SUCCESS (0). Any error, exception or odd answer is a failed attempt."""
+    if TEST:
+        time.sleep(0.4)
+        return password == 'mwx7'
+    try:
+        pam = ctypes.CDLL(ctypes.util.find_library('pam') or 'libpam.so.0')
+        libc = ctypes.CDLL(ctypes.util.find_library('c') or 'libc.so.6')
+        libc.calloc.restype = ctypes.c_void_p
+        libc.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+        libc.strdup.restype = ctypes.c_void_p
+        libc.strdup.argtypes = [ctypes.c_char_p]
+        pam.pam_start.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(_Conv), ctypes.POINTER(ctypes.c_void_p)]
+        pam.pam_authenticate.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        pam.pam_end.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        secret = password.encode()
+
+        def talk(n, msgs, out, _data):
+            arr = libc.calloc(n, ctypes.sizeof(_Resp))
+            if not arr:
+                return 19  # PAM_BUF_ERR
+            resp = ctypes.cast(arr, ctypes.POINTER(_Resp))
+            for i in range(n):
+                if msgs[i].contents.style in (1, 2):  # PAM_PROMPT_ECHO_OFF / ECHO_ON: the password
+                    resp[i].resp = libc.strdup(secret)
+            out[0] = resp
+            return 0
+        conv = _Conv(_CONV(talk), None)
+        service = 'mwx7-lock' if os.path.exists('/etc/pam.d/mwx7-lock') else 'swaylock'
+        handle = ctypes.c_void_p()
+        if pam.pam_start(service.encode(), user.encode(), ctypes.byref(conv), ctypes.byref(handle)) != 0:
+            return False
+        rc = pam.pam_authenticate(handle, 0)
+        pam.pam_end(handle, rc)
+        return rc == 0
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------- facts about the machine
+def soft_rendering():
+    """Same test as mwx7-perf: VMware's vmwgfx or no real GPU means no blur (the processor would draw it)."""
+    try:
+        names = {os.path.basename(os.path.realpath(d)) for d in glob.glob('/sys/class/drm/card*/device/driver')}
+    except OSError:
+        return True
+    return not names or bool(names & {'vmwgfx', 'virtio_gpu', 'vboxvideo', 'bochs-drm', 'bochs', 'qxl', 'cirrus'})
+
+
+def read(path, default=''):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def battery():
+    """(percent, charging) or None on a desktop PC."""
+    for d in sorted(glob.glob('/sys/class/power_supply/BAT*')):
+        cap = read(d + '/capacity')
+        if cap.isdigit():
+            return int(cap), read(d + '/status') in ('Charging', 'Full')
+    return None
+
+
+def network_icon():
+    up = [n for n in os.listdir('/sys/class/net') if n != 'lo' and read(f'/sys/class/net/{n}/operstate') == 'up'] \
+        if os.path.isdir('/sys/class/net') else []
+    if not up:
+        return 'network-offline-symbolic'
+    return 'network-wireless-symbolic' if os.path.isdir(f'/sys/class/net/{up[0]}/wireless') else 'network-wired-symbolic'
+
+
+def notification_count():
+    """How many notifications mako holds. Only the number is read; no summary or body is kept."""
+    try:
+        out = subprocess.run(['makoctl', 'list'], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    try:
+        ids = set()
+
+        def walk(x):
+            if isinstance(x, dict) and 'id' in x:
+                ids.add(str(x['id']))
+            elif isinstance(x, dict):
+                [walk(v) for v in x.values()]
+            elif isinstance(x, list):
+                [walk(v) for v in x]
+        walk(json.loads(out))
+        return len(ids)
+    except ValueError:
+        return len(re.findall(r'^Notification \d+:', out, re.M))
+
+
+def layouts():
+    """The keyboard layouts from the Wayfire config (xkb_layout = us,ro): shown as "EN" / "RO"."""
+    for p in (os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'mwx7/wayfire.ini'),
+              '/etc/mwx7/wayfire.ini'):
+        m = re.search(r'^\s*xkb_layout\s*=\s*(\S+)', read(p), re.M)
+        if m:
+            return [x.strip().upper()[:2] for x in m.group(1).split(',') if x.strip()]
+    return ['US']
+
+
+USER = pwd.getpwuid(os.getuid())
+NAME = (USER.pw_gecos or '').split(',')[0].strip() or USER.pw_name.capitalize()
+PIC = f'/var/lib/AccountsService/icons/{USER.pw_name}'
+if not os.access(PIC, os.R_OK):
+    PIC = '/usr/share/mwx7/avatars/03-guitar.jpg'
+WALL = read(os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')), 'mwx7/wallpaper'))
+if not os.path.isfile(WALL):
+    WALL = '/usr/share/mwx7/wallpaper.jpg'
+CLOCK24 = True
+try:
+    CLOCK24 = json.load(open(os.path.join(os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
+                                          'mwx7/shell.json'))).get('clock24', True) is not False
+except (OSError, ValueError, AttributeError):
+    pass
+
+CSS = b'''
+.lock-clock { font-family: Selawik, sans-serif; font-weight: 200; font-size: 104px; color: white;
+  text-shadow: 0 2px 14px rgba(0,20,60,0.55); }
+.lock-date { font-family: Selawik, sans-serif; font-size: 26px; color: white; text-shadow: 0 1px 8px rgba(0,20,60,0.6); }
+.lock-name { font-family: Selawik, sans-serif; font-size: 26px; color: white; text-shadow: 0 1px 8px rgba(0,20,60,0.6); }
+.lock-hint { font-family: Selawik, sans-serif; font-size: 14px; color: rgba(255,255,255,0.85);
+  text-shadow: 0 1px 4px rgba(0,20,60,0.6); }
+.lock-error { font-family: Selawik, sans-serif; font-size: 14px; color: #fff; background: rgba(176,32,32,0.82);
+  border-radius: 4px; padding: 3px 12px; }
+.lock-pw { min-width: 230px; min-height: 30px; padding: 0 10px; font-family: Selawik, sans-serif; font-size: 15px;
+  border-radius: 3px; border: 1px solid rgba(255,255,255,0.75); background: rgba(255,255,255,0.92); color: #10243d; }
+.lock-pw.wrong { background: #ffe4e4; border-color: #d94a4a; }
+.lock-go { min-width: 32px; min-height: 32px; padding: 0; border-radius: 3px; color: white; border: 1px solid #1d4f91;
+  background-image: linear-gradient(#5aa6ee, #2a6fcf); box-shadow: none; text-shadow: none; }
+.lock-go:hover { background-image: linear-gradient(#7ec0ff, #3b8be6); }
+.lock-reveal { opacity: 0; transition: opacity 220ms ease-out; }
+.lock-reveal.shown { opacity: 1; }
+.lock-bottom { font-family: Selawik, sans-serif; color: white; text-shadow: 0 1px 4px rgba(0,20,60,0.7); }
+.lock-pill { font-size: 12px; font-weight: bold; padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.22); }
+.lock-power { min-height: 26px; padding: 0 12px; border-radius: 3px; color: white; font-family: Selawik, sans-serif;
+  border: 1px solid rgba(255,255,255,0.55); background-image: linear-gradient(rgba(255,255,255,0.28), rgba(255,255,255,0.1));
+  box-shadow: none; text-shadow: 0 1px 3px rgba(0,20,60,0.6); }
+.lock-power:hover { background-image: linear-gradient(rgba(255,255,255,0.42), rgba(255,255,255,0.2)); }
+.lock-power.sure { background-image: linear-gradient(#e86a5a, #c0392b); border-color: #8c2a20; }
+'''
+
+# What the power buttons run: the same commands as the shell's power menu.
+POWER = [('Sleep', 'weather-clear-night-symbolic', ['systemctl', 'suspend']),
+         ('Restart', 'view-refresh-symbolic', ['systemctl', 'reboot']),
+         ('Shut down', 'system-shutdown-symbolic', ['systemctl', 'poweroff'])]
+
+
+class Locker:
+    def __init__(self):
+        self.panels = []
+        self.lock = None
+        self.group = 0
+        self.busy = False
+        self.shown = False
+        self.blur = not soft_rendering()
+        self.wall = self.load_wall()
+        self.pic = GdkPixbuf.Pixbuf.new_from_file_at_scale(PIC, 128, 128, False) if os.path.exists(PIC) else None
+        self.layouts = layouts()
+        self.notes = 0
+        self.hide_id = 0
+        prov = Gtk.CssProvider()
+        prov.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    def load_wall(self):
+        try:
+            pb = GdkPixbuf.Pixbuf.new_from_file(WALL)
+        except GLib.Error:
+            return None
+        if self.blur:
+            # Once, at start: shrink and stretch back. Cheap, and only where a real GPU shows the result.
+            w, h = pb.get_width(), pb.get_height()
+            pb = pb.scale_simple(max(1, w // 14), max(1, h // 14), GdkPixbuf.InterpType.BILINEAR)
+            pb = pb.scale_simple(w, h, GdkPixbuf.InterpType.BILINEAR)
+        return pb
+
+    # --- windows
+    def start(self):
+        display = Gdk.Display.get_default()
+        if TEST:
+            self.add_panel(None)
+            self.tick()
+            return
+        gi_lock = __import__('gi.repository.GtkSessionLock', fromlist=['x'])
+        if not gi_lock.is_supported():
+            ready(False)
+            sys.exit(3)
+        self.lock = gi_lock.prepare_lock()
+        self.lock.connect('locked', self.on_locked)
+        self.lock.connect('finished', self.on_finished)
+        self.lock.lock_lock()
+        for i in range(display.get_n_monitors()):
+            self.add_panel(display.get_monitor(i))
+        display.connect('monitor-added', lambda _d, m: (self.add_panel(m), self.tick()))
+        self.tick()
+
+    def on_locked(self, _lock):
+        ready(True)
+
+    def on_finished(self, _lock):
+        # The compositor ended the lock without our unlock (or never granted it). Never pretend to be unlocked.
+        ready(False)
+        Gtk.main_quit()
+        sys.exit(3)
+
+    def add_panel(self, monitor):
+        p = Panel(self, monitor)
+        self.panels.append(p)
+
+    def unlock(self):
+        """The only way out, called only after pam_check() succeeded."""
+        if self.lock is not None:
+            self.lock.unlock_and_destroy()
+            Gdk.Display.get_default().sync()
+        Gtk.main_quit()
+
+    # --- periodic: once a minute, on the minute
+    def tick(self):
+        t = time.localtime()
+        clock = time.strftime('%H:%M' if CLOCK24 else '%I:%M', t)
+        if not CLOCK24:
+            clock = clock.lstrip('0')
+        date = time.strftime('%A, %-d %B', t)
+        bat, net = battery(), network_icon()
+        for p in self.panels:
+            p.set_time(clock, date)
+            p.set_status(bat, net)
+        threading.Thread(target=self.count_notes, daemon=True).start()
+        GLib.timeout_add_seconds(max(1, 60 - t.tm_sec), self.tick_again)
+
+    def tick_again(self):
+        self.tick()
+        return False
+
+    def count_notes(self):
+        n = notification_count()
+        GLib.idle_add(lambda: [p.set_notes(n) for p in self.panels] and False)
+
+    # --- login
+    def reveal(self, panel, first=''):
+        self.shown = True
+        for p in self.panels:
+            p.set_revealed(True)
+        panel.entry.grab_focus()
+        if first:
+            panel.entry.set_text(first)
+            panel.entry.set_position(-1)
+        self.arm_hide()
+
+    def arm_hide(self):
+        if self.hide_id:
+            GLib.source_remove(self.hide_id)
+        self.hide_id = GLib.timeout_add_seconds(20, self.hide)
+
+    def hide(self):
+        self.hide_id = 0
+        if not self.busy:
+            self.shown = False
+            for p in self.panels:
+                p.entry.set_text('')
+                p.set_revealed(False)
+                p.set_message('')
+        return False
+
+    def submit(self, panel):
+        if self.busy:
+            return
+        pw = panel.entry.get_text()
+        self.busy = True
+        for p in self.panels:
+            p.entry.set_sensitive(False)
+            p.set_message('')
+        panel.entry.set_text('')
+
+        def work():
+            ok = pam_check(USER.pw_name, pw)
+            GLib.idle_add(self.done, panel, ok)
+        threading.Thread(target=work, daemon=True).start()
+
+    def done(self, panel, ok):
+        if ok is True:
+            self.unlock()
+            return False
+        self.busy = False
+        for p in self.panels:
+            p.entry.set_sensitive(True)
+            p.set_message('The password is incorrect')
+            p.entry.get_style_context().add_class('wrong')
+        panel.entry.grab_focus()
+        panel.shake()
+        self.arm_hide()
+        return False
+
+
+class Panel(Gtk.Window):
+    def __init__(self, app, monitor):
+        super().__init__()
+        self.app = app
+        self.set_decorated(False)
+        self.set_app_paintable(True)
+        self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.KEY_PRESS_MASK)
+        self.connect('key-press-event', self.on_key)
+        self.connect('button-press-event', self.on_click)
+        if monitor is not None:
+            geo = monitor.get_geometry()
+            self.set_default_size(geo.width, geo.height)
+            app.lock.new_surface(self, monitor)
+        else:
+            self.set_default_size(1280, 760)
+        self.area = Gtk.DrawingArea()
+        self.area.connect('draw', self.draw_bg)
+        over = Gtk.Overlay()
+        over.add(self.area)
+        self.add(over)
+
+        def label(css, text=''):
+            lb = Gtk.Label(label=text)
+            lb.get_style_context().add_class(css)
+            return lb
+        top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.START, halign=Gtk.Align.CENTER, margin_top=70)
+        self.clock = label('lock-clock')
+        self.date = label('lock-date')
+        top.pack_start(self.clock, False, False, 0)
+        top.pack_start(self.date, False, False, 0)
+        over.add_overlay(top)
+
+        mid = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER,
+                      margin_top=170)
+        self.avatar = Gtk.DrawingArea()
+        self.avatar.set_size_request(144, 144)
+        self.avatar.connect('draw', self.draw_avatar)
+        mid.pack_start(self.avatar, False, False, 0)
+        mid.pack_start(label('lock-name', NAME), False, False, 0)
+        self.row = Gtk.Box(spacing=4, halign=Gtk.Align.CENTER)
+        self.entry = Gtk.Entry(visibility=False, placeholder_text='Password', width_chars=18)
+        self.entry.get_style_context().add_class('lock-pw')
+        self.entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+        self.entry.connect('activate', lambda _e: app.submit(self))
+        self.entry.connect('changed', self.on_changed)
+        go = Gtk.Button.new_from_icon_name('go-next-symbolic', Gtk.IconSize.BUTTON)
+        go.get_style_context().add_class('lock-go')
+        go.set_can_focus(False)
+        go.connect('clicked', lambda _b: app.submit(self))
+        self.row.pack_start(self.entry, False, False, 0)
+        self.row.pack_start(go, False, False, 0)
+        self.slot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, halign=Gtk.Align.CENTER)
+        self.row.get_style_context().add_class('lock-reveal')
+        self.slot.pack_start(self.row, False, False, 0)
+        self.msg = label('lock-hint', 'Press any key or click to unlock')
+        self.slot.pack_start(self.msg, False, False, 0)
+        mid.pack_start(self.slot, False, False, 0)
+        over.add_overlay(mid)
+        self.row.set_sensitive(False)
+
+        bottom = Gtk.Box(spacing=14, valign=Gtk.Align.END, margin=20)
+        bottom.get_style_context().add_class('lock-bottom')
+        self.notes = Gtk.Box(spacing=6, halign=Gtk.Align.START)
+        self.notes.pack_start(Gtk.Image.new_from_icon_name('preferences-system-notifications-symbolic', Gtk.IconSize.MENU),
+                              False, False, 0)
+        self.notes_label = Gtk.Label()
+        self.notes.pack_start(self.notes_label, False, False, 0)
+        bottom.pack_start(self.notes, False, False, 0)
+        right = Gtk.Box(spacing=12, halign=Gtk.Align.END, hexpand=True)
+        self.layout = label('lock-pill', app.layouts[0])
+        self.net = Gtk.Image()
+        self.bat = Gtk.Box(spacing=4)
+        self.bat_icon = Gtk.Image()
+        self.bat_text = Gtk.Label()
+        self.bat.pack_start(self.bat_icon, False, False, 0)
+        self.bat.pack_start(self.bat_text, False, False, 0)
+        for w in (self.layout, self.net, self.bat):
+            right.pack_start(w, False, False, 0)
+        self.sure = None
+        self.sure_id = 0
+        self.names = {}
+        for text, icon, cmd in POWER:
+            b = Gtk.Button()
+            box = Gtk.Box(spacing=6)
+            box.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU), False, False, 0)
+            box.pack_start(Gtk.Label(label=text), False, False, 0)
+            b.add(box)
+            b.set_can_focus(False)
+            self.names[b] = text
+            b.get_style_context().add_class('lock-power')
+            b.connect('clicked', self.power, text, cmd)
+            right.pack_start(b, False, False, 0)
+        bottom.pack_start(right, True, True, 0)
+        over.add_overlay(bottom)
+        self.show_all()
+        self.set_notes(0)
+        self.net.set_visible(True)
+
+    # --- drawing
+    def draw_bg(self, w, c):
+        W, H = w.get_allocated_width(), w.get_allocated_height()
+        pb = self.app.wall
+        if pb is None:
+            c.set_source_rgb(0.1, 0.25, 0.5)
+            c.paint()
+            return
+        k = max(W / pb.get_width(), H / pb.get_height())
+        c.save()
+        c.translate((W - pb.get_width() * k) / 2, (H - pb.get_height() * k) / 2)
+        c.scale(k, k)
+        Gdk.cairo_set_source_pixbuf(c, pb, 0, 0)
+        c.paint()
+        c.restore()
+        c.set_source_rgba(0, 0.06, 0.18, 0.28)  # keeps white text readable on bright wallpapers
+        c.paint()
+
+    def draw_avatar(self, w, c):
+        x, y, s = 8, 4, 128
+        for i in range(8, 0, -1):
+            c.set_source_rgba(0, 0.08, 0.24, 0.04)
+            self.round(c, x - 5 - i, y - 5 - i + 4, s + 10 + 2 * i, s + 10 + 2 * i, 9 + i)
+            c.fill()
+        c.set_source_rgba(1, 1, 1, 0.92)
+        self.round(c, x - 5, y - 5, s + 10, s + 10, 9)
+        c.fill()
+        if self.app.pic:
+            c.save()
+            self.round(c, x, y, s, s, 4)
+            c.clip()
+            Gdk.cairo_set_source_pixbuf(c, self.app.pic, x, y)
+            c.paint()
+            c.restore()
+
+    @staticmethod
+    def round(c, x, y, w, h, r):
+        c.new_sub_path()
+        c.arc(x + w - r, y + r, r, -1.5708, 0)
+        c.arc(x + w - r, y + h - r, r, 0, 1.5708)
+        c.arc(x + r, y + h - r, r, 1.5708, 3.1416)
+        c.arc(x + r, y + r, r, 3.1416, 4.7124)
+        c.close_path()
+
+    # --- state setters
+    def set_time(self, clock, date):
+        self.clock.set_label(clock)
+        self.date.set_label(date)
+
+    def set_status(self, bat, net):
+        self.net.set_from_icon_name(net, Gtk.IconSize.MENU)
+        self.bat.set_visible(bat is not None)
+        if bat:
+            level = min(100, (bat[0] + 5) // 10 * 10)
+            self.bat_icon.set_from_icon_name(f'battery-level-{level}{"-charging" if bat[1] else ""}-symbolic', Gtk.IconSize.MENU)
+            self.bat_text.set_label(f'{bat[0]}%')
+
+    def set_notes(self, n):
+        self.notes.set_visible(n > 0)
+        self.notes_label.set_label('1 notification' if n == 1 else f'{n} notifications')
+
+    def set_revealed(self, on):
+        ctx = self.row.get_style_context()
+        (ctx.add_class if on else ctx.remove_class)('shown')
+        self.row.set_sensitive(on)
+        if not self.msg.get_style_context().has_class('lock-error'):
+            self.set_message('')
+
+    def set_message(self, text):
+        ctx = self.msg.get_style_context()
+        ctx.remove_class('lock-error' if not text else 'lock-hint')
+        ctx.add_class('lock-error' if text else 'lock-hint')
+        self.msg.set_label(text or ('' if self.app.shown else 'Press any key or click to unlock'))
+
+    def on_changed(self, _e):
+        self.entry.get_style_context().remove_class('wrong')
+
+    def shake(self):
+        steps = [-14, 14, -10, 10, -6, 6, -2, 2, 0]
+        it = iter(steps)
+
+        def frame():
+            dx = next(it, None)
+            if dx is None:
+                self.row.set_margin_start(0)
+                self.row.set_margin_end(0)
+                return False
+            self.row.set_margin_start(max(0, dx) * 2)
+            self.row.set_margin_end(max(0, -dx) * 2)
+            return True
+        GLib.timeout_add(45, frame)
+
+    # --- input
+    def on_key(self, _w, ev):
+        # The keyboard group says which layout is active; show it.
+        if ev.group < len(self.app.layouts):
+            for p in self.app.panels:
+                p.layout.set_label(self.app.layouts[ev.group])
+        if not self.app.shown:
+            ch = ev.string if ev.string and ev.string.isprintable() and ev.keyval != Gdk.KEY_space else ''
+            self.app.reveal(self, ch)
+            return True
+        if ev.keyval == Gdk.KEY_Escape and not self.app.busy:
+            self.app.hide()
+            return True
+        self.app.arm_hide()
+        if not self.entry.has_focus():
+            self.entry.grab_focus()
+        return False
+
+    def on_click(self, _w, _ev):
+        if not self.app.shown:
+            self.app.reveal(self)
+        return False
+
+    def power(self, btn, text, cmd):
+        # Shut down and Restart need a second click: one stray click on a lock screen must not end someone's work.
+        if text != 'Sleep' and self.sure is not btn:
+            self.cancel_sure()
+            self.sure = btn
+            btn.get_style_context().add_class('sure')
+            btn.get_child().get_children()[1].set_label('Click again')
+            self.sure_id = GLib.timeout_add_seconds(4, self.cancel_sure)
+            return
+        self.cancel_sure()
+        if not TEST:
+            subprocess.Popen(cmd)
+
+    def cancel_sure(self):
+        if self.sure is not None:
+            self.sure.get_style_context().remove_class('sure')
+            self.sure.get_child().get_children()[1].set_label(self.names[self.sure])
+            self.sure = None
+        if self.sure_id:
+            GLib.source_remove(self.sure_id)
+            self.sure_id = 0
+        return False
+
+
+def main():
+    app = Locker()
+    app.start()
+    Gtk.main()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

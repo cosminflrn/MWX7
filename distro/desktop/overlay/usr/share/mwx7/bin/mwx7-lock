@@ -1,20 +1,8 @@
 #!/bin/sh
-# Locks the screen. Looks like the MWX 7 logon screen: the background is drawn by
-# mwx7-lock-image (wallpaper, picture, name); swaylock adds only the password ring where the logon's field is.
+# Locks the screen with mwx7-lockscreen (ext-session-lock client: clock, picture, password field, power buttons).
+# It returns once the screen is locked. If it cannot lock (exit 3, e.g. the GTK session-lock library is missing), the
+# old swaylock screen is the fallback, so the screen never stays unlocked because of a missing piece.
 pgrep -u "$(id -u)" -x swaylock >/dev/null && exit 0
-WP=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/wallpaper" 2>/dev/null)
-[ -f "$WP" ] || WP=/usr/share/mwx7/wallpaper.jpg
-SIZE=$(wlr-randr --json 2>/dev/null | python3 -c 'import json,sys
-for o in json.load(sys.stdin):
-    m = next((m for m in o.get("modes", []) if m.get("current")), None)
-    if o.get("enabled") and m:
-        s = float(o.get("scale", 1)); print(int(m["width"] / s), int(m["height"] / s)); break' 2>/dev/null)
-IMG=$(/usr/share/mwx7/bin/mwx7-lock-image ${SIZE:-1920 1080} "$WP" 2>/dev/null) || IMG=$WP
-H=${SIZE#* }; H=${H:-1080}
-exec swaylock -f -i "$IMG" -s fill --indicator-idle-visible --indicator-y-position $((H / 2 + 75)) \
-  --font Selawik --font-size 15 --indicator-radius 34 --indicator-thickness 6 \
-  --inside-color ffffffdd --ring-color 3b8be6ff --key-hl-color 9fd8ffff --bs-hl-color e8b84aff \
-  --line-color 00000000 --separator-color 00000000 --text-color 10243dff \
-  --inside-ver-color ffffffdd --ring-ver-color 7fc1ffff --text-ver-color 10243dff --line-ver-color 00000000 \
-  --inside-wrong-color ffe4e4ee --ring-wrong-color d94a4aff --text-wrong-color 7a1010ff --line-wrong-color 00000000 \
-  --inside-clear-color ffffffdd --ring-clear-color e8b84aff --text-clear-color 10243dff --line-clear-color 00000000
+pgrep -u "$(id -u)" -f '[m]wx7-lockscreen' >/dev/null && exit 0
+/usr/share/mwx7/bin/mwx7-lockscreen && exit 0
+exec /usr/share/mwx7/bin/mwx7-lock-swaylock
