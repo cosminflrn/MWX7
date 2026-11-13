@@ -1,5 +1,6 @@
-# MWX 7 boot splash (Plymouth script). Deep blue gradient, the orb and "MWX 7" in the middle, five dots that pulse
-# in a wave underneath while the system starts.
+# MWX 7 boot splash (Plymouth script). Deep blue gradient, the orb and "MWX 7" in the middle: the orb fades and grows
+# into place, a light halo breathes around it, and five dots pulse in a wave underneath while the system starts.
+# The disk password prompt (encrypted installs) is drawn here too, so no text console ever shows over the splash.
 
 Window.SetBackgroundTopColor(0.02, 0.06, 0.16);
 Window.SetBackgroundBottomColor(0.05, 0.17, 0.36);
@@ -7,6 +8,10 @@ Window.SetBackgroundBottomColor(0.05, 0.17, 0.36);
 orb_src = Image("orb.png");
 title_src = Image("title.png");
 dot = Image("dot.png");
+glow_src = Image("glow.png");
+glow_sprite = Sprite();
+glow_sprite.SetZ(5);
+glow_sprite.SetOpacity(0);
 orb_sprite = Sprite();
 orb_sprite.SetZ(10);
 title_sprite = Sprite();
@@ -32,6 +37,11 @@ fun layout()
   orb_sprite.SetImage(orb_src.Scale(size, size));
   orb_sprite.SetX(sw / 2 - size / 2);
   orb_sprite.SetY(sh / 2 - size / 2 - sh / 14);
+  # The halo is 2.4x the orb, centred on it.
+  global.gsize = Math.Int(size * 12 / 5);
+  glow_sprite.SetImage(glow_src.Scale(gsize, gsize));
+  glow_sprite.SetX(sw / 2 - gsize / 2);
+  glow_sprite.SetY(orb_sprite.GetY() + size / 2 - gsize / 2);
   global.tw = Math.Int(title_src.GetWidth() * size / 200);
   global.th = Math.Int(title_src.GetHeight() * size / 200);
   title_sprite.SetImage(title_src.Scale(tw, th));
@@ -52,14 +62,25 @@ fun refresh_callback()
   # About 50 refreshes a second: a soft wave travels left to right every ~1.6 s.
   t++;
   if (Window.GetWidth() != sw || Window.GetHeight() != sh) layout();
-  for (i = 0; i < dots; i++)
+  for (i = 0; i < dots && !prompting; i++)
   {
     phase = (t / 80 - i / dots) % 1;
     if (phase < 0) phase += 1;
     glow = Math.Max(0.15, 1 - Math.Abs(phase - 0.5) * 3.2);
     d[i].SetOpacity(glow);
   }
+  # The orb grows from 85 % to full size over the first 0.8 s while it fades in (rescaling only then keeps it cheap),
+  # then the halo breathes slowly (a ~3 s cycle).
+  if (t <= 40)
+  {
+    k = 0.85 + 0.15 * (1 - (1 - t / 40) * (1 - t / 40));
+    s2 = Math.Int(size * k);
+    orb_sprite.SetImage(orb_src.Scale(s2, s2));
+    orb_sprite.SetX(sw / 2 - s2 / 2);
+    orb_sprite.SetY(sh / 2 - s2 / 2 - sh / 14 + (size - s2) / 2);
+  }
   orb_sprite.SetOpacity(Math.Min(1, t / 40));
+  glow_sprite.SetOpacity(Math.Min(1, t / 60) * (0.55 + 0.35 * Math.Sin(t / 24)));
   title_sprite.SetOpacity(Math.Min(1, t / 60));
 }
 Plymouth.SetRefreshFunction(refresh_callback);
@@ -67,11 +88,71 @@ Plymouth.SetRefreshFunction(refresh_callback);
 # Messages (e.g. disk checks) appear small under the dots instead of on a text console.
 message_sprite = Sprite();
 message_sprite.SetZ(10);
+last_message = "";
 fun message_callback(text)
 {
+  if (text == last_message) return;
+  last_message = text;
   img = Image.Text(text, 0.75, 0.85, 1.0);
   message_sprite.SetImage(img);
   message_sprite.SetX(sw / 2 - img.GetWidth() / 2);
   message_sprite.SetY(y + 40);
 }
 Plymouth.SetMessageFunction(message_callback);
+
+# Disk password (encrypted installs): a frosted box under the title with one bullet per typed character. The dots step
+# aside while it is showing. All sprites are made once and only shown/hidden, so nothing flickers while typing.
+entry_src = Image("entry.png");
+bullet_src = Image("bullet.png");
+entry_sprite = Sprite(entry_src);
+entry_sprite.SetZ(20);
+entry_sprite.SetOpacity(0);
+prompt_sprite = Sprite();
+prompt_sprite.SetZ(20);
+max_bullets = 20;
+for (i = 0; i < max_bullets; i++)
+{
+  bul[i] = Sprite(bullet_src);
+  bul[i].SetZ(21);
+  bul[i].SetOpacity(0);
+}
+prompting = 0;
+last_prompt = "";
+
+fun show_prompt(text, bullets)
+{
+  if (!prompting) { prompting = 1; for (i = 0; i < dots; i++) d[i].SetOpacity(0); }
+  ex = sw / 2 - entry_src.GetWidth() / 2;
+  ey = y + 10;
+  entry_sprite.SetPosition(ex, ey, 20);
+  entry_sprite.SetOpacity(1);
+  if (text != last_prompt)
+  {
+    last_prompt = text;
+    pimg = Image.Text(text, 0.86, 0.93, 1.0);
+    prompt_sprite.SetImage(pimg);
+    prompt_sprite.SetX(sw / 2 - pimg.GetWidth() / 2);
+    prompt_sprite.SetY(ey - pimg.GetHeight() - 8);
+  }
+  prompt_sprite.SetOpacity(1);
+  shown = Math.Min(bullets, max_bullets);
+  bw = 16;
+  for (i = 0; i < max_bullets; i++)
+  {
+    if (i < shown)
+    {
+      bul[i].SetPosition(sw / 2 - shown * bw / 2 + i * bw, ey + 13, 21);
+      bul[i].SetOpacity(1);
+    }
+    else bul[i].SetOpacity(0);
+  }
+}
+fun hide_prompt()
+{
+  prompting = 0;
+  entry_sprite.SetOpacity(0);
+  prompt_sprite.SetOpacity(0);
+  for (i = 0; i < max_bullets; i++) bul[i].SetOpacity(0);
+}
+Plymouth.SetDisplayPasswordFunction(show_prompt);
+Plymouth.SetDisplayNormalFunction(hide_prompt);
