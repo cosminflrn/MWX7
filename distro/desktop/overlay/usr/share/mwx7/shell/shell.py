@@ -570,9 +570,8 @@ class Shell(Gtk.Application):
         what = os.environ.get('MWX7_SHELL_OPEN')
         if what == 'search':
             GLib.timeout_add(1500, lambda: self.open_search() and False)
-        if what in ('start', 'calendar', 'system'):
-            btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn,
-                   'system': lambda: self.orb_button}[what]()
+        if what in ('start', 'calendar'):
+            btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn}[what]()
             GLib.timeout_add(1500, lambda: btn.popup() and False)
 
     def apply_tint(self):
@@ -623,13 +622,14 @@ class Shell(Gtk.Application):
         Layer.set_keyboard_mode(w, Layer.KeyboardMode.ON_DEMAND)
         box = Gtk.CenterBox()
         left = Gtk.Box(spacing=8)
-        orb = Gtk.MenuButton()
+        # The orb is the bar's emblem, not a button (Cosmin's rule): power, Settings and Search have their own places
+        # (Start menu, dock, the icons on the right), and the app menu holds About.
+        orb = Gtk.Box()
         orb.add_css_class('orb')
         orb_img = Gtk.Image.new_from_file(os.path.join(ICONS, 'orb.png'))
         orb_img.set_pixel_size(22)
-        orb.set_child(orb_img)
-        orb.set_popover(self.build_system_menu())
-        self.orb_button, self.orb_img = orb, orb_img
+        orb.append(orb_img)
+        self.orb_button, self.orb_img = None, orb_img
         left.append(orb)
         # The focused app's name, a menu as on the web: Minimize, Full Screen, Close (Personalize and About on the desktop).
         self.title = Gtk.Label(label='Desktop')
@@ -643,6 +643,12 @@ class Shell(Gtk.Application):
         self.app_pop.connect('show', lambda *_: self.fill_app_menu())
         app_btn.set_popover(self.app_pop)
         left.append(app_btn)
+        # The focused app's own menus (File, Edit...), as on the web and a Mac: MWX 7's apps publish them on the
+        # session bus (GtkApplication menubar + actions) and the bar shows them here, not in their windows.
+        self.app_menus = Gtk.Box()
+        self.app_menus.add_css_class('app-menus')
+        self.menus_for = None
+        left.append(self.app_menus)
         right = Gtk.Box(spacing=10)
         # Updates waiting: a quiet icon (no pop-ups); click for Settings -> Updates. Shut Down and Restart also offer them.
         self.upd_btn = Gtk.Button(visible=False)
@@ -1415,6 +1421,7 @@ class Shell(Gtk.Application):
         focused = next((v for v in apps_windows(self.views) if v.get('activated') and not v.get('minimized')), None)
         self.focused_view = focused
         self.title.set_label(self.app_label(focused) if focused else 'Desktop')
+        self.show_app_menus((focused or {}).get('app-id') or '')
         full = bool(focused and (focused.get('tiled-edges') == 15 or focused.get('maximized')))
         self.wc.set_visible(full)
         self.bar.add_css_class('fs') if full else self.bar.remove_css_class('fs')
@@ -1595,6 +1602,24 @@ class Shell(Gtk.Application):
         w.present()
         return False
 
+    def show_app_menus(self, app_id):
+        if app_id == self.menus_for:
+            return
+        self.menus_for = app_id
+        while (c := self.app_menus.get_first_child()) is not None:
+            self.app_menus.remove(c)
+        if not app_id.startswith('org.mwx7.'):
+            return
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            path = '/' + app_id.replace('.', '/')
+            model = Gio.DBusMenuModel.get(bus, app_id, path + '/menus/menubar')
+            bar = Gtk.PopoverMenuBar.new_from_model(model)
+            bar.insert_action_group('app', Gio.DBusActionGroup.get(bus, app_id, path))
+            self.app_menus.append(bar)
+        except GLib.Error:
+            pass
+
     def fill_app_menu(self):
         pop, v = self.app_pop, getattr(self, 'focused_view', None)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1618,7 +1643,7 @@ class Shell(Gtk.Application):
             sep()
             item(f'Close {name}', lambda: self.act('window-rules/close-view', {'id': vid}))
         else:
-            item('Personalize…', lambda: self.launch([SETTINGS, '--page', 'themes']))
+            item('Personalize…', lambda: self.launch([SETTINGS, '--page', 'wallpapers']))
             item('About MWX 7', lambda: self.launch(ABOUT))
         pop.set_child(col)
 

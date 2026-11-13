@@ -54,13 +54,14 @@ case "$1" in
   install)
     do_install ;;
   needs-restart)
-    # Only what a running session cannot pick up by itself: the kernel, the C library, init, the graphics stack,
-    # the compositor, the login screen and the splash; everything else is fine until the next restart.
+    # Only what a running session cannot pick up by itself: MWX 7's own desktop (frames, bar, dock and apps run
+    # from it all session long), the kernel, the C library, init, the graphics stack, the compositor, the login
+    # screen and the splash.
     if [ -e /run/reboot-required ]; then echo yes; exit 0; fi
     newest=$(ls /boot/vmlinuz-* 2>/dev/null | sed 's|.*/vmlinuz-||' | sort -V | tail -n 1)
     if [ -n "$newest" ] && [ "$newest" != "$(uname -r)" ]; then echo yes; exit 0; fi
     if [ -s "$STATE/last-upgraded" ] && grep -Eq \
-      '^(libc6|systemd|udev|dbus|libgl1-mesa-dri|libegl-mesa0|wayfire|libwlroots.*|linux-image.*|greetd|plymouth|firmware-.*)$' \
+      '^(mwx7-desktop|libc6|systemd|udev|dbus|libgl1-mesa-dri|libegl-mesa0|wayfire|libwlroots.*|linux-image.*|greetd|plymouth|firmware-.*)$' \
       "$STATE/last-upgraded"; then echo yes; exit 0; fi
     echo no ;;
   offline)

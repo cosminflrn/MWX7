@@ -668,23 +668,15 @@ class DesktopIcon(Gtk.Box):
         lab = Gtk.Label(label=label, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
                         max_width_chars=11)
         self.append(lab)
-        # One drag gesture for the left button does it all: select on press, move on drag, open on a double click.
-        # (A separate click gesture claimed the press and stopped the drag.)
+        # The left button (select, double-click to open, drag to move) is handled by the desktop around the icons:
+        # measuring a drag on the widget that moves made it jitter.
         self.on_select, self.on_open, self.last_click = on_select, on_open, 0
-        self.drag = Gtk.GestureDrag(button=1)
-        self.drag.connect('drag-begin', self.pressed)
-        self.add_controller(self.drag)
         self.key = label
         # Right-click selects too, then bubbles up to the desktop's menu.
         r = Gtk.GestureClick()
         r.set_button(3)
         r.connect('pressed', lambda *_a: (setattr(self, 'right_at', GLib.get_monotonic_time()), on_select(self)))
         self.add_controller(r)
-
-    def pressed(self, gest, _x, _y):
-        # Claimed so the desktop's "click on empty space deselects" handler does not also fire.
-        gest.set_state(Gtk.EventSequenceState.CLAIMED)
-        self.on_select(self)
 
     def released(self, moved):
         now = GLib.get_monotonic_time()
@@ -756,11 +748,7 @@ class Desktop(Gtk.Application):
         for name, g in self.gadgets:
             g.set_visible(self.gadgets_on)
             self.fixed.put(g, 0, 0)
-            drag = Gtk.GestureDrag(button=1)
-            drag.connect('drag-begin', lambda gest, *_a: gest.set_state(Gtk.EventSequenceState.CLAIMED))
-            drag.connect('drag-update', lambda _g, dx, dy, n=name, w=g: self.gadget_drag(n, w, dx, dy))
-            drag.connect('drag-end', lambda _g, dx, dy, n=name, w=g: self.gadget_drop(n, w, dx, dy))
-            g.add_controller(drag)
+            g.gadget_name = name
         self.show_icons(self.cfg.get('icons', True) is not False)
         # Settings -> Desktop writes the same file: follow it (icons, gadgets, weather city) without a restart.
         self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
@@ -787,11 +775,15 @@ class Desktop(Gtk.Application):
             return True
         drop.connect('drop', dropped)
         self.fixed.add_controller(drop)
-        band = Gtk.GestureDrag(button=1)
-        band.connect('drag-begin', self.band_begin)
-        band.connect('drag-update', self.band_update)
-        band.connect('drag-end', self.band_end)
-        self.fixed.add_controller(band)
+        # One gesture on the desktop surface for the left button: on an icon it selects (double-click opens) and
+        # drags it; on a gadget it drags it; on empty space it draws the rubber band. Offsets are measured on the
+        # desktop, which never moves, so dragged things follow the pointer exactly.
+        press = Gtk.GestureDrag(button=1)
+        press.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        press.connect('drag-begin', self.press_begin)
+        press.connect('drag-update', self.press_update)
+        press.connect('drag-end', self.press_end)
+        self.fixed.add_controller(press)
         w.set_child(self.root)
         # Rows depend on the output height, which only arrives with the compositor's configure.
         w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, wd, h: self.layout(wd, h)))
@@ -860,16 +852,9 @@ class Desktop(Gtk.Application):
         for name, g in self.gadgets:
             self.fixed.move(g, *self.gadget_home(name))
 
-    def gadget_drag(self, name, g, dx, dy):
-        x, y = self.gadget_home(name)
-        self.fixed.move(g, x + dx, y + dy)
-
-    def gadget_drop(self, name, g, dx, dy):
-        if abs(dx) < 3 and abs(dy) < 3:
-            return
-        x, y = self.gadget_home(name)
-        x = max(0, min(self.width - GADGET_W, x + dx))
-        y = max(0, min(getattr(self, 'height', 600) - g.HEIGHT, y + dy))
+    def gadget_drop(self, name, g, x, y):
+        x = max(0, min(self.width - GADGET_W, x))
+        y = max(0, min(getattr(self, 'height', 600) - g.HEIGHT, y))
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
         at[name] = [int(self.width - x), int(y)]
         self.cfg['gadgets_at'] = at
@@ -906,25 +891,11 @@ class Desktop(Gtk.Application):
     def draggable(self, item, key):
         item.key = key
         item.set_visible(getattr(self, 'icons_on', True))
-        item.drag.connect('drag-update', lambda _g, dx, dy, it=item: self.icon_drag(it, dx, dy))
-        item.drag.connect('drag-end', lambda _g, dx, dy, it=item: self.icon_drop(it, dx, dy))
 
-    def icon_drag(self, item, dx, dy):
-        if abs(dx) < 5 and abs(dy) < 5 and not getattr(item, 'moving', False):
-            return
-        item.moving = True
+    def icon_drop(self, item, x, y):
         c, r = self.cells.get(item, (0, 0))
-        self.fixed.move(item, ORIGIN + c * self.cell_w + dx, ORIGIN + r * self.cell_h + dy)
-
-    def icon_drop(self, item, dx, dy):
-        moved = getattr(item, 'moving', False)
-        item.released(moved)
-        if not moved:
-            return
-        item.moving = False
-        c, r = self.cells.get(item, (0, 0))
-        nc = max(0, round((c * self.cell_w + dx) / self.cell_w))
-        nr = max(0, min(self.rows - 1, round((r * self.cell_h + dy) / self.cell_h)))
+        nc = max(0, round((x - ORIGIN) / self.cell_w))
+        nr = max(0, min(self.rows - 1, round((y - ORIGIN) / self.cell_h)))
         positions = self.cfg.get('positions') if isinstance(self.cfg.get('positions'), dict) else {}
         # Dropping on another icon swaps the two.
         for other, cell in self.cells.items():
@@ -1058,6 +1029,49 @@ class Desktop(Gtk.Application):
             item.add_css_class('selected')
 
     # -- rubber-band selection, as on the web (Windows 7): drag on empty space, the icons it touches get selected
+    def hit(self, x, y):
+        """The icon or gadget under a desktop point, if any."""
+        for w in list(self.icons) + [g for _n, g in getattr(self, 'gadgets', [])]:
+            if not w.get_visible():
+                continue
+            ok, b = w.compute_bounds(self.fixed)
+            if ok and b.get_x() <= x <= b.get_x() + b.get_width() and b.get_y() <= y <= b.get_y() + b.get_height():
+                return w
+        return None
+
+    def press_begin(self, _g, x, y):
+        self.grab = self.hit(x, y)
+        self.grab_moved = False
+        if self.grab is None:
+            self.band_begin(None, x, y)
+            return
+        ok, b = self.grab.compute_bounds(self.fixed)
+        self.grab_from = (b.get_x(), b.get_y()) if ok else (x, y)
+        if isinstance(self.grab, DesktopIcon):
+            self.select(self.grab)
+
+    def press_update(self, _g, dx, dy):
+        if self.grab is None:
+            self.band_update(None, dx, dy)
+            return
+        if not self.grab_moved and abs(dx) < 5 and abs(dy) < 5:
+            return
+        self.grab_moved = True
+        self.fixed.move(self.grab, self.grab_from[0] + dx, self.grab_from[1] + dy)
+
+    def press_end(self, _g, dx, dy):
+        w, self.grab = self.grab, None
+        if w is None:
+            self.band_end()
+            return
+        x, y = self.grab_from[0] + dx, self.grab_from[1] + dy
+        if isinstance(w, DesktopIcon):
+            w.released(self.grab_moved)
+            if self.grab_moved:
+                self.icon_drop(w, x, y)
+        elif self.grab_moved:
+            self.gadget_drop(w.gadget_name, w, x, y)
+
     def band_begin(self, _g, x, y):
         self.select(None)
         self.band_start = (x, y)
@@ -1092,7 +1106,7 @@ class Desktop(Gtk.Application):
     def desktop_click(self, gest, _n, x, y):
         button = gest.get_current_button()
         if button == 1:
-            self.select(None)
+            pass  # the desktop's own gesture selects or clears (press_begin)
         elif button == 3:
             self.menu(x, y)
 
@@ -1174,7 +1188,7 @@ class Desktop(Gtk.Application):
         row('Refresh', 'refresh', self.rebuild_icons)
         sep()
         row('Next Wallpaper', 'wallpaper', self.next_wallpaper)
-        row('Personalize…', 'settings', lambda: launch([SETTINGS, '--page', 'themes']))
+        row('Personalize…', 'settings', lambda: launch([SETTINGS, '--page', 'wallpapers']))
         sep()
         row('New Folder', 'new-folder', lambda: self.new_item(True))
         row('New Text Document', 'new-file', lambda: self.new_item(False))

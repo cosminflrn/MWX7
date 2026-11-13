@@ -19,6 +19,8 @@
 #include "wayfire/toplevel-view.hpp"
 #include "wayfire/toplevel.hpp"
 #include <wayfire/opengl.hpp>
+#include <wayfire/util/log.hpp>
+#include <wayfire/nonstd/wlroots-full.hpp>
 #include <cairo.h>
 #include <vector>
 #include <map>
@@ -337,7 +339,19 @@ class wayfire_decoration : public wf::plugin_interface_t
 
     bool should_decorate_view(wayfire_toplevel_view view)
     {
-        return view->should_be_decorated() && !ignore_decoration_of_view(view);
+        return (view->should_be_decorated() || wants_mwx7_frame(view)) && !ignore_decoration_of_view(view);
+    }
+
+    /**
+     * MWX 7's own GTK 4 apps ask for server-side frames the KDE way (GTK binds org_kde_kwin_server_decoration_manager,
+     * sees "server" as the default and draws no title bar), but never create a per-window object, so Wayfire counts
+     * them as client-decorated. Frame their main windows anyway. Windows with a parent are GTK's own message and file
+     * dialogs, which draw their own bar (MWX 7's small windows have none); Sticky Notes are frameless by design.
+     */
+    static bool wants_mwx7_frame(wayfire_toplevel_view view)
+    {
+        const std::string id = view->get_app_id();
+        return (id.rfind("org.mwx7.", 0) == 0) && (id != "org.mwx7.stickynotes") && !view->parent;
     }
 
     void adjust_new_decorations(wayfire_toplevel_view view)
