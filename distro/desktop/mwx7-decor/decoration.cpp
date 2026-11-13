@@ -189,98 +189,6 @@ class wayfire_decoration : public wf::plugin_interface_t
         return res;
     };
 
-    /**
-     * Aero Shake (Windows 7): shaking a window by its title bar minimizes every other window; shaking it again brings
-     * them back. A shake is four quick left-right turns of a moving (not resizing) window within a second.
-     */
-    struct shake_t
-    {
-        int dir = 0;
-        int last_x = 0;
-        std::vector<int64_t> turns;
-    };
-    std::map<wayfire_toplevel_view, shake_t> shakes;
-    std::vector<std::weak_ptr<wf::view_interface_t>> shaken_away;
-
-    wf::signal::connection_t<wf::view_geometry_changed_signal> on_geometry = [=] (wf::view_geometry_changed_signal *ev)
-    {
-        auto view = ev->view;
-        auto now  = view ? view->get_geometry() : wf::geometry_t{};
-        if (!view || (now.width != ev->old_geometry.width) || (now.height != ev->old_geometry.height) ||
-            view->pending_tiled_edges() || view->minimized)
-        {
-            return;
-        }
-
-        auto& st = shakes[view];
-        const int dx = now.x - ev->old_geometry.x;
-        if (std::abs(dx) < 6)
-        {
-            return;
-        }
-
-        const int dir = dx > 0 ? 1 : -1;
-        const int64_t t = wf::get_current_time();
-        if (st.dir && (dir != st.dir))
-        {
-            st.turns.push_back(t);
-        }
-
-        st.dir = dir;
-        while (!st.turns.empty() && (t - st.turns.front() > 1000))
-        {
-            st.turns.erase(st.turns.begin());
-        }
-
-        if (st.turns.size() >= 4)
-        {
-            st.turns.clear();
-            shake(view);
-        }
-    };
-
-    void shake(wayfire_toplevel_view keep)
-    {
-        bool restored = false;
-        for (auto& weak : shaken_away)
-        {
-            if (auto v = wf::toplevel_cast(weak.lock().get()))
-            {
-                if (v->minimized)
-                {
-                    wf::get_core().default_wm->minimize_request(v, false);
-                    restored = true;
-                }
-            }
-        }
-
-        shaken_away.clear();
-        if (restored)
-        {
-            wf::get_core().default_wm->focus_raise_view(keep);
-            return;
-        }
-
-        for (auto& v : wf::get_core().get_all_views())
-        {
-            auto t = wf::toplevel_cast(v);
-            if (t && (t != keep) && t->is_mapped() && !t->minimized && (t->get_output() == keep->get_output()) &&
-                (t->role == wf::VIEW_ROLE_TOPLEVEL) && !t->parent)
-            {
-                shaken_away.push_back(t->weak_from_this());
-                wf::get_core().default_wm->minimize_request(t, true);
-            }
-        }
-    }
-
-    wf::signal::connection_t<wf::view_unmapped_signal> on_unmap = [=] (wf::view_unmapped_signal *ev)
-    {
-        if (auto t = wf::toplevel_cast(ev->view))
-        {
-            shakes.erase(t);
-        }
-    };
-
   public:
     // Settings changes the frame colour by rewriting the config; repaint every frame so it shows at once (otherwise a
     // window kept its old colour until something else redrew it).
@@ -301,8 +209,6 @@ class wayfire_decoration : public wf::plugin_interface_t
         wf::get_core().connect(&on_decoration_state_changed);
         wf::get_core().tx_manager->connect(&on_new_tx);
         wf::get_core().connect(&on_view_tiled);
-        wf::get_core().connect(&on_geometry);
-        wf::get_core().connect(&on_unmap);
 
         for (auto& view : wf::get_core().get_all_views())
         {

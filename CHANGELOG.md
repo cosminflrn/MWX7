@@ -8,8 +8,8 @@ Derived from the git history. Newest first.
   Snipping Tool are native apps in Aero glass frames; their menus sit in the top bar, as on the web
 - Window buttons as on the web: green minimizes, yellow is Full Screen, red closes; Full Screen merges the title
   bar into the top bar
-- Aero Peek with window thumbnails, Aero Shake, a window menu on the title bar, jump lists in the dock
-- Start menu with your most-used programs; drag icons and gadgets anywhere on the desktop
+- A window menu on the title bar, jump lists in the dock, a Windows 7-style Recycle Bin
+- Start menu lists every program; drag icons and gadgets anywhere on the desktop
 - Startup and log-off sounds, network and volume flyouts, Night light, Dock and clock settings
 - After an update of MWX 7 itself, Restart is offered (its frames, bar and dock only change after one)
 
