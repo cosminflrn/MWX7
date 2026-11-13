@@ -87,9 +87,12 @@ def describe(disk):
         return title, 'Empty: nothing is on it.'
     names = {'windows': 'Windows', 'linux': 'Linux', 'data': 'files', 'recovery': 'recovery', 'efi': 'boot files',
              'encrypted': 'encrypted data', 'swap': 'swap', 'other': 'other data', 'bios': 'boot files'}
-    seen = []
+    seen, found = [], []
+    for s in disk.get('systems') or []:  # what install.py recognised by reading the disk: "Windows 11 · BitLocker on"
+        found.append(s['name'] + (' · BitLocker on' if s.get('bitlocker') else ''))
+    covered = {s['part'] for s in disk.get('systems') or []}
     for p in disk['parts']:
-        if p['kind'] in ('empty', 'efi', 'bios', 'swap'):
+        if p['kind'] in ('empty', 'efi', 'bios', 'swap') or p['path'] in covered:
             continue
         what = names[p['kind']]
         label = p.get('label') or ''
@@ -99,14 +102,30 @@ def describe(disk):
             what += f' ({label})'
         if what not in seen:
             seen.append(what)
-    text = 'Has ' + ', '.join(seen) if seen else 'Has partitions'
+    text = 'Has ' + ', '.join(seen) if seen else ('Has partitions' if not found else '')
     if disk['free'] >= 1e9:
-        text += f" · {gb(disk['free'])} free"
-    return title, text + '.'
+        text += f" · {gb(disk['free'])} free" if text else f"{gb(disk['free'])} free"
+    return title, ('\n'.join(x for x in (', '.join(found), text + '.' if text else '') if x))
 
 
 def sudo(*args):
     return ([] if os.geteuid() == 0 else ['sudo', '-n']) + [sys.executable, INSTALL, *args]
+
+
+def ask_install(*args, timeout=600):
+    """An install.py query that prints one JSON line (or "ERROR <reason>"): (data, None) or (None, reason). Slow ones
+    (checking a Windows disk) belong in a thread."""
+    try:
+        r = subprocess.run(sudo(*args), capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None, 'The disk check did not finish.'
+    for line in r.stdout.splitlines():
+        if line.startswith('ERROR '):
+            return None, line[6:]
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1]), None
+    except (ValueError, IndexError):
+        return None, 'The disk check failed: ' + (r.stderr.strip()[-200:] or 'no answer')
 
 
 class Setup(Gtk.Application):
@@ -116,7 +135,11 @@ class Setup(Gtk.Application):
         self.kbd = ('English (US)', 'us', '')
         self.tz = 'Europe/Bucharest'
         self.disk = None
-        self.mode = None
+        self.mode = None  # erase | free | alongside
+        self.along_ok = False  # Windows on the chosen disk passed every check for "alongside"
+        self.along_gib = 0
+        self.along_token = 0
+        self.checking = False
         self.picture = os.path.join(AVATARS, '03-guitar.jpg')
         self.copy_state = 'done' if FIRSTBOOT else 'idle'  # idle | running | done | failed
         self.copy_error = ''
@@ -226,6 +249,13 @@ class Setup(Gtk.Application):
 
     def go(self, step):
         pid = self.pages[self.index][0]
+        if step > 0 and pid == 'disk' and self.copy_state == 'idle' and not PREVIEW:
+            self.confirm_copy()  # nothing on the disk changes before the person has read exactly what will happen
+            return
+        self.move(step)
+
+    def move(self, step):
+        pid = self.pages[self.index][0]
         if step > 0 and pid == 'disk' and self.copy_state == 'idle':
             self.start_copy()
         i = self.target(step)
@@ -243,6 +273,7 @@ class Setup(Gtk.Application):
         elif pid == 'disk':
             ok = self.disk is not None and self.mode is not None and (self.mode != 'erase' or self.disk['empty'] or
                                                                       self.erase_ok.get_active())
+            ok = ok and (self.mode != 'alongside' or (self.along_ok and not self.checking))
         elif pid == 'account':
             ok = bool(self.fullname.get_text().strip()) and (
                 self.nopass.get_active() or (self.pw1.get_text() and self.pw1.get_text() == self.pw2.get_text()))
@@ -396,8 +427,8 @@ class Setup(Gtk.Application):
     def page_disk(self):
         p = self.page()
         p.append(self.text('MWX 7 is copied to the disk you choose. Nothing is erased unless you choose that below. To keep '
-                           'Windows on the same disk, first make free space in Windows (Disk Management, Shrink Volume), '
-                           'or use Advanced below.'))
+                           'Windows on the same disk, pick "Install alongside Windows" (it shrinks Windows for you; BitLocker must be off), '
+                           'or use Advanced below. You see exactly what will change before anything does.'))
         self.disk_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=6)
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -461,9 +492,12 @@ class Setup(Gtk.Application):
         while (c := self.options.get_first_child()):
             self.options.remove(c)
         self.erase_ok = Gtk.CheckButton()
+        self.along_ok, self.checking = False, False
+        self.along_token += 1  # an answer for the previously chosen disk must not land on this one
         if not disk['empty']:
-            what = describe(disk)[1].removeprefix('Has ').split(' · ')[0].rstrip('.')
-            free = Gtk.CheckButton(label=f"Use the free space ({gb(disk['free'])}) and keep everything on the disk")
+            what = ', '.join(s['name'] for s in disk.get('systems') or []) or \
+                describe(disk)[1].removeprefix('Has ').split(' · ')[0].rstrip('.')
+            free =Gtk.CheckButton(label=f"Use the free space ({gb(disk['free'])}) and keep everything on the disk")
             erase = Gtk.CheckButton(label='Erase this disk and use all of it')
             erase.set_group(free)
             if disk['can_free']:
@@ -478,16 +512,111 @@ class Setup(Gtk.Application):
             self.erase_ok.set_visible(False)
             self.erase_ok.connect('toggled', lambda *_: self.validate())
 
+            along = None
+            self.along_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_start=26, visible=False)
+            if disk.get('has_windows'):
+                along = Gtk.CheckButton(label='Install alongside Windows: shrink it and keep both (you choose the size)')
+                along.set_group(free)
+                self.along_note = self.text('')
+                self.along_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 40, 100, 1)
+                self.along_scale.set_draw_value(True)
+                self.along_scale.set_value_pos(Gtk.PositionType.RIGHT)
+                self.along_scale.set_format_value_func(lambda _s, v: f'{v:.0f} GB')
+                self.along_scale.connect('value-changed', self.on_along_size)
+                self.along_box.append(self.along_note)
+                self.along_box.append(self.along_scale)
+
             def on_mode(_c):
-                self.mode = 'erase' if erase.get_active() else ('free' if free.get_active() else None)
+                self.mode = ('erase' if erase.get_active() else 'alongside' if along is not None and along.get_active() else
+                             'free' if free.get_active() else None)
                 self.erase_ok.set_visible(self.mode == 'erase')
                 self.erase_ok.set_active(False)
+                self.along_box.set_visible(self.mode == 'alongside')
+                if self.mode == 'alongside' and not self.along_ok and not self.checking:
+                    self.check_alongside()
                 self.validate()
             free.connect('toggled', on_mode)
             erase.connect('toggled', on_mode)
-            for w in (free, erase, self.erase_ok):
-                self.options.append(w)
+            if along is not None:
+                along.connect('toggled', on_mode)
+            for w in (free, along, self.along_box, erase, self.erase_ok):
+                if w is not None:
+                    self.options.append(w)
         self.validate()
+
+    def check_alongside(self):
+        """Asks install.py whether Windows on this disk may be shrunk (slow: it checks the Windows file system)."""
+        self.checking = True
+        self.along_scale.set_visible(False)
+        self.along_note.remove_css_class('refusal')
+        self.along_note.set_label('Checking Windows’ disk, this can take a minute…')
+        token, path = self.along_token, self.disk['path']
+
+        def work():
+            data, err = ask_install('alongside', path)
+            GLib.idle_add(self.alongside_checked, token, data, err)
+        threading.Thread(target=work, daemon=True).start()
+
+    def alongside_checked(self, token, data, err):
+        if token != self.along_token:
+            return
+        self.checking = False
+        self.along_ok = err is None
+        if err:
+            self.along_note.add_css_class('refusal')
+            self.along_note.set_label('Not possible: ' + err)
+        else:
+            self.along_data = data
+            self.along_scale.set_range(data['min'], data['max'])
+            self.along_scale.set_value(data['default'])
+            self.along_scale.set_visible(True)
+            self.on_along_size()
+        self.validate()
+
+    def on_along_size(self, *_):
+        d = getattr(self, 'along_data', None)
+        if not d or not self.along_ok:
+            return
+        self.along_gib = int(self.along_scale.get_value())
+        win = d['volume'] / 2 ** 30
+        self.along_note.set_label(f"MWX 7 gets {self.along_gib} GB. Windows shrinks from {win:.0f} GB to about "
+                                  f"{win - self.along_gib:.0f} GB and keeps all its files (at least 30 GB stay free in it).")
+
+    def confirm_copy(self):
+        """The last screen before any write: install.py lists exactly what will change; the person must agree to it."""
+        self.next.set_sensitive(False)
+        self.status.set_label('Checking the disk…')
+        args = ['plan', self.mode, self.disk['path']] + ([str(self.along_gib)] if self.mode == 'alongside' else [])
+
+        def work():
+            data, err = ask_install(*args)
+            GLib.idle_add(self.show_confirm, data, err)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_confirm(self, data, err):
+        self.status.set_label('')
+        self.validate()
+        dlg = Gtk.AlertDialog()
+        if err:
+            dlg.set_message('Nothing was changed')
+            dlg.set_detail(err)
+            dlg.set_buttons(['OK'])
+            dlg.show(self.win)
+            return
+        dlg.set_message('Last check before anything changes')
+        dlg.set_detail('This is exactly what will happen:\n\n' + '\n\n'.join(data['lines']) + '\n\nThere is no undo.')
+        dlg.set_buttons(['Go back', 'Install MWX 7'])
+        dlg.set_cancel_button(0)
+        dlg.set_default_button(0)
+        dlg.choose(self.win, None, self.confirmed)
+
+    def confirmed(self, dlg, res):
+        try:
+            yes = dlg.choose_finish(res) == 1
+        except GLib.Error:
+            yes = False
+        if yes:
+            self.move(1)
 
     def on_advanced(self, *_):
         # The full installer: partitions by hand, next to Windows, encryption. It does the whole setup itself.
@@ -509,7 +638,8 @@ class Setup(Gtk.Application):
             return
 
         def work():
-            p = subprocess.Popen(sudo('copy', self.mode, self.disk['path']), stdout=subprocess.PIPE,
+            extra = [str(self.along_gib)] if self.mode == 'alongside' else []
+            p = subprocess.Popen(sudo('copy', self.mode, self.disk['path'], *extra), stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, text=True)
             last_error = ''
             for line in p.stdout:

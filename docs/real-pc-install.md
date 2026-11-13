@@ -41,16 +41,52 @@ You get one of these, depending on the disk:
 | --- | --- |
 | An **empty** disk | MWX 7 is installed on all of it. |
 | **Use the free space** | Only unused space is used. Nothing existing is changed or deleted. Needs 20 GB or more of free space. |
+| **Install alongside Windows** | Shown when the disk has Windows. MWX 7 shrinks the Windows partition for you, uses the room it frees, and adds itself to the existing EFI partition (never formatted). You pick the size with a slider. See "Install alongside Windows" below. |
 | **Erase this disk and use all of it** | Everything on that disk is deleted: Windows, files, all partitions. You must tick a box that names the disk. There is no undo. |
 | **Advanced: choose partitions yourself** | The full installer (Calamares). This is the way to put MWX 7 next to Windows on one disk. |
 
 Layout it creates: a 512 MB EFI partition, then one btrfs partition (with compression) for the whole system. No swap
 partition (it uses compressed RAM instead).
 
-**Windows next to MWX 7 (dual boot):** the simple installer does not shrink Windows for you. To dual boot on one disk, first
-shrink the Windows partition inside Windows (Disk Management, right-click C:, Shrink Volume, leave 60 GB or more
-unallocated), then pick "Use the free space" or use Advanced. MWX 7 then adds itself to the existing EFI partition and
-the boot menu shows both "MWX 7" and "Windows" (5 second menu). Automatic resizing is not built yet.
+The disk list also says what is on each disk, found by reading it (nothing is written): for example "Windows 11 · BitLocker on".
+
+Before anything is changed, a final screen lists exactly what will happen (which partition is shrunk to what size, what is
+created, what is erased). Nothing is written until you press "Install MWX 7" there; "Go back" changes nothing.
+
+### Install alongside Windows
+
+What it does, in this order (it stops at the first problem and Windows is only touched after every check has passed):
+
+1. Checks: UEFI mode, GPT disk with an EFI partition that has at least 15 MB free, Windows **not** BitLocker-encrypted, Windows
+   shut down completely, the NTFS volume healthy (`ntfsresize --info`).
+2. Test run of the shrink (`ntfsresize --no-action`), which must succeed.
+3. Shrinks the Windows file system (`ntfsresize`), then its partition (`parted resizepart`, with `sfdisk` as fallback), then
+   creates the MWX 7 partition in the freed gap. The EFI partition is reused, not formatted; the other partitions
+   (MSR, Recovery) are not touched.
+4. Installs MWX 7 there and adds Windows to the boot menu (GRUB's os-prober; if that finds nothing, a direct entry for
+   `EFI/Microsoft/Boot/bootmgfw.efi`). The menu shows for 5 seconds.
+
+Limits: MWX 7 gets at least **40 GB**; Windows keeps at least **30 GB free** after shrinking (the slider only offers what fits).
+If either does not fit, free space inside Windows first (Disk Cleanup, uninstall programs), then restart and shut down.
+
+It refuses, with the reason on screen, when:
+
+- **BitLocker / device encryption is on:** "Turn off BitLocker in Windows first, or back up your recovery key." Turning it off
+  (Settings, Privacy & security, Device encryption, or Control Panel, BitLocker) decrypts the disk, which takes a while.
+- **Windows was not shut down completely** (Fast Startup or hibernation): in Windows open Control Panel, Power Options,
+  "Choose what the power buttons do", "Change settings that are currently unavailable", untick "Turn on fast startup".
+  Then choose **Restart** once and shut the PC down. (Shutdown with Fast Startup on still counts as hibernation.)
+- The disk is not GPT/UEFI, or the volume needs a disk check (run `chkdsk /f` in Windows first).
+
+If the power fails or the install stops midway: after the shrink step Windows still works (a smaller file system in a
+partition is harmless; the order guarantees it). Back up first anyway.
+
+For developers: `MWX7_INSTALL_DRYRUN=1 install.py copy alongside DISK GIB` runs the checks and prints the commands that would
+change the disk (`DRYRUN ...`) without running them. `python3 distro/tests/test_install_alongside.py` checks the logic with a
+fake disk.
+
+Resizing Windows yourself first (Disk Management, Shrink Volume, leave 60 GB or more unallocated) and then picking "Use the
+free space" or Advanced still works too.
 
 ## 5. Installing
 
@@ -87,7 +123,8 @@ Debian 13 ships driver version 550. Very old cards (GeForce 700 series and older
 
 ## 8. Known limits (not done yet)
 
-- No automatic shrinking of Windows; no "install alongside" in the simple installer (use Advanced).
+- "Install alongside" needs Windows on a GPT disk with its EFI partition on the same disk and no BitLocker; anything else
+  goes through Advanced. It has been checked against a fake disk and a dry run, not yet on a real Windows disk.
 - The installer does not install Secure Boot keys for you; Debian's signed boot chain is used as is.
 - Windows updates or "Reset this PC" can reorder or remove the EFI boot entries. The MWX 7 files stay in `EFI/MWX7`
   (and `EFI/BOOT` when MWX 7 owns the EFI partition); re-add the entry from the BIOS boot menu if needed.
