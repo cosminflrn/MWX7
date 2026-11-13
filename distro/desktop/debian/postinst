@@ -45,6 +45,8 @@ if [ -z "$2" ]; then
     if systemctl enable ufw.service >/dev/null 2>&1; then systemctl disable nftables.service >/dev/null 2>&1 || true; fi
   fi
 fi
+# System-wide GSettings defaults (theme, font, accent) from /etc/dconf/db/local.d.
+if command -v dconf >/dev/null; then dconf update >/dev/null 2>&1 || true; fi
 # Lighter and faster start: nothing here waits for the network at boot, scrubs ext4 (MWX 7 uses btrfs) or keeps a
 # terminal server and an audio filter chain running in every session.
 systemctl disable NetworkManager-wait-online.service e2scrub_reap.service e2scrub_all.timer >/dev/null 2>&1 || true

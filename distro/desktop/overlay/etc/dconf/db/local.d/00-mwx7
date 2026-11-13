@@ -1,0 +1,9 @@
+# MWX 7 defaults for every user (a person's own choices in the user database still win).
+[org/gnome/desktop/interface]
+gtk-theme='MWX7'
+icon-theme='MWX7'
+cursor-theme='Adwaita'
+font-name='Selawik 10'
+document-font-name='Selawik 10'
+color-scheme='prefer-light'
+accent-color='blue'
