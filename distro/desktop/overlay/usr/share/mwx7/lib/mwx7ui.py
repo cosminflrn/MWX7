@@ -330,8 +330,10 @@ class App(Gtk.Application):
         sheet = Gtk.CssProvider()
         sheet.load_from_path('/usr/share/mwx7/settings/settings.css')
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), sheet, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-        css(MENU_CSS + (self.extra_css or ''), 1)
+        css(MENU_CSS, 1)
         tint = css(tint_css(), 2)
+        # Above the tint sheet, whose white `window.mwx7-settings > box` would otherwise beat each app's own background.
+        css(self.extra_css or '', 4)
         # Follow Settings -> Window Color while open, as the frames around other apps do.
         self.tint_mon = Gio.File.new_for_path(base.WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
         self.tint_mon.connect('changed', lambda *_a: GLib.timeout_add(

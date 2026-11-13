@@ -20,6 +20,7 @@ window.mwx7-taskmgr > box { background: #f0f4fa; }
 .tm-list row:selected { background: linear-gradient(180deg, #dcebfc, #c1dcfc); color: #0b2440; }
 .tm-head { padding: 3px 8px; font-weight: 600; color: #1e3f66; background: linear-gradient(180deg, #ffffff, #e4ecf6);
   border: 1px solid #a9b9cf; border-bottom: none; }
+.tm-empty { color: #6b7b92; }
 .tm-num { font-feature-settings: "tnum"; color: #1c2530; }
 .tm-graph { background: #000000; border: 1px solid #4d5c70; }
 .tm-cap { font-weight: 600; color: #1e3f66; margin-top: 6px; }
@@ -88,6 +89,11 @@ class TaskManager:
         apps.append(head)
         self.app_list = Gtk.ListBox()
         self.app_list.add_css_class('tm-list')
+        # Shown by GTK itself whenever the list has no rows, so it needs no bookkeeping in the refresh code.
+        none = Gtk.Label(label='No applications are open.\nPrograms you start will show up here.',
+                         justify=Gtk.Justification.CENTER, margin_top=60)
+        none.add_css_class('tm-empty')
+        self.app_list.set_placeholder(none)
         sc = Gtk.ScrolledWindow(vexpand=True)
         sc.set_child(self.app_list)
         apps.append(sc)

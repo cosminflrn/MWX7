@@ -56,7 +56,7 @@ class Notepad:
         root.append(self.status)
         self.font = Gtk.CssProvider()
         mwx7ui.Gtk.StyleContext.add_provider_for_display(win.get_display(), self.font,
-                                                         Gtk.STYLE_PROVIDER_PRIORITY_USER + 3)
+                                                         Gtk.STYLE_PROVIDER_PRIORITY_USER + 5)
         win.connect('close-request', self.on_close)
         if app.files:
             GLib.idle_add(lambda: self.load(app.files[0].get_path()) and False)

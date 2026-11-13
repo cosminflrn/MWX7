@@ -39,6 +39,13 @@ window.mwx7-store > box { background: #f4f7fc; }
 .st-desc { color: #55657a; font-size: 12px; }
 .st-state { color: #3b6a3b; font-size: 11px; }
 .st-note { padding: 24px; color: #55657a; }
+window.mwx7-store .st-card button { min-height: 24px; padding: 0 14px; border-radius: 3px; color: #1c2530;
+  border: 1px solid #8b9db5; box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+  background: linear-gradient(180deg, #f6f9fd 0%, #e6edf6 49%, #d6e1ee 50%, #e3ebf5 100%); }
+window.mwx7-store .st-card button:hover { border-color: #3c7fb1;
+  background: linear-gradient(180deg, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%); }
+window.mwx7-store .st-card button:active { background: linear-gradient(180deg, #c2e4f6 0%, #a9d9f2 49%, #90cbeb 50%, #a4d5ef 100%); }
+window.mwx7-store .st-card button:disabled { color: #9aa5b3; }
 flowboxchild { padding: 5px; background: transparent; }
 progressbar.st-progress trough, progressbar.st-progress progress { min-height: 8px; }
 """
@@ -210,7 +217,7 @@ class Store:
 
     def apply(self, refs):
         if refs is None:
-            self.note.set_label('Flatpak is not installed on this PC, so apps can not be added here yet.')
+            self.note.set_label('Flatpak is not installed on this PC, so apps cannot be added here yet.')
         self.note.set_visible(refs is None)
         for c in self.cards:
             if not self.working:
