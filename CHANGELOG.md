@@ -2,6 +2,14 @@
 
 Derived from the git history. Newest first.
 
+## v1.15.0
+- **New lock screen**: big clock and date, password field on any key, Sleep / Restart / Shut down
+- **Smarter updates**: downloaded quietly in the background (not on metered connections), "What's new" before
+  installing, progress with stages, a badge in the bar when ready, and an interrupted update is finished at the next
+  start
+- **Welcome Center**: an illustrated tour of MWX 7 with buttons that open each feature
+- **Boot**: the orb grows in with a soft glow, styled disk password prompt, no flash before the logon screen
+
 ## v1.14.0
 - **Smoother**: one full-screen layer less to draw (the desktop paints the wallpaper), Animations setting (Full /
   Reduced / Off; Reduced by itself in VMware)
