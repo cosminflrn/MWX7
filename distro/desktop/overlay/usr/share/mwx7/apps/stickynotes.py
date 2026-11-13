@@ -32,6 +32,10 @@ window.sn textview { padding: 10px 12px; font-family: "Comic Neue", "Selawik", c
 """
 
 
+def has_text(text):
+    return bool(text and text.strip())
+
+
 class Notes(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='org.mwx7.stickynotes')
@@ -51,7 +55,8 @@ class Notes(Gtk.Application):
             saved = json.load(open(STORE))
         except (OSError, ValueError):
             saved = []
-        for n in saved or [{}]:
+        # Empty notes left in the file by older versions are dropped.
+        for n in [n for n in saved if has_text(n.get('text'))] or [{}]:
             self.add_note(n)
 
     def add_note(self, data, color=None):
@@ -80,7 +85,7 @@ class Notes(Gtk.Application):
         self.notes[nid] = {'win': w, 'buf': buf, 'color': color}
         buf.connect('changed', lambda *_: (self.retitle(nid), self.schedule_save()))
         close.connect('clicked', lambda *_: self.delete(nid))
-        w.connect('close-request', lambda *_: (self.save(), False)[1])
+        w.connect('close-request', lambda *_: (self.on_close(nid), False)[1])
         # Right-click: the colours, as in the concept.
         menu = Gio.Menu()
         for c in COLORS:
@@ -103,6 +108,13 @@ class Notes(Gtk.Application):
         w.present()
         GLib.idle_add(lambda: view.grab_focus() and False)
         self.schedule_save()
+
+    def on_close(self, nid):
+        # A note closed while empty is gone, not kept as a blank note for the next sign-in.
+        n = self.notes.get(nid)
+        if n and not has_text(n['buf'].get_text(*n['buf'].get_bounds(), False)):
+            self.notes.pop(nid, None)
+        self.save()
 
     def retitle(self, nid):
         n = self.notes[nid]
@@ -146,6 +158,8 @@ class Notes(Gtk.Application):
         self.save_id = 0
         out = []
         for nid, n in self.notes.items():
+            if not has_text(n['buf'].get_text(*n['buf'].get_bounds(), False)):
+                continue  # never persist an empty note
             out.append({'id': nid, 'color': n['color'], 'text': n['buf'].get_text(*n['buf'].get_bounds(), False),
                         'w': n['win'].get_width() or 260, 'h': n['win'].get_height() or 250})
         try:
@@ -160,10 +174,11 @@ class Notes(Gtk.Application):
 
 if __name__ == '__main__':
     if '--if-any' in sys.argv:
+        # Sign-in autostart: only bring notes back when there is something written on one.
         try:
-            if not json.load(open(STORE)):
+            if not any(isinstance(n, dict) and has_text(n.get('text')) for n in json.load(open(STORE))):
                 sys.exit(0)
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):
             sys.exit(0)
         sys.argv.remove('--if-any')
     Notes().run(sys.argv)
