@@ -4,6 +4,7 @@ GTK4 + gtk4-layer-shell, same patterns as the shell. The surface is transparent,
 layer) shows through. Nothing here runs faster than once a second, except the short needle animation of the CPU/RAM
 gauge, and only the gadget that changed is redrawn.
 """
+import glob
 import json
 import socket
 import struct
@@ -52,7 +53,24 @@ SIZES = {'large': (64, 112, 112), 'medium': (48, 96, 92), 'small': (32, 84, 72)}
 GADGET_W, GADGET_GAP, GADGET_TOP, GADGET_RIGHT = 148, 10, 10, 16
 
 
+
+def ensure_x11():
+    """Apps that only speak X11 (VLC, Steam, Discord, Spotify, Zoom from Get Apps) need DISPLAY. Wayfire starts
+    Xwayland after the shell and the desktop are already running, so they never got it: without this those apps
+    silently failed to open. Picks up Wayfire's Xwayland socket (owned by this user) the first time it's needed."""
+    if os.environ.get('DISPLAY'):
+        return
+    uid = os.getuid()
+    for path in sorted(glob.glob('/tmp/.X11-unix/X*'), key=lambda p: int(p.rsplit('X', 1)[1] or 0)):
+        try:
+            if os.stat(path).st_uid == uid:
+                os.environ['DISPLAY'] = ':' + path.rsplit('X', 1)[1]
+                return
+        except (OSError, ValueError):
+            continue
+
 def launch(cmd, fallback=None):
+    ensure_x11()
     if fallback and not os.path.exists(cmd[0]):
         cmd = fallback
     try:
