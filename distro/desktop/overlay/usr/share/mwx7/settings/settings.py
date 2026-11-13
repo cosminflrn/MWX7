@@ -17,7 +17,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
 gi.require_version('GdkPixbuf', '2.0')
-from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ICONS = '/usr/share/mwx7/icons'
@@ -246,6 +246,33 @@ class Settings(Gtk.Application):
         # Full screen (maximized): as in the concept the title bar merges into the top bar, which shows the name and
         # the traffic lights then.
         win.connect('notify::maximized', lambda w, _p: bar.set_visible(not w.is_maximized()))
+        # Right-click on the title bar: Windows 7's window menu.
+        menu = Gio.Menu()
+        for label, name in (('Restore', 'restore'), ('Minimize', 'minimize'), ('Maximize', 'maximize'), ('Close', 'close')):
+            menu.append(label, 'win.wm-' + name)
+        acts = {'restore': lambda: win.unmaximize(), 'minimize': win.minimize, 'maximize': win.maximize,
+                'close': win.close}
+        for name, fn in acts.items():
+            a = Gio.SimpleAction.new('wm-' + name, None)
+            a.connect('activate', lambda *_a, f=fn: f())
+            win.add_action(a)
+        pop = Gtk.PopoverMenu(menu_model=menu, has_arrow=False)
+        pop.set_parent(bar)
+        click = Gtk.GestureClick(button=3)
+        # Capture phase: GTK's own title bar handling would otherwise take the right-click first.
+        click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+
+        def on_right(g, _n, x, y):
+            g.set_state(Gtk.EventSequenceState.CLAIMED)
+            maxed = win.is_maximized()
+            win.lookup_action('wm-restore').set_enabled(maxed)
+            win.lookup_action('wm-maximize').set_enabled(not maxed)
+            r = Gdk.Rectangle()
+            r.x, r.y, r.width, r.height = int(x), int(y), 1, 1
+            pop.set_pointing_to(r)
+            pop.popup()
+        click.connect('pressed', on_right)
+        bar.add_controller(click)
         return bar
 
     # ---- Themes, Wallpapers, Window Color (the web Settings' three Personalization pages) ----------------------------

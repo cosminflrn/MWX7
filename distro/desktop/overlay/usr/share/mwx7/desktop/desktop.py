@@ -667,22 +667,31 @@ class DesktopIcon(Gtk.Box):
         lab = Gtk.Label(label=label, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
                         max_width_chars=11)
         self.append(lab)
-        g = Gtk.GestureClick()
-        g.set_button(1)
-        g.connect('pressed', lambda gest, n, _x, _y: self.pressed(gest, n, on_select, on_open))
-        self.add_controller(g)
+        # One drag gesture for the left button does it all: select on press, move on drag, open on a double click.
+        # (A separate click gesture claimed the press and stopped the drag.)
+        self.on_select, self.on_open, self.last_click = on_select, on_open, 0
+        self.drag = Gtk.GestureDrag(button=1)
+        self.drag.connect('drag-begin', self.pressed)
+        self.add_controller(self.drag)
+        self.key = label
         # Right-click selects too, then bubbles up to the desktop's menu.
         r = Gtk.GestureClick()
         r.set_button(3)
         r.connect('pressed', lambda *_a: on_select(self))
         self.add_controller(r)
 
-    def pressed(self, gest, n_press, on_select, on_open):
+    def pressed(self, gest, _x, _y):
         # Claimed so the desktop's "click on empty space deselects" handler does not also fire.
         gest.set_state(Gtk.EventSequenceState.CLAIMED)
-        on_select(self)
-        if n_press == 2:
-            on_open()
+        self.on_select(self)
+
+    def released(self, moved):
+        now = GLib.get_monotonic_time()
+        if not moved and now - self.last_click < 450_000:
+            self.last_click = 0
+            self.on_open()
+        else:
+            self.last_click = 0 if moved else now
 
 
 class Desktop(Gtk.Application):
@@ -694,6 +703,8 @@ class Desktop(Gtk.Application):
         self.timers = []
         self.cfg = load_json(CONFIG)
         self.gadgets_on = self.cfg.get('gadgets', True) is not False
+        self.cells = {}
+        self.height = 0
         self.set_sizes()
 
     def set_sizes(self):
@@ -739,17 +750,20 @@ class Desktop(Gtk.Application):
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         self.clock, self.cal, self.meter = Clock(), Calendar(), Meter()
         self.weather = Weather(city, lat, lon)
-        self.gadget_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=GADGET_GAP, halign=Gtk.Align.END,
-                                  valign=Gtk.Align.START, margin_top=GADGET_TOP, margin_end=GADGET_RIGHT)
-        for g in (self.clock, self.cal, self.meter, self.weather):
-            self.gadget_col.append(g)
-        self.gadget_col.set_visible(self.gadgets_on)
-        self.fixed.set_visible(self.cfg.get('icons', True) is not False)
+        # Gadgets sit on the same surface as the icons and can be dragged anywhere, as in Windows 7; each keeps its place.
+        self.gadgets = [('clock', self.clock), ('calendar', self.cal), ('meter', self.meter), ('weather', self.weather)]
+        for name, g in self.gadgets:
+            g.set_visible(self.gadgets_on)
+            self.fixed.put(g, 0, 0)
+            drag = Gtk.GestureDrag(button=1)
+            drag.connect('drag-begin', lambda gest, *_a: gest.set_state(Gtk.EventSequenceState.CLAIMED))
+            drag.connect('drag-update', lambda _g, dx, dy, n=name, w=g: self.gadget_drag(n, w, dx, dy))
+            drag.connect('drag-end', lambda _g, dx, dy, n=name, w=g: self.gadget_drop(n, w, dx, dy))
+            g.add_controller(drag)
+        self.show_icons(self.cfg.get('icons', True) is not False)
         # Settings -> Desktop writes the same file: follow it (icons, gadgets, weather city) without a restart.
         self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.cfg_mon.connect('changed', lambda *_a: GLib.timeout_add(200, self.reload_config))
-        # halign END / valign START: the column takes only the space of its tiles, the desktop gets the rest.
-        self.root.add_overlay(self.gadget_col)
 
         # For screenshots in automated checks (no pointer there): MWX7_DESKTOP_OPEN=menu.
         if os.environ.get('MWX7_DESKTOP_OPEN') == 'menu':
@@ -765,7 +779,7 @@ class Desktop(Gtk.Application):
         self.fixed.add_controller(band)
         w.set_child(self.root)
         # Rows depend on the output height, which only arrives with the compositor's configure.
-        w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, _w, h: self.relayout(h)))
+        w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, wd, h: self.layout(wd, h)))
         return w
 
     def num(self, key, default):
@@ -776,6 +790,7 @@ class Desktop(Gtk.Application):
     def put_fixed_icons(self):
         for label, icon, cmd, fallback in ITEMS:
             item = DesktopIcon(label, icon, self.select, lambda c=cmd, f=fallback: launch(c, f), self.icon_px, self.cell_w)
+            self.draggable(item, 'item:' + icon)
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
         self.fixed_count = len(self.icons)
@@ -791,9 +806,60 @@ class Desktop(Gtk.Application):
 
     def set_view(self, key, value):
         self.cfg[key] = value
+        if key == 'sort':
+            self.cfg.pop('positions', None)  # sorting lines the icons up again, as Windows does
         save_json(CONFIG, self.cfg)
         self.set_sizes()
         self.rebuild_icons()
+
+    def layout(self, width, height):
+        # Called on every layout: move things only when the size really changed, or moving them asks for another
+        # layout, forever.
+        self.relayout(height)
+        if width != getattr(self, 'width', 0):
+            self.width = width
+            self.place_gadgets()
+
+    def show_icons(self, on):
+        for item in self.icons:
+            item.set_visible(on)
+        self.icons_on = on
+
+    def gadget_home(self, name):
+        """Where a gadget is: where the person left it (kept as distance from the right edge, so it stays put when the
+        screen size changes), else in the column at the top right."""
+        at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
+        pos = at.get(name)
+        if isinstance(pos, list) and len(pos) == 2:
+            return max(0, self.width - pos[0]), max(0, pos[1])
+        y = GADGET_TOP
+        for n, g in self.gadgets:
+            if n == name:
+                break
+            y += g.HEIGHT + GADGET_GAP
+        return self.width - GADGET_RIGHT - GADGET_W, y
+
+    def place_gadgets(self):
+        if not getattr(self, 'width', 0):
+            return
+        for name, g in self.gadgets:
+            self.fixed.move(g, *self.gadget_home(name))
+
+    def gadget_drag(self, name, g, dx, dy):
+        x, y = self.gadget_home(name)
+        self.fixed.move(g, x + dx, y + dy)
+
+    def gadget_drop(self, name, g, dx, dy):
+        if abs(dx) < 3 and abs(dy) < 3:
+            return
+        x, y = self.gadget_home(name)
+        x = max(0, min(self.width - GADGET_W, x + dx))
+        y = max(0, min(getattr(self, 'height', 600) - g.HEIGHT, y + dy))
+        at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
+        at[name] = [int(self.width - x), int(y)]
+        self.cfg['gadgets_at'] = at
+        save_json(CONFIG, self.cfg)
+        self.place_gadgets()
 
     def relayout(self, height, force=False):
         self.height = height
@@ -801,9 +867,58 @@ class Desktop(Gtk.Application):
         if rows == self.rows and not force:
             return
         self.rows = rows
-        # Column-major like Windows: fill a column top to bottom, then the next one.
-        for i, item in enumerate(self.icons):
-            self.fixed.move(item, ORIGIN + (i // rows) * self.cell_w, ORIGIN + (i % rows) * self.cell_h)
+        # Icons the person moved keep their cell; the rest fill the free cells column by column, like Windows.
+        saved = self.cfg.get('positions') if isinstance(self.cfg.get('positions'), dict) else {}
+        taken, place = set(), {}
+        for item in self.icons:
+            pos = saved.get(item.key)
+            if isinstance(pos, list) and len(pos) == 2 and 0 <= pos[1] < rows and tuple(pos) not in taken:
+                place[item] = tuple(pos)
+                taken.add(tuple(pos))
+        cell = 0
+        for item in self.icons:
+            if item in place:
+                continue
+            while (cell // rows, cell % rows) in taken:
+                cell += 1
+            place[item] = (cell // rows, cell % rows)
+            taken.add(place[item])
+        self.cells = place
+        for item, (c, r) in place.items():
+            self.fixed.move(item, ORIGIN + c * self.cell_w, ORIGIN + r * self.cell_h)
+
+    # -- moving icons by dragging them, as on Windows: they snap to the grid and keep their place
+    def draggable(self, item, key):
+        item.key = key
+        item.set_visible(getattr(self, 'icons_on', True))
+        item.drag.connect('drag-update', lambda _g, dx, dy, it=item: self.icon_drag(it, dx, dy))
+        item.drag.connect('drag-end', lambda _g, dx, dy, it=item: self.icon_drop(it, dx, dy))
+
+    def icon_drag(self, item, dx, dy):
+        if abs(dx) < 5 and abs(dy) < 5 and not getattr(item, 'moving', False):
+            return
+        item.moving = True
+        c, r = self.cells.get(item, (0, 0))
+        self.fixed.move(item, ORIGIN + c * self.cell_w + dx, ORIGIN + r * self.cell_h + dy)
+
+    def icon_drop(self, item, dx, dy):
+        moved = getattr(item, 'moving', False)
+        item.released(moved)
+        if not moved:
+            return
+        item.moving = False
+        c, r = self.cells.get(item, (0, 0))
+        nc = max(0, round((c * self.cell_w + dx) / self.cell_w))
+        nr = max(0, min(self.rows - 1, round((r * self.cell_h + dy) / self.cell_h)))
+        positions = self.cfg.get('positions') if isinstance(self.cfg.get('positions'), dict) else {}
+        # Dropping on another icon swaps the two.
+        for other, cell in self.cells.items():
+            if other is not item and cell == (nc, nr):
+                positions[other.key] = [c, r]
+        positions[item.key] = [nc, nr]
+        self.cfg['positions'] = positions
+        save_json(CONFIG, self.cfg)
+        self.relayout(self.height, force=True)
 
     def files_later(self):
         # A burst of changes (a copy of many files) reloads once.
@@ -837,6 +952,7 @@ class Desktop(Gtk.Application):
                 img, label = Gtk.Image.new_from_icon_name('text-x-generic'), name
             item = DesktopIcon(label, img, self.select,
                                lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None), self.icon_px, self.cell_w)
+            self.draggable(item, 'file:' + name)
             self.icons.append(item)
             self.fixed.put(item, ORIGIN, ORIGIN)
         if getattr(self, 'height', 0):
@@ -1010,11 +1126,12 @@ class Desktop(Gtk.Application):
         if relook:
             self.set_sizes()
             self.rebuild_icons()
-        self.fixed.set_visible(cfg.get('icons', True) is not False)
+        self.show_icons(cfg.get('icons', True) is not False)
         on = cfg.get('gadgets', True) is not False
         if on != self.gadgets_on:
             self.gadgets_on = on
-            self.gadget_col.set_visible(on)
+            for _n, g in self.gadgets:
+                g.set_visible(on)
             self.start_timers() if on else self.stop_timers()
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         if (lat, lon) != (self.weather.lat, self.weather.lon):
@@ -1029,7 +1146,8 @@ class Desktop(Gtk.Application):
         self.gadgets_on = not self.gadgets_on
         self.cfg['gadgets'] = self.gadgets_on
         save_json(CONFIG, self.cfg)
-        self.gadget_col.set_visible(self.gadgets_on)
+        for _n, g in self.gadgets:
+            g.set_visible(self.gadgets_on)
         if self.gadgets_on:
             self.start_timers()
         else:

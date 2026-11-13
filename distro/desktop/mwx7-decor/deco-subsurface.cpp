@@ -26,6 +26,9 @@
 #include <wayfire/plugins/common/cairo-util.hpp>
 
 #include <cairo.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstdlib>
 
 /** No frame: full screen, and maximized (MWX 7's Full Screen, whose title bar is the top bar). */
 static bool frameless(const wf::toplevel_state_t& state)
@@ -256,6 +259,28 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
 
     void handle_pointer_button(const wlr_pointer_button_event& ev) override
     {
+        if ((ev.button == BTN_RIGHT) && (ev.state == WLR_BUTTON_PRESSED))
+        {
+            // Windows 7's window menu (Restore, Minimize, Maximize, Close): the shell shows it where the pointer is. It
+            // listens on a FIFO; if it isn't there, opening fails at once and nothing happens.
+            if (auto view = _view.lock())
+            {
+                const char *dir = getenv("XDG_RUNTIME_DIR");
+                std::string path = std::string(dir ? dir : "/tmp") + "/mwx7-winmenu";
+                int fd = open(path.c_str(), O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+                if (fd >= 0)
+                {
+                    auto c = wf::get_core().get_cursor_position();
+                    std::string line = std::to_string(view->get_id()) + " " + std::to_string((int)c.x) + " " +
+                        std::to_string((int)c.y) + "\n";
+                    (void)!write(fd, line.data(), line.size());
+                    close(fd);
+                }
+            }
+
+            return;
+        }
+
         if (ev.button != BTN_LEFT)
         {
             return;
