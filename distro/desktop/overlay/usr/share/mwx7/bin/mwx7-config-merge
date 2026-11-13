@@ -102,6 +102,8 @@ SYSTEM_KEYS = {
     'fast-switcher': ('activate', 'activate_backward'),
     'wm-actions': ('toggle_showdesktop',),
     'scale': ('toggle',),
+    'command': ('binding_snip', 'command_snip', 'binding_snipfull', 'command_snipfull', 'binding_snipwin',
+                'command_snipwin'),
     'grid': ('slot_l', 'slot_r', 'slot_c', 'restore'),
 }
 
@@ -110,7 +112,7 @@ def COMMAND_KEYS(system, text):
     """[command] entries of the system defaults for the shell flyouts and shortcuts that the user's copy lacks."""
     mine = sections(text).get('command', '')
     out = []
-    for name in ('clipboard', 'search', 'start', 'dock', 'tray', 'computer', 'snip'):
+    for name in ('clipboard', 'search', 'start', 'dock', 'tray', 'computer', 'snip', 'snipfull', 'snipwin'):
         for prefix in ('binding_', 'command_'):
             v = get(sections(system).get('command', ''), prefix + name)
             if v is not None and get(mine, prefix + name) is None:
