@@ -1056,9 +1056,9 @@ class Settings(Gtk.Application):
             json.dump(c, f)
         os.replace(self.SHELL_JSON + '.tmp', self.SHELL_JSON)
 
-    def shell_check(self, label, key):
+    def shell_check(self, label, key, default=True):
         c = Gtk.CheckButton(label=label)
-        c.set_active(self.shell_get(key, True) is not False)
+        c.set_active(self.shell_get(key, default) is not False if default else self.shell_get(key, False) is True)
         c.connect('toggled', lambda b: self.shell_set(key, b.get_active()))
         return c
 
@@ -1087,7 +1087,7 @@ class Settings(Gtk.Application):
         p.append(heading('Date & time'))
         p.append(section('Clock in the menu bar'))
         p.append(self.shell_check('Use 24-hour clock', 'clock24'))
-        p.append(self.shell_check('Show seconds', 'clock_seconds'))
+        p.append(self.shell_check('Show seconds', 'clock_seconds', default=False))
         p.append(section('Time zone'))
         zones = [z for z in run(['timedatectl', 'list-timezones']).split() if '/' in z]
         cur = run(['timedatectl', 'show', '-p', 'Timezone', '--value']).strip() or 'Europe/Bucharest'
@@ -1109,7 +1109,7 @@ class Settings(Gtk.Application):
         dd.connect('notify::selected', on_zone)
         p.append(dd)
         p.append(status)
-        p.append(note('The clock uses the 24-hour format with seconds.'))
+        p.append(note('Seconds make the status bar redraw every second, which costs a little speed in virtual machines.'))
         return p
 
     # ---- Account ----------------------------------------------------------------------------------------------------
