@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Get Apps
+Comment=Find and install popular apps
+Exec=/usr/share/mwx7/bin/mwx7-app store
+Icon=/usr/share/mwx7/icons/store.png
+Categories=System;PackageManager;
+Keywords=store;apps;install;software;flathub;download;
+StartupWMClass=org.mwx7.store
