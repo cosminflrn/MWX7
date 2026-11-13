@@ -1,0 +1,10 @@
+[Unit]
+Description=MWX 7: daily update check
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

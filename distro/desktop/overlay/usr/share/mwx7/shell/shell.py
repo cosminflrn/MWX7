@@ -71,6 +71,14 @@ def pending_updates():
         return 0, ''
 
 
+def updates_ready():
+    """True when the quiet download has already fetched what is waiting (third field of the file): installing is fast."""
+    try:
+        return open(UPDATES_FILE).read().split()[2] == '1'
+    except (OSError, IndexError):
+        return False
+
+
 SOUND = '/usr/share/mwx7/bin/mwx7-sound'
 # Choices from Settings (Dock, Date & time), as on the web: shell.json in the person's MWX 7 folder.
 SHELL_CONF = os.path.join(GLib.get_user_config_dir(), 'mwx7', 'shell.json')
@@ -942,10 +950,35 @@ class Shell(Gtk.Application):
         left.append(self.app_menus)
         right = Gtk.Box(spacing=10)
         # Updates waiting: a quiet icon (no pop-ups); click for Settings -> Updates. Shut Down and Restart also offer them.
-        self.upd_btn = Gtk.Button(visible=False)
+        # A small badge on it says the update is already downloaded; its menu: Restart to update / What's new / Later.
+        self.upd_btn = Gtk.MenuButton(visible=False)
         self.upd_btn.add_css_class('flat-ico')
-        self.upd_btn.set_child(Gtk.Image.new_from_icon_name('software-update-available-symbolic'))
-        self.upd_btn.connect('clicked', lambda *_: self.launch(['/usr/share/mwx7/settings/mwx7-settings', '--updates']))
+        self.upd_badge = Gtk.Label(label='', visible=False, halign=Gtk.Align.END, valign=Gtk.Align.START, can_target=False)
+        self.upd_badge.add_css_class('upd-badge')
+        upd_over = Gtk.Overlay()
+        upd_over.set_child(Gtk.Image.new_from_icon_name('software-update-available-symbolic'))
+        upd_over.add_overlay(self.upd_badge)
+        self.upd_btn.set_child(upd_over)
+        self.upd_snooze = 0  # "Later": no badge until then (the icon stays)
+        upd_pop = Gtk.Popover()
+        upd_pop.add_css_class('start')
+        upd_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        upd_col.set_size_request(200, -1)
+
+        def upd_item(label, fn):
+            b = Gtk.Button(label=label)
+            b.add_css_class('menu-row')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (upd_pop.popdown(), fn()))
+            upd_col.append(b)
+
+        # Same as "Update and restart" in the Restart dialog: installs before the session starts.
+        upd_item('Restart to update', lambda: subprocess.Popen(
+            ['pkexec', '/usr/share/mwx7/bin/mwx7-update', 'offline', 'reboot'], start_new_session=True))
+        upd_item('What’s new', lambda: self.launch(['/usr/share/mwx7/settings/mwx7-settings', '--updates']))
+        upd_item('Later', lambda: setattr(self, 'upd_snooze', time.time() + 4 * 3600) or self.upd_badge.set_visible(False))
+        upd_pop.set_child(upd_col)
+        self.upd_btn.set_popover(upd_pop)
         right.append(self.upd_btn)
         self.build_clipboard(right)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
@@ -2688,9 +2721,11 @@ class Shell(Gtk.Application):
         self.status_busy = False
         count, version = pending_updates()
         self.upd_btn.set_visible(count > 0)
+        ready = count > 0 and updates_ready()
+        self.upd_badge.set_visible(ready and time.time() >= self.upd_snooze)
         if count:
-            self.upd_btn.set_tooltip_text(f'MWX 7 {version} is ready to install' if version else
-                                          f'{count} updates are ready to install')
+            what = f'MWX 7 {version}' if version else f'{count} updates'
+            self.upd_btn.set_tooltip_text(f'{what} downloaded: restart to update' if ready else f'{what} ready to install')
         # None means the tool did not answer in time (a busy system): keep showing what was last known rather than
         # flashing "muted" / "not connected".
         if vol is None and net is None:

@@ -3,6 +3,7 @@
 Most settings live in the user's Wayfire config (~/.config/mwx7/wayfire.ini), which Wayfire reloads by itself, so
 changes apply immediately. The wallpaper is painted by the desktop layer, which follows the wallpaper file (swaybg is only the fallback).
 """
+import datetime
 import json
 import os
 import pwd
@@ -1651,20 +1652,59 @@ class Settings(Gtk.Application):
         p.append(current)
         p.append(note('Security fixes install by themselves. Other updates wait for you: an icon in the status bar '
                       'tells you when they are ready.'))
+        # mwx7-update records what it found (checked=<epoch> count= version= ready=); the daily timer keeps it fresh.
+        def update_info():
+            d = {}
+            try:
+                for l in open('/var/lib/mwx7/updates.state'):
+                    k, _, v = l.strip().partition('=')
+                    d[k] = v
+            except OSError:
+                pass
+            return d
+        last = note('')
+
+        def show_last():
+            try:
+                t = datetime.datetime.fromtimestamp(int(update_info()['checked']))
+                last.set_label('Last checked: ' + t.strftime('%d %b %Y, %H:%M'))
+            except (KeyError, ValueError):
+                last.set_label('Last checked: never')
+        show_last()
+        p.append(last)
+        auto_row = Gtk.Box(spacing=12)
+        auto_row.append(Gtk.Label(label='Check automatically (daily)', xalign=0, hexpand=True))
+        auto = Gtk.Switch(valign=Gtk.Align.CENTER)
+        auto.set_active(not os.path.exists('/var/lib/mwx7/no-auto-check'))
+
+        def on_auto(sw, state):
+            # Updates download quietly in the background when this is on (not on a metered connection).
+            subprocess.Popen(['pkexec', UPDATE, 'autocheck', 'on' if state else 'off'], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return False
+        auto.connect('state-set', on_auto)
+        auto_row.append(auto)
+        p.append(auto_row)
         status = Gtk.Label(xalign=0, wrap=True)
         status.add_css_class('status')
         detail = note('')
+        bar = Gtk.ProgressBar(visible=False, show_text=True)
         news = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
 
         def show_news():
             while (c := news.get_first_child()):
                 news.remove(c)
+            # A waiting version shows its own news (fetched with the check); otherwise the installed version's.
+            waiting = update_info().get('version') and os.path.exists('/var/lib/mwx7/whats-new-available')
             try:
-                lines = [l.strip() for l in open('/usr/share/mwx7/whats-new') if l.strip()]
+                lines = [l.strip() for l in open('/var/lib/mwx7/whats-new-available' if waiting
+                                                 else '/usr/share/mwx7/whats-new') if l.strip()]
+                lines = [l[2:] if l.startswith('- ') else l for l in lines]
             except OSError:
                 lines = []
             if lines:
-                news.append(section('What’s new in this version'))
+                news.append(section(f'What’s new in MWX 7 {update_info()["version"]}' if waiting
+                                    else 'What’s new in this version'))
                 for l in lines[:6]:
                     # The first sentence is enough here; the rest stays in the changelog.
                     short = l.split(': ', 1)[0] if len(l) > 140 else l
@@ -1681,9 +1721,23 @@ class Settings(Gtk.Application):
         restart.connect('clicked', lambda *_: subprocess.Popen(['systemctl', 'reboot']))
         for b in (check, install, restart):
             row.append(b)
-        for w in (row, status, detail, news):
+        for w in (row, status, bar, detail, news):
             p.append(w)
         show_news()
+
+        def show_available(info):
+            """The waiting update as the last check recorded it (also shown when the page opens)."""
+            ours = info.get('version', '')
+            count = int(info.get('count') or 0)
+            if not count:
+                return False
+            others = count - (1 if ours else 0)
+            parts = ([f'MWX 7 {ours}'] if ours else []) + ([f'{others} other update' + ('s' if others != 1 else '')]
+                                                          if others else [])
+            status.set_label('Available: ' + ' and '.join(parts) + '.' +
+                             (' Already downloaded: installing is quick.' if info.get('ready') == '1' else ''))
+            install.set_visible(True)
+            return True
 
         def busy(on):
             check.set_sensitive(not on)
@@ -1701,6 +1755,8 @@ class Settings(Gtk.Application):
 
         def checked(r):
             busy(False)
+            show_last()
+            show_news()
             if r.returncode != 0:
                 status.set_label('Could not check for updates. Is the PC online?')
                 detail.set_label((r.stderr.strip().splitlines() or [''])[-1])
@@ -1710,30 +1766,40 @@ class Settings(Gtk.Application):
                 status.set_label('MWX 7 is up to date.')
                 install.set_visible(False)
                 return False
-            ours = next((v for n, v in pkgs if n == 'mwx7-desktop'), None)
-            others = len(pkgs) - (1 if ours else 0)
-            parts = ([f'MWX 7 {ours}'] if ours else []) + ([f'{others} other update' + ('s' if others != 1 else '')]
-                                                         if others else [])
-            status.set_label('Available: ' + ' and '.join(parts) + '.')
-            install.set_visible(True)
+            show_available(update_info())
             return False
 
         def on_install(*_):
             busy(True)
             status.set_label('Installing updates… You can keep working.')
+            bar.set_visible(True)
+            bar.set_fraction(0)
+            bar.set_text('Preparing')
+
+            def stage(pct, name):
+                bar.set_fraction(pct / 100)
+                bar.set_text(f'{name}…')
 
             def work():
                 proc = subprocess.Popen(['pkexec', UPDATE, 'install'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         text=True)
                 for line in proc.stdout:
                     line = line.strip()
-                    if line.startswith(('Unpacking', 'Setting up', 'Get:', 'Preparing')):
+                    if line.startswith('MWX7-PROGRESS '):
+                        try:
+                            _, pct, name = line.split(' ', 2)
+                            GLib.idle_add(stage, int(pct), name)
+                        except ValueError:
+                            pass
+                    elif line.startswith(('Unpacking', 'Setting up', 'Get:', 'Preparing')):
                         GLib.idle_add(detail.set_label, line[:120])
                 GLib.idle_add(installed, proc.wait())
             threading.Thread(target=work, daemon=True).start()
 
         def installed(code):
             busy(False)
+            bar.set_visible(False)
+            show_last()
             install.set_visible(False)
             if code == 0:
                 try:
@@ -1761,11 +1827,13 @@ class Settings(Gtk.Application):
                 detail.set_label('')
                 restart.set_visible(restart_needed)
             else:
-                status.set_label('Installing updates did not finish. Try again in a moment.')
+                status.set_label('Installing updates did not finish. MWX 7 repairs itself the next time it starts; '
+                                 'you can also try again in a moment.')
             return False
 
         check.connect('clicked', on_check)
         install.connect('clicked', on_install)
+        show_available(update_info())
 
         if os.path.exists('/etc/mwx7/installed') and run(['findmnt', '-no', 'SOURCE', '/']).strip().endswith('[/@previous]'):
             # The boot menu fell back to the version before the last update (or it was chosen there): keeping it makes

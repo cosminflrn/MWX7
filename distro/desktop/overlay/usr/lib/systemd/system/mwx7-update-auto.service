@@ -1,0 +1,10 @@
+[Unit]
+Description=MWX 7: check for updates and download them quietly
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/share/mwx7/bin/mwx7-update auto

@@ -54,6 +54,8 @@ if [ -f /etc/mwx7/installed ] && [ ! -f /var/lib/mwx7/boot-art-2 ] && command -v
   if update-initramfs -u >/dev/null 2>&1; then mkdir -p /var/lib/mwx7 && : > /var/lib/mwx7/boot-art-2; fi
 fi
 systemctl enable mwx7-boot-ok.service >/dev/null 2>&1 || true  # resets the start counter (safe boot)
+# Finishes an update that was cut short (next start); checks for updates daily and downloads them quietly.
+systemctl enable mwx7-update-recover.service mwx7-update-auto.timer >/dev/null 2>&1 || true
 
 # Boot menu: MWX 7's entry names, checked so a mistake can never leave the system without a boot menu. An installed
 # system gets the menu rebuilt now; the ISO build and the first-start setup build theirs themselves.

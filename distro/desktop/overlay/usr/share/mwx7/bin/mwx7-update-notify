@@ -9,6 +9,10 @@ while :; do
   list=$(apt list --upgradable 2>/dev/null | grep /)
   count=$(printf '%s' "$list" | grep -c /)
   ours=$(printf '%s\n' "$list" | sed -n 's|^mwx7-desktop/[^ ]* \([^ ]*\) .*|\1|p')
-  if [ "$count" -gt 0 ]; then echo "$count ${ours:--}" > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"; else rm -f "$STATE"; fi
+  # Third field: 1 when the quiet download (mwx7-update auto) has fetched exactly what is waiting now.
+  info=/var/lib/mwx7/updates.state
+  ready=0
+  [ "$(sed -n 's/^ready=//p' $info 2>/dev/null)" = 1 ] && [ "$(sed -n 's/^count=//p' $info 2>/dev/null)" = "$count" ] && ready=1
+  if [ "$count" -gt 0 ]; then echo "$count ${ours:--} $ready" > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"; else rm -f "$STATE"; fi
   sleep 600
 done

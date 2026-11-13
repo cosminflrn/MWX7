@@ -1,0 +1,19 @@
+[Unit]
+Description=MWX 7: finish an update that was cut short
+# Runs only when the last install did not end cleanly: our flag file, or dpkg's own leftovers (a half-done run).
+ConditionPathExists=|/var/lib/mwx7/update-in-progress
+ConditionDirectoryNotEmpty=|/var/lib/dpkg/updates
+DefaultDependencies=no
+After=local-fs.target
+Before=greetd.service multi-user.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/mwx7/bin/mwx7-update recover
+TimeoutStartSec=20min
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

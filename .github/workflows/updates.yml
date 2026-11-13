@@ -77,6 +77,9 @@ jobs:
           # The new package first, then the index that points at it, so a system checking in between never sees an
           # index for a package that isn't there yet.
           gh release upload updates -R "$GITHUB_REPOSITORY" --clobber "./mwx7-desktop_${V}_amd64.deb"
+          # Installed systems read "What's new" for a waiting version from here (mwx7-update).
+          cp "$GITHUB_WORKSPACE/CHANGELOG.md" CHANGELOG.md
+          gh release upload updates -R "$GITHUB_REPOSITORY" --clobber CHANGELOG.md
           [ -n "${UNSIGNED:-}" ] || gh release upload updates -R "$GITHUB_REPOSITORY" --clobber Packages Packages.gz Release Release.gpg InRelease
           # Keep the ten newest packages (the index lists them all; Reset MWX 7 installs the version a PC runs).
           gh release view updates -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep '\.deb$' | sort -V |
