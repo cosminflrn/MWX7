@@ -28,6 +28,17 @@ cp -a "$REPO/public/media/avatars" "$S/avatars"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$S/wallpaper.jpg"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
    "$REPO/public/media/pictures/"*.jpg "$S/wallpapers/"
+# Live wallpapers (Settings -> Wallpapers -> Live): the concept's loops, re-encoded to <=1080p H.264, no audio, when
+# ffmpeg is there; the originals (also 1080p) otherwise. Each one's still (<name>.jpg above) is its poster.
+mkdir -p "$S/live"
+for n in meadow sierra; do
+  if command -v ffmpeg >/dev/null; then
+    ffmpeg -v error -y -i "$REPO/public/media/wallpapers/$n.mp4" -an -vf "scale='min(1920,iw)':-2" -c:v libx264 \
+      -preset veryfast -crf 28 -pix_fmt yuv420p -movflags +faststart "$S/live/$n.mp4"
+  else
+    cp "$REPO/public/media/wallpapers/$n.mp4" "$S/live/$n.mp4"
+  fi
+done
 # The concept's apps (Notepad, Paint, ...) as a local web app; mwx7-app opens one per window (index.html?app=<id>).
 if [ -f "$REPO/dist/index.html" ]; then
   mkdir -p "$S/web" && cp -a "$REPO/dist/." "$S/web/"
