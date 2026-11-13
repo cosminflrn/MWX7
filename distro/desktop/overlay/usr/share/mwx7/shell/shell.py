@@ -518,7 +518,7 @@ class Shell(Gtk.Application):
         self.bar.present()
         self.dock.present()
         GLib.timeout_add(200, self.tick_clock)
-        threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
+        threading.Thread(target=self.ipc.watch, args=(self.ipc_event_filter,), daemon=True).start()
         self.refresh()
         self.start_clipboard()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
@@ -1208,6 +1208,18 @@ class Shell(Gtk.Application):
         pop.set_child(col)
         pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
         pop.popup()
+
+    # Wayfire reports every frame of a window being moved or resized (view-geometry-changed) and other things the bar
+    # and dock don't show; refreshing on each one re-listed every window dozens of times a second while dragging.
+    # That was the lag when moving windows (13 Nov 2026).
+    IGNORED_EVENTS = {'view-geometry-changed', 'view-wset-changed', 'view-workspace-changed', 'view-set-output',
+                      'plugin-activation-state-changed', 'output-gain-focus', 'output-added', 'output-removed'}
+
+    def ipc_event_filter(self, ev):
+        """Runs in the watch thread."""
+        if isinstance(ev, dict) and ev.get('event') in self.IGNORED_EVENTS:
+            return
+        GLib.idle_add(self.on_ipc_event)
 
     def on_ipc_event(self):
         # Wayfire sends focus/close events a moment before its view list reflects them, so look again shortly after;
