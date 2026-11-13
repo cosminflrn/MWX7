@@ -2,6 +2,17 @@
 
 Derived from the git history. Newest first.
 
+## v1.13.0
+- **Much less lag**: the desktop no longer redraws the whole screen all the time (idle CPU of the window manager
+  from ~69% to ~3% in tests): widgets update calmly, the bar's clock has no seconds by default, the bar ignores window
+  moves, and in VMware the Aero blur rests, the mouse pointer is drawn smoothly and X11 apps (VLC) don't crash
+- Widgets: square, the size of 2×2 icons, lined up on a grid (right-click the desktop → Widgets…)
+- Super+V opens the clipboard history; Super+S opens search
+- Settings: every page tidied (titles, spacing, shorter notes); apps polished (Paint, Photos, Calculator, About…)
+- Ready for a real PC: microcode and more Wi-Fi firmware, safer disk choice in the installer, NVIDIA driver with
+  Secure Boot, a step-by-step guide (docs/real-pc-install.md)
+- Fixes: Reset to factory, Get Apps shows why an app didn't start
+
 ## v1.12.0
 - **Get Apps**: VLC, GIMP, LibreOffice, OBS, Steam, Discord, Spotify and more in one click (Flathub), no terminal
 - **Native games**: Mines, Solitaire and Space Pinball are real apps now; no web pages left
