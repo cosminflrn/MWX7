@@ -25,6 +25,7 @@ CONF_DIR = os.path.join(GLib.get_user_config_dir(), 'mwx7')
 WF_INI = os.path.join(CONF_DIR, 'wayfire.ini')
 WALL_FILE = os.path.join(CONF_DIR, 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
+LIVE = '/usr/share/mwx7/live'
 ADMIN = '/usr/share/mwx7/bin/mwx7-admin'
 UPDATE = '/usr/share/mwx7/bin/mwx7-update'
 BACKUP = '/usr/share/mwx7/bin/mwx7-backup'
@@ -373,7 +374,59 @@ class Settings(Gtk.Application):
         flow.connect('child-activated', chosen)
         self.wall_flow = flow
         p.append(flow)
+        # Live wallpapers: a looped, muted video the desktop layer plays behind the icons. Off unless one is clicked.
+        live = [f[:-4] for f in sorted(os.listdir(LIVE)) if f.endswith('.mp4')] if os.path.isdir(LIVE) else []
+        if live:
+            p.append(heading('Live wallpapers'))
+            p.append(note('A moving background. It pauses while a window covers the desktop. Click it again to turn it off.'))
+            lf = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
+                             row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
+            lf.add_css_class('walls')
+            for n in live:
+                child = Gtk.FlowBoxChild()
+                child.live = n
+                still = os.path.join(WALLPAPERS, n + '.jpg')  # the still of the same name is its thumbnail
+                child.set_child(self.tile(thumb(still, 150, 94), n.capitalize() + ' (live)'))
+                lf.append(child)
+            cur = self.live_choice()
+            c = lf.get_first_child()
+            while c:
+                if getattr(c, 'live', None) == cur:
+                    lf.select_child(c)
+                c = c.get_next_sibling()
+
+            def chose_live(_f, c):
+                if self.live_choice() == c.live:  # a second click turns it off
+                    lf.unselect_all()
+                    self.set_live('')
+                else:
+                    self.set_live(c.live)
+            lf.connect('child-activated', chose_live)
+            self.live_flow = lf
+            p.append(lf)
         return p
+
+    @staticmethod
+    def live_choice():
+        try:
+            return str(json.load(open(os.path.join(CONF_DIR, 'desktop.json'))).get('live_wallpaper') or '')
+        except (OSError, ValueError, AttributeError):
+            return ''
+
+    @staticmethod
+    def set_live(name):
+        """The desktop layer watches desktop.json and starts or stops the video; a still wallpaper clears this."""
+        path = os.path.join(CONF_DIR, 'desktop.json')
+        try:
+            cfg = json.load(open(path))
+        except (OSError, ValueError):
+            cfg = {}
+        cfg['live_wallpaper'] = name
+        os.makedirs(CONF_DIR, exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(cfg, f)
+        os.replace(tmp, path)
 
     def page_wincolor(self):
         p = page()
@@ -429,6 +482,8 @@ class Settings(Gtk.Application):
 
     @staticmethod
     def set_wallpaper(path):
+        if Settings.live_choice():
+            Settings.set_live('')
         os.makedirs(CONF_DIR, exist_ok=True)
         with open(WALL_FILE, 'w') as f:
             f.write(path + '\n')

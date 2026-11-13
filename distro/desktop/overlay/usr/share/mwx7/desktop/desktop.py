@@ -63,6 +63,10 @@ def launch(cmd, fallback=None):
 
 WALL_FILE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
+LIVE = '/usr/share/mwx7/live'  # live wallpaper loops: <name>.mp4, chosen by desktop.json's "live_wallpaper"
+# What the gadget gallery lists, in the column's order: (id, title, one line about it)
+GADGET_INFO = [('clock', 'Clock', 'Analog clock with the date.'), ('calendar', 'Calendar', 'This month, today marked.'),
+               ('meter', 'CPU Meter', 'Processor and memory load.'), ('weather', 'Weather', 'Temperature for your city.')]
 
 
 def wayfire(method, data=None):
@@ -77,6 +81,34 @@ def wayfire(method, data=None):
         s.close()
     except OSError:
         pass
+
+
+def wayfire_views():
+    """Wayfire's window list (the same request the shell uses), or None when it cannot be asked."""
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(2)
+        s.connect(os.environ.get('WAYFIRE_SOCKET', ''))
+        body = json.dumps({'method': 'window-rules/list-views', 'data': {}}).encode()
+        s.sendall(struct.pack('<I', len(body)) + body)
+        buf = b''
+        while len(buf) < 4:
+            chunk = s.recv(4096)
+            if not chunk:
+                return None
+            buf += chunk
+        n = struct.unpack('<I', buf[:4])[0]
+        buf = buf[4:]
+        while len(buf) < n:
+            chunk = s.recv(65536)
+            if not chunk:
+                return None
+            buf += chunk
+        s.close()
+        views = json.loads(buf[:n])
+        return views if isinstance(views, list) else None
+    except (OSError, ValueError, struct.error):
+        return None
 
 
 def desktop_dir():
@@ -729,7 +761,17 @@ class Desktop(Gtk.Application):
 
         self.root = Gtk.Overlay()
         self.fixed = Gtk.Fixed()
-        self.root.set_child(self.fixed)
+        # The live wallpaper is the overlay's base: icons and gadgets sit on top of it. Hidden (so the swaybg picture
+        # shows through the transparent surface) unless a live wallpaper is chosen.
+        self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
+        self.live_pic.set_visible(False)
+        self.live_media = None
+        self.live_name = ''
+        self.live_paused = False
+        self.live_timer = 0
+        self.gallery = None
+        self.root.set_child(self.live_pic)
+        self.root.add_overlay(self.fixed)
         self.icons = []
         self.put_fixed_icons()
         # The files and folders in the Desktop folder follow MWX 7's own icons, as on the web; watched, not polled.
@@ -746,13 +788,14 @@ class Desktop(Gtk.Application):
         # Gadgets sit on the same surface as the icons and can be dragged anywhere, as in Windows 7; each keeps its place.
         self.gadgets = [('clock', self.clock), ('calendar', self.cal), ('meter', self.meter), ('weather', self.weather)]
         for name, g in self.gadgets:
-            g.set_visible(self.gadgets_on)
+            g.set_visible(self.gadget_shown(name))
             self.fixed.put(g, 0, 0)
             g.gadget_name = name
         self.show_icons(self.cfg.get('icons', True) is not False)
         # Settings -> Desktop writes the same file: follow it (icons, gadgets, weather city) without a restart.
         self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.cfg_mon.connect('changed', lambda *_a: GLib.timeout_add(200, self.reload_config))
+        self.set_live(str(self.cfg.get('live_wallpaper') or ''))
 
         # For screenshots in automated checks (no pointer there): MWX7_DESKTOP_OPEN=menu.
         if os.environ.get('MWX7_DESKTOP_OPEN') == 'menu':
@@ -843,7 +886,8 @@ class Desktop(Gtk.Application):
         for n, g in self.gadgets:
             if n == name:
                 break
-            y += g.HEIGHT + GADGET_GAP
+            if self.gadget_shown(n):
+                y += g.HEIGHT + GADGET_GAP
         return self.width - GADGET_RIGHT - GADGET_W, y
 
     def place_gadgets(self):
@@ -967,6 +1011,10 @@ class Desktop(Gtk.Application):
         os.makedirs(os.path.dirname(WALL_FILE), exist_ok=True)
         with open(WALL_FILE, 'w') as f:
             f.write(nxt + '\n')
+        if self.cfg.get('live_wallpaper'):  # a still picture replaces the live one, as in Settings
+            self.cfg['live_wallpaper'] = ''
+            save_json(CONFIG, self.cfg)
+            self.set_live('')
         # The new wallpaper starts before the old one stops, so the desktop never flashes empty.
         old = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaybg'], capture_output=True, text=True).stdout.split()
         launch(['swaybg', '-i', nxt, '-m', 'fill'])
@@ -1170,6 +1218,14 @@ class Desktop(Gtk.Application):
             inner.set_child(col)
             b.connect('clicked', lambda *_a: inner.popup())
             box.append(b)
+        over = self.hit(x, y)
+        if isinstance(over, Gadget) and not on_file:
+            row('Close gadget', 'delete', lambda n=over.gadget_name: self.set_gadget(n, False))
+            row('Gadgets\u2026', 'gadgets', self.show_gallery)
+            pop.set_child(box)
+            pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
+            pop.popup()
+            return
         if on_file:
             # A file or folder on the desktop: its own menu, as in Explorer.
             path = os.path.join(desktop_dir(), it.key[5:])
@@ -1192,6 +1248,7 @@ class Desktop(Gtk.Application):
         sep()
         row('New Folder', 'new-folder', lambda: self.new_item(True))
         row('New Text Document', 'new-file', lambda: self.new_item(False))
+        row('Gadgets\u2026', 'gadgets', self.show_gallery)
         row('Hide Gadgets' if self.gadgets_on else 'Show Gadgets', 'gadgets', self.toggle_gadgets)
         sep()
         row('Show Desktop', 'desktop', lambda: wayfire('wm-actions/toggle_showdesktop'))
@@ -1213,12 +1270,10 @@ class Desktop(Gtk.Application):
             self.set_sizes()
             self.rebuild_icons()
         self.show_icons(cfg.get('icons', True) is not False)
-        on = cfg.get('gadgets', True) is not False
-        if on != self.gadgets_on:
-            self.gadgets_on = on
-            for _n, g in self.gadgets:
-                g.set_visible(on)
-            self.start_timers() if on else self.stop_timers()
+        self.gadgets_on = cfg.get('gadgets', True) is not False
+        self.apply_gadgets()
+        if self.live_name != str(cfg.get('live_wallpaper') or ''):
+            self.set_live(str(cfg.get('live_wallpaper') or ''))
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         if (lat, lon) != (self.weather.lat, self.weather.lon):
             self.weather.city = str(cfg.get('city') or 'Bucharest')
@@ -1232,12 +1287,109 @@ class Desktop(Gtk.Application):
         self.gadgets_on = not self.gadgets_on
         self.cfg['gadgets'] = self.gadgets_on
         save_json(CONFIG, self.cfg)
-        for _n, g in self.gadgets:
-            g.set_visible(self.gadgets_on)
-        if self.gadgets_on:
+        self.apply_gadgets()
+
+    def gadget_shown(self, name):
+        hidden = self.cfg.get('gadgets_hidden')
+        return self.gadgets_on and not (isinstance(hidden, list) and name in hidden)
+
+    def apply_gadgets(self):
+        """Show the gadgets the config wants; the timers run only while at least one is on screen."""
+        for n, g in self.gadgets:
+            g.set_visible(self.gadget_shown(n))
+        self.place_gadgets()
+        if any(self.gadget_shown(n) for n, _g in self.gadgets):
             self.start_timers()
         else:
             self.stop_timers()
+        if self.gallery:
+            self.gallery.refresh()
+
+    def set_gadget(self, name, on):
+        hidden = [n for n in (self.cfg.get('gadgets_hidden') if isinstance(self.cfg.get('gadgets_hidden'), list) else [])
+                  if n != name]
+        if not on:
+            hidden.append(name)
+        self.cfg['gadgets_hidden'] = hidden
+        if on and not self.gadgets_on:  # adding one while all are hidden brings the gadgets back
+            self.gadgets_on = True
+            self.cfg['gadgets'] = True
+        save_json(CONFIG, self.cfg)
+        self.apply_gadgets()
+
+    def show_gallery(self):
+        if self.gallery:
+            self.gallery.present()
+            return
+        win = Gtk.Window(title='Gadgets', resizable=False, default_width=380)
+        win.set_application(self)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=12, margin_bottom=12, margin_start=12,
+                      margin_end=12)
+        buttons = {}
+        for name, title, blurb in GADGET_INFO:
+            r = Gtk.Box(spacing=10)
+            lab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+            lab.append(Gtk.Label(label=title, xalign=0, css_classes=['heading']))
+            lab.append(Gtk.Label(label=blurb, xalign=0, css_classes=['dim-label']))
+            b = Gtk.Button(valign=Gtk.Align.CENTER, width_request=80)
+            b.connect('clicked', lambda _b, n=name: self.set_gadget(n, not self.gadget_shown(n)))
+            r.append(lab)
+            r.append(b)
+            box.append(r)
+            buttons[name] = b
+
+        def refresh():
+            for n, b in buttons.items():
+                b.set_label('Remove' if self.gadget_shown(n) else 'Add')
+        win.refresh = refresh
+        refresh()
+        win.set_child(box)
+        win.connect('close-request', lambda *_a: setattr(self, 'gallery', None) or False)
+        self.gallery = win
+        win.present()
+
+    # -- live wallpaper
+    def set_live(self, name):
+        """Play LIVE/<name>.mp4 looped and muted under the icons; '' (or a missing file) goes back to the still picture."""
+        path = os.path.join(LIVE, os.path.basename(name) + '.mp4') if name else ''
+        if self.live_timer:
+            GLib.source_remove(self.live_timer)
+            self.live_timer = 0
+        if self.live_media:
+            self.live_media.pause()
+            self.live_pic.set_paintable(None)
+            self.live_media = None
+        self.live_name = name
+        if not (name and os.path.isfile(path)):
+            self.live_pic.set_visible(False)
+            return
+        media = Gtk.MediaFile.new_for_filename(path)
+        media.set_loop(True)
+        media.set_muted(True)
+        self.live_media = media
+        self.live_pic.set_paintable(media)
+        self.live_pic.set_visible(True)
+        self.live_paused = False
+        media.play()
+        # A video nobody can see is wasted power: look every 2 s for a covering window or the lock screen.
+        self.live_timer = GLib.timeout_add_seconds(2, self.live_check)
+
+    def live_check(self):
+        def work():
+            locked = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaylock'], capture_output=True).returncode == 0
+            views = wayfire_views()
+            covered = locked or any(
+                isinstance(v, dict) and v.get('mapped', True) and not v.get('minimized') and v.get('role', 'toplevel') == 'toplevel'
+                and (v.get('fullscreen') or v.get('maximized') or v.get('tiled-edges') == 15) for v in (views or []))
+            GLib.idle_add(self.live_apply, covered)
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def live_apply(self, covered):
+        if self.live_media and covered != self.live_paused:
+            self.live_paused = covered
+            self.live_media.pause() if covered else self.live_media.play()
+        return False
 
     def start_timers(self):
         if self.timers:
