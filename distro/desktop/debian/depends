@@ -2,7 +2,7 @@
 # Base system: kernel, boot (both GRUBs: UEFI with Secure Boot, and BIOS), graphics, sound.
 linux-image-amd64 initramfs-tools systemd-sysv dbus libpam-systemd
 grub-efi-amd64 grub-efi-amd64-signed shim-signed grub-pc-bin efibootmgr os-prober
-btrfs-progs dosfstools e2fsprogs fdisk zstd gpgv
+btrfs-progs dosfstools e2fsprogs fdisk zstd gpgv ntfs-3g parted
 libgl1-mesa-dri xwayland fonts-dejavu-core pipewire pipewire-pulse wireplumber rtkit alsa-utils pciutils ca-certificates
 # Desktop: Wayfire (frames and animations come from our plugins), the shell (GTK 4 + layer-shell in Python), wallpaper,
 # logon screen (greetd + cage), notifications, lock screen, portals for Chrome's file pickers and screen sharing.

@@ -40,3 +40,4 @@ list.nets row { padding: 6px 10px; }
 progressbar trough { min-height: 10px; border-radius: 5px; background: #dbe6f3; }
 progressbar progress { min-height: 10px; border-radius: 5px; background: linear-gradient(to bottom, #7fc1ff, #2f7fe0); }
 .notice { padding: 12px 14px; border-radius: 8px; background: #fff6dc; border: 1px solid #f0d58a; }
+.refusal { color: #9c1c1c; font-weight: 600; }

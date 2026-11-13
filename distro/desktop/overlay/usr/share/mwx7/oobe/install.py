@@ -2,8 +2,12 @@
 """Puts MWX 7 on a disk for the first-start setup (runs as root, through sudo, on the ISO only).
 
   install.py survey                 the disks, as JSON: what is on them and how MWX 7 could use each one
+  install.py plan MODE DISK [GIB]   what a copy would change, as JSON {"ok", "lines", "error"} (the setup's confirmation page)
+  install.py alongside DISK         can Windows on DISK be shrunk, and how much may MWX 7 take? JSON (slow: checks the disk)
   install.py copy erase|free DISK   partitions, copies the system and installs the boot loader, printing
                                     "STEP <text>" and "PROGRESS <0-100>" lines for the setup's progress bar
+  install.py copy alongside DISK GIB   the same, after shrinking Windows on DISK to make GIB gigabytes for MWX 7
+                                    (MWX7_INSTALL_DRYRUN=1: prints the commands that would change the disk, runs none)
   install.py finish ANSWERS.json    the person's choices: account, language, keyboard, time zone; then unmounts
   install.py finish ANSWERS --here  the same on the running system (first start after Settings -> Reset MWX 7)
   install.py recovery sync|prepare  the recovery copy: keep its packages at the installed versions (apt hook) /
@@ -30,6 +34,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 MEDIUM = '/run/live/medium'
@@ -41,6 +46,17 @@ ESP_TYPE = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 BIOS_BOOT_TYPE = '21686148-6449-6e6f-744e-656564454649'
 MOUNT_OPTS = 'compress=zstd:1,noatime'
 SUBVOLS = (('@', ''), ('@home', 'home'), ('@log', 'var/log'), ('@cache', 'var/cache'))
+GIB = 2 ** 30
+MIB = 2 ** 20
+ALONGSIDE_MIN = 40 * GIB  # MWX 7 next to Windows: the system plus room for updates and some files
+WINDOWS_KEEP_FREE = 30 * GIB  # Windows must keep this much free space after it is shrunk (updates, hibernation, paging)
+ESP_MIN_FREE = 15 * MIB  # GRUB, shim and the MWX 7 menu files
+DRYRUN = os.environ.get('MWX7_INSTALL_DRYRUN') == '1'
+MSG_BITLOCKER = 'Turn off BitLocker in Windows first, or back up your recovery key.'
+MSG_FASTSTART = ('Windows was not shut down completely (Fast Startup or hibernation leaves its disk half-asleep, and changing '
+                 'it would damage Windows). In Windows: Control Panel, Power Options, "Choose what the power buttons do", '
+                 '"Change settings that are currently unavailable", untick "Turn on fast startup". Then choose Restart once, '
+                 'and shut the PC down.')
 GROUPS = ('cdrom', 'sudo', 'audio', 'dip', 'video', 'render', 'input', 'plugdev', 'netdev', 'users', 'lpadmin')
 
 
@@ -56,6 +72,14 @@ def sh(*cmd, quiet=True, **kw):
 def chroot(*cmd, **kw):
     env = dict(os.environ, DEBIAN_FRONTEND='noninteractive', LANG='C.UTF-8')
     return sh('chroot', TARGET, *cmd, env=env, **kw)
+
+
+def wr(*cmd, **kw):
+    """Every command that changes a disk goes through here, so that MWX7_INSTALL_DRYRUN=1 can print instead of run."""
+    if DRYRUN:
+        say('DRYRUN', ' '.join(cmd) + (' <<< ' + repr(kw['input']) if 'input' in kw else ''))
+        return ''
+    return sh(*cmd, **kw)
 
 
 def say(kind, value):
@@ -125,7 +149,92 @@ def free_space(dev):
     return best[0], best[1], ss
 
 
+def gbs(n):
+    g = n / GIB
+    return f'{g:.0f} GB' if g >= 10 else f'{g:.1f} GB'
+
+
+def probe_mount(dev, fstype, fn):
+    """fn(mount point) with dev mounted read-only, always unmounted again. None when it cannot be mounted. Reads only."""
+    mnt = tempfile.mkdtemp(prefix='mwx7-probe-')
+    try:
+        for t in (['ntfs-3g', 'ntfs3'] if fstype == 'ntfs' else [fstype]):
+            if subprocess.run(['mount', '-t', t, '-o', 'ro,nodev,nosuid,noexec', dev, mnt], capture_output=True,
+                              stdin=subprocess.DEVNULL).returncode == 0:
+                try:
+                    return fn(mnt)
+                finally:
+                    subprocess.run(['umount', mnt], capture_output=True)
+        return None
+    finally:
+        try:
+            os.rmdir(mnt)
+        except OSError:
+            pass
+
+
+def is_bitlocker(part):
+    """BitLocker volumes: blkid says TYPE=BitLocker, and every one starts with "-FVE-FS-" after the 3 jump bytes."""
+    if part.get('fstype') == 'BitLocker':
+        return True
+    if part.get('fstype') not in (None, '', 'ntfs'):
+        return False
+    try:
+        with open(part['path'], 'rb') as f:
+            f.seek(3)
+            return f.read(8) == b'-FVE-FS-'
+    except OSError:
+        return False
+
+
+def windows_name(mnt):
+    if not os.path.isdir(f'{mnt}/Windows/System32'):
+        return None
+    if glob.glob(f'{mnt}/Windows/SystemApps/MicrosoftWindows.Client.*'):
+        return 'Windows 11'
+    return 'Windows 10' if os.path.isdir(f'{mnt}/Windows/SystemApps') else 'Windows'
+
+
+def detect_systems(parts):
+    """What is installed on a disk, found by reading only: Windows (NTFS with Windows/System32, or the Windows boot manager on
+    the EFI partition when the NTFS volume is BitLocker-encrypted), other Linux. Needs root; without it nothing is known."""
+    out = {'systems': [], 'esp': None, 'esp_free': 0}
+    if os.geteuid() != 0:
+        return out
+    for p in parts:
+        if p['kind'] == 'efi' and p.get('fstype') == 'vfat':
+            def look(m):
+                st = os.statvfs(m)
+                return os.path.exists(f'{m}/EFI/Microsoft/Boot/bootmgfw.efi'), st.f_bavail * st.f_frsize
+            r = probe_mount(p['path'], 'vfat', look)
+            if r and (out['esp'] is None or (r[0] and not out.get('esp_windows'))):
+                out.update(esp=p['path'], esp_free=r[1], esp_windows=r[0])
+    for p in parts:
+        if p['kind'] in ('windows', 'data') and p.get('fstype') == 'ntfs':
+            name = probe_mount(p['path'], 'ntfs', windows_name)
+            if name:
+                out['systems'].append({'part': p['path'], 'name': name, 'kind': 'windows', 'bitlocker': False})
+        elif p['kind'] == 'linux':
+            label = p.get('label') or ''
+            name = 'MWX 7' if label == 'MWX7' else 'Linux'
+            out['systems'].append({'part': p['path'], 'name': name, 'kind': 'linux', 'bitlocker': False})
+    if not any(s['kind'] == 'windows' for s in out['systems']) and out.get('esp_windows'):
+        # The Windows volume itself cannot be read: BitLocker (the biggest encrypted volume is Windows' C:).
+        locked = sorted((p for p in parts if p['kind'] == 'encrypted' and is_bitlocker(p)), key=lambda p: -p['size'])
+        if locked:
+            out['systems'].append({'part': locked[0]['path'], 'name': 'Windows', 'kind': 'windows', 'bitlocker': True})
+    return out
+
+
 def survey():
+    print(json.dumps(surveyed()))
+
+
+def disk_info(path):
+    return next(d for d in surveyed()['disks'] if d['path'] == path)
+
+
+def surveyed():
     tree = json.loads(sh('lsblk', '-J', '-b', '-o', 'NAME,PATH,SIZE,TYPE,TRAN,RM,RO,MODEL,PTTYPE,FSTYPE,LABEL,'
                          'PARTTYPE,PARTLABEL,MOUNTPOINTS'))
     skip = live_disk()
@@ -135,6 +244,9 @@ def survey():
             continue
         parts = [{'path': p['path'], 'size': int(p['size']), 'fstype': p.get('fstype'), 'label': p.get('label'),
                   'partlabel': p.get('partlabel'), 'kind': kind_of(p)} for p in d.get('children') or []]
+        for p in parts:  # an encrypted volume that blkid did not name must still never look "empty"
+            if p['kind'] in ('empty', 'other') and is_bitlocker(p):
+                p['fstype'], p['kind'] = 'BitLocker', 'encrypted'
         start, sectors, ss = free_space(d['path']) if parts or d.get('pttype') else (None, 0, 512)
         empty = all(p['kind'] == 'empty' for p in parts) and not d.get('fstype')
         has_mwx7 = any(p['label'] == 'MWX7' and p['fstype'] == 'btrfs' for p in parts)
@@ -143,8 +255,13 @@ def survey():
                 'empty': empty, 'free': sectors * ss if not empty else int(d['size']),
                 'live': d['name'] == skip or is_installer_stick(parts), 'big_enough': int(d['size']) >= MIN_SIZE, 'has_mwx7': has_mwx7}
         disk['can_free'] = (not empty and not disk['live'] and disk['free'] >= MIN_SIZE and free_mode_ok(disk))
+        det = detect_systems(parts) if not disk['live'] else {'systems': [], 'esp': None, 'esp_free': 0}
+        disk.update(systems=det['systems'], esp=det['esp'], esp_free=det['esp_free'],
+                    has_windows=any(s['kind'] == 'windows' for s in det['systems']),
+                    bitlocker=any(s['bitlocker'] for s in det['systems']),
+                    win_part=next((s['part'] for s in det['systems'] if s['kind'] == 'windows' and not s['bitlocker']), None))
         disks.append(disk)
-    print(json.dumps({'firmware': 'uefi' if uefi() else 'bios', 'min_size': MIN_SIZE, 'disks': disks}))
+    return {'firmware': 'uefi' if uefi() else 'bios', 'min_size': MIN_SIZE, 'disks': disks}
 
 
 def free_mode_ok(disk):
@@ -173,6 +290,179 @@ def release(disk):
     for p in partitions_of(disk):
         subprocess.run(['swapoff', p], capture_output=True)
         subprocess.run(['umount', '-R', p], capture_output=True)
+
+
+def wait_partitions(disk, expected):
+    """The kernel and udev announce new partitions a moment after sfdisk returns."""
+    for _ in range(40):
+        settle()
+        after = partitions_of(disk)
+        if len(after) >= expected and all(after.values()) and all(os.path.exists(p) for p in after):
+            return after
+        time.sleep(0.5)
+    raise RuntimeError('The new partitions did not appear.')
+
+
+# ---- alongside Windows ------------------------------------------------------------------------------------------
+def ntfs_info(part):
+    """(volume bytes, smallest possible size in bytes) of a Windows volume, from ntfsresize --info, which also checks the
+    volume and refuses one that is hibernated or marked for a disk check."""
+    try:
+        out = sh('ntfsresize', '--info', part)
+    except RuntimeError as e:
+        if re.search(r'unsafe|hibernat|fast restart|scheduled for check|dirty', str(e), re.I):
+            raise RuntimeError(MSG_FASTSTART + ' If Windows offers to check or repair the drive, let it finish first.')
+        raise RuntimeError('Windows’ disk did not pass the safety check, so it was not touched. Start Windows and run '
+                           f'"chkdsk /f" on it, then restart and shut down. ({str(e)[-160:]})')
+    vol = re.search(r'Current volume size\s*:\s*(\d+) bytes', out)
+    low = re.search(r'resize at (\d+) bytes', out)
+    if not vol or not low:
+        raise RuntimeError('Windows’ disk could not be measured (it cannot be shrunk safely), so it was not touched.')
+    return int(vol.group(1)), int(low.group(1))
+
+
+def hibernated(part):
+    """Windows' Fast Startup / hibernation leaves "hibr" at the start of hiberfil.sys until Windows has started again."""
+    def look(m):
+        for name in ('hiberfil.sys', 'Hiberfil.sys'):
+            try:
+                with open(f'{m}/{name}', 'rb') as f:
+                    return f.read(4) in (b'hibr', b'HIBR')
+            except OSError:
+                continue
+        return False
+    return bool(probe_mount(part, 'ntfs', look))
+
+
+def alongside_check(d, gib=None):
+    """Everything that must hold before Windows is touched; nothing is written. Raises RuntimeError with the reason to show
+    the person. With gib=None: the range MWX 7 may take; else the exact layout for gib gigabytes (a dict, all in sectors)."""
+    if not uefi():
+        raise RuntimeError('Installing next to Windows needs the PC to start in UEFI mode (it is in legacy BIOS mode).')
+    if d['live'] or not d.get('has_windows'):
+        raise RuntimeError('There is no Windows on this disk.')
+    if d.get('bitlocker'):
+        raise RuntimeError(MSG_BITLOCKER)
+    win = d.get('win_part')
+    if not win or d.get('pttype') != 'gpt' or not d.get('esp'):
+        raise RuntimeError('Windows is not on a GPT disk with an EFI partition here, which this way of installing needs. '
+                           'Use "Advanced" instead.')
+    if d.get('esp_free', 0) < ESP_MIN_FREE:
+        raise RuntimeError('The EFI partition is nearly full, so the boot files do not fit. Use "Advanced" instead.')
+    if hibernated(win):
+        raise RuntimeError(MSG_FASTSTART)
+    vol, low = ntfs_info(win)
+    t = json.loads(sh('sfdisk', '-J', d['path']))['partitiontable']
+    ss = t.get('sectorsize', 512)
+    node = next((p for p in t['partitions'] if p['node'] == win), None)
+    if node is None or vol > node['size'] * ss:
+        raise RuntimeError('The partition table does not match Windows’ disk, so it was not touched.')
+    a = MIB // ss
+    start, end = node['start'], (node['start'] + node['size']) // a * a  # end: exclusive, 1 MiB aligned
+    keep = -(-(low + WINDOWS_KEEP_FREE) // MIB) * MIB  # the smallest size Windows may be shrunk to
+
+    def layout(g):
+        m_start = (end - g * GIB // ss) // a * a
+        if g * GIB < ALONGSIDE_MIN or (m_start - start) * ss < keep:
+            return None
+        return {'disk': d['path'], 'win': win, 'num': int(re.search(r'(\d+)$', win).group(1)), 'ss': ss, 'old_sectors': node['size'],
+                'win_sectors': m_start - start, 'm_start': m_start, 'm_sectors': end - m_start, 'esp': d['esp'],
+                'gib': g, 'used': low}
+    top = (node['size'] * ss - keep) // GIB
+    while top >= 1 and layout(top) is None:
+        top -= 1
+    if top < ALONGSIDE_MIN // GIB:
+        raise RuntimeError(f'There is not enough room to share. MWX 7 needs {ALONGSIDE_MIN // GIB} GB and Windows must keep '
+                           f'{WINDOWS_KEEP_FREE // GIB} GB free after shrinking, but only {max(top, 0)} GB can be taken. '
+                           'Free some space in Windows first (Disk Cleanup, uninstall programs), restart and shut it down.')
+    if gib is None:
+        return {'min': ALONGSIDE_MIN // GIB, 'max': top, 'default': min(top, 60), 'volume': vol}
+    lay = layout(gib) if gib <= top else None
+    if lay is None:
+        raise RuntimeError(f'MWX 7 cannot have {gib} GB there (between {ALONGSIDE_MIN // GIB} and {top} GB).')
+    return lay
+
+
+def alongside_apply(lay):
+    """The only code that shrinks Windows. Order matters: the file system first (checked with a dry run), then the partition
+    (never smaller than the file system), then the new partition in the freed gap. Stopping after any step leaves Windows
+    working; every command's failure aborts."""
+    disk, ss, win = lay['disk'], lay['ss'], lay['win']
+    nb = lay['win_sectors'] * ss
+    say('STEP', 'Checking Windows’ disk')
+    sh('ntfsresize', '--no-action', '--size', str(nb), win)  # a test run that changes nothing: must pass before any write
+    say('STEP', 'Making room: shrinking Windows')
+    say('PROGRESS', 2)
+    wr('ntfsresize', '--size', str(nb), win, input='y\n')
+
+    def win_sectors():
+        t = json.loads(sh('sfdisk', '-J', disk))['partitiontable']
+        return next(p['size'] for p in t['partitions'] if p['node'] == win)
+    try:
+        wr('parted', '-s', disk, 'resizepart', str(lay['num']), f"{lay['m_start'] - 1}s")
+    except RuntimeError:
+        pass  # parted may ask for a confirmation it cannot get in a script; sfdisk below does the same without asking
+    if not DRYRUN and win_sectors() != lay['win_sectors']:
+        wr('sfdisk', '-q', '--no-reread', '-N', str(lay['num']), disk, input=f"size={lay['win_sectors']}\n")
+        if win_sectors() != lay['win_sectors']:
+            raise RuntimeError('Windows’ file system was shrunk but its partition could not be. Windows still works; nothing '
+                               'else was changed.')
+    wr('sfdisk', '-q', '--append', disk, input=f"start={lay['m_start']}, size={lay['m_sectors']}, type=L\n")
+
+
+def alongside_partition(lay):
+    """Returns (root partition, EFI partition, False): the EFI partition is Windows' own and is never formatted."""
+    before = partitions_of(lay['disk'])
+    alongside_apply(lay)
+    if DRYRUN:
+        return None, lay['esp'], False
+    after = wait_partitions(lay['disk'], len(before) + 1)
+    new = [p for p in after if p not in before]
+    if len(new) != 1 or lay['esp'] not in after:
+        raise RuntimeError('The new partition did not appear as expected.')
+    return new[0], lay['esp'], False
+
+
+def ensure_windows_entry(esp):
+    """os-prober normally adds Windows to the boot menu; if it did not, chainload Windows' boot manager directly."""
+    if re.search(r'menuentry\s+[\'"]Windows', open(TARGET + '/boot/grub/grub.cfg').read()):
+        return
+    write('etc/grub.d/40_custom', '#!/bin/sh\nexec tail -n +3 $0\n'
+          'menuentry "Windows" --class windows --class os {\n  insmod part_gpt\n  insmod fat\n'
+          f'  search --no-floppy --fs-uuid --set=root {uuid(esp)}\n  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}}\n', 0o755)
+    chroot('update-grub')
+
+
+def plan(mode, disk, gib=None):
+    """The exact list of what a copy will change, for the confirmation page. Writes nothing."""
+    d = disk_info(disk)
+    name = f"{d['model'] or 'Disk'} ({gbs(d['size'])}, {d['name']})"
+    if d['live'] or not d['big_enough']:
+        raise RuntimeError('That disk cannot be used.')
+    if mode == 'erase':
+        lines = [f'EVERYTHING on {name} will be deleted and cannot be brought back:']
+        lines += [f"    {p['path']}: {p['label'] or p['kind']}, {gbs(p['size'])}" for p in d['parts']] or ['    (nothing is on it)']
+        lines += ['MWX 7 will be installed on the whole disk (a 512 MB EFI partition and the system partition).']
+    elif mode == 'free':
+        if not d['can_free']:
+            raise RuntimeError('There is not enough free space on that disk.')
+        lines = [f"MWX 7 will use the free space on {name} ({gbs(d['free'])} available).",
+                 'Nothing that is on the disk now is changed or deleted.',
+                 'New partitions are added in that space' + ('' if d['esp'] else ' (including a 512 MB EFI partition)') + '.']
+    elif mode == 'alongside':
+        lay = alongside_check(d, gib)
+        sysname = next(s['name'] for s in d['systems'] if s['kind'] == 'windows')
+        lines = [f"{sysname} on {name} will be SHRUNK from {gbs(lay['old_sectors'] * lay['ss'])} to "
+                 f"{gbs(lay['win_sectors'] * lay['ss'])} ({lay['win']}). Its files and programs stay; it keeps at least "
+                 f"{WINDOWS_KEEP_FREE // GIB} GB free.",
+                 f"A new {gbs(lay['m_sectors'] * lay['ss'])} partition for MWX 7 will be created in the freed space and "
+                 'formatted (it is empty now).',
+                 f"The existing EFI partition ({lay['esp']}) is reused and NOT formatted: MWX 7's boot files are added "
+                 'to it (folders EFI/MWX7 and EFI/debian); Windows’ boot files are not changed.',
+                 f'The boot menu will list MWX 7 and {sysname}.']
+    else:
+        raise RuntimeError('Unknown mode.')
+    return {'ok': True, 'lines': lines + ['Nothing else on this PC is changed.']}
 
 
 def partition(mode, disk):
@@ -204,15 +494,7 @@ def partition(mode, disk):
         lines.append(f'start={pos}, size={start + sectors - pos}, type=L')
         sh('sfdisk', '-q', '--append', disk, input='\n'.join(lines) + '\n')
         expected = len(before) + len(lines)
-    # The kernel and udev announce new partitions a moment after sfdisk returns.
-    for _ in range(40):
-        settle()
-        after = partitions_of(disk)
-        if len(after) >= expected and all(after.values()) and all(os.path.exists(p) for p in after):
-            break
-        time.sleep(0.5)
-    else:
-        raise RuntimeError('The new partitions did not appear.')
+    after = wait_partitions(disk, expected)
     new = [p for p in after if p not in before] if mode == 'free' else list(after)
     root = next(p for p in reversed(new) if after[p] not in (ESP_TYPE, '0xef', BIOS_BOOT_TYPE))
     esp = next((p for p in new if after[p] in (ESP_TYPE, '0xef')), None)
@@ -258,18 +540,23 @@ def uuid(dev):
     return sh('blkid', '-s', 'UUID', '-o', 'value', dev).strip()
 
 
-def copy(mode, disk):
-    if mode not in ('erase', 'free'):
-        raise SystemExit('mode must be erase or free')
-    info = next(d for d in json.loads(subprocess.run([sys.executable, __file__, 'survey'], capture_output=True,
-                                                      text=True, check=True).stdout)['disks'] if d['path'] == disk)
+def copy(mode, disk, gib=None):
+    if mode not in ('erase', 'free', 'alongside'):
+        raise SystemExit('mode must be erase, free or alongside')
+    if DRYRUN and mode != 'alongside':
+        raise SystemExit('MWX7_INSTALL_DRYRUN only covers "alongside"')
+    info = disk_info(disk)
     if info['live'] or not info['big_enough'] or (mode == 'free' and not info['can_free']):
         raise SystemExit('That disk cannot be used.')
     unmount_all()
     release(disk)
+    lay = alongside_check(info, gib) if mode == 'alongside' else None  # every check, before the first write
     say('STEP', 'Preparing the disk')
     say('PROGRESS', 1)
-    root, esp, own_esp = partition(mode, disk)
+    root, esp, own_esp = alongside_partition(lay) if lay else partition(mode, disk)
+    if DRYRUN:
+        say('STEP', 'Dry run: nothing was changed')
+        return
     sh('mkfs.btrfs', '-q', '-f', '-L', 'MWX7', root)
     if esp and own_esp:
         sh('mkfs.vfat', '-F', '32', '-n', 'EFI', esp)
@@ -339,6 +626,8 @@ def copy(mode, disk):
     else:
         chroot('grub-install', '--target=i386-pc', disk)
     chroot('update-grub')
+    if mode == 'alongside':
+        ensure_windows_entry(esp)
     say('STEP', 'Keeping a recovery copy')
     store_install_medium(root)
     with open(STATE + '/state.json', 'w') as f:
@@ -969,8 +1258,12 @@ if __name__ == '__main__':
     try:
         if cmd == 'survey':
             survey()
-        elif cmd == 'copy' and len(args) == 2 and not os.path.exists('/etc/mwx7/installed'):  # never on an installed PC
-            copy(*args)
+        elif cmd == 'plan' and len(args) in (2, 3):
+            print(json.dumps(plan(args[0], args[1], int(args[2]) if len(args) == 3 else None)))
+        elif cmd == 'alongside' and len(args) == 1:
+            print(json.dumps(alongside_check(disk_info(args[0]))))
+        elif cmd == 'copy' and len(args) in (2, 3) and not os.path.exists('/etc/mwx7/installed'):  # never on an installed PC
+            copy(args[0], args[1], int(args[2]) if len(args) == 3 else None)
         elif cmd == 'finish' and len(args) == 1:
             finish(args[0])
         elif cmd == 'finish' and args[1:] == ['--here'] and os.path.exists('/etc/mwx7/firstboot'):
