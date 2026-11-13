@@ -13,5 +13,7 @@ while [ "$fails" -lt 5 ]; do
   python3 /usr/share/mwx7/desktop/desktop.py "$@" >> "$LOG" 2>&1
   [ $(( $(date +%s) - start )) -lt 10 ] && fails=$((fails + 1)) || fails=0
   echo "mwx7-desktop-layer exited, restarting ($fails)" >> "$LOG"
+  # The still wallpaper was painted by the layer: put swaybg up until the restarted layer has its own first frame.
+  /usr/share/mwx7/bin/mwx7-wallpaper >/dev/null 2>&1 &
   sleep 1
 done

@@ -1,8 +1,10 @@
 """MWX 7 desktop layer: desktop icons and widgets as one layer-shell surface between the wallpaper and the windows.
 
-GTK4 + gtk4-layer-shell, same patterns as the shell. The surface is transparent, so the wallpaper (swaybg, background
-layer) shows through. Every redraw here makes Wayfire recomposite the screen, so widgets redraw rarely: the clock once
-a minute, the CPU/RAM gauge every 3 s without animating, the calendar when the date changes.
+GTK4 + gtk4-layer-shell, same patterns as the shell. The surface paints the still wallpaper itself and is opaque (one
+full-screen layer instead of swaybg plus a transparent layer blended on top: less overdraw on slow virtual GPUs). swaybg
+only runs as a fallback while this layer is not running. Every redraw here makes Wayfire recomposite the screen, so
+widgets redraw rarely: the clock once a minute, the CPU/RAM gauge every 3 s without animating, the calendar when the date
+changes.
 """
 import glob
 import json
@@ -21,10 +23,11 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
+gi.require_version('GdkPixbuf', '2.0')
 gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -83,6 +86,9 @@ def launch(cmd, fallback=None):
 
 WALL_FILE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
+DEFAULT_WALL = '/usr/share/mwx7/wallpaper.jpg'
+# Fallbacks for the bar's and dock's heights until the compositor tells us (the surface covers the whole output).
+BAR_FALLBACK, DOCK_FALLBACK = 28, 72
 LIVE = '/usr/share/mwx7/live'  # live wallpaper loops: <name>.mp4, chosen by desktop.json's "live_wallpaper"
 # What the widget gallery lists, in the column's order: (id, title, one line about it)
 GADGET_INFO = [('clock', 'Clock', 'Analog clock with the date.'), ('calendar', 'Calendar', 'This month, today marked.'),
@@ -769,14 +775,16 @@ class Desktop(Gtk.Application):
     def build(self):
         w = Gtk.ApplicationWindow(application=self)
         w.add_css_class('desktop-layer')
+        self.win = w  # update_background (called from set_live below) needs it before do_activate stores the result
         Layer.init_for_window(w)
-        # BOTTOM sits above the wallpaper (background) and below every window. Exclusive zone 0 keeps the bar's and
-        # dock's reserved strips free, so the surface covers exactly the usable area.
+        # BOTTOM sits above the live wallpaper (background layer) and below every window. Exclusive zone -1 makes the
+        # surface ignore the bar's and dock's reserved strips and cover the whole output, so the wallpaper it paints
+        # also shows behind them; icons and widgets are inset by those strips instead (see set_insets).
         Layer.set_layer(w, Layer.Layer.BOTTOM)
         Layer.set_namespace(w, 'mwx7-desktop')
         for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
             Layer.set_anchor(w, e, True)
-        Layer.set_exclusive_zone(w, 0)
+        Layer.set_exclusive_zone(w, -1)
         Layer.set_keyboard_mode(w, Layer.KeyboardMode.NONE)
 
         self.root = Gtk.Overlay()
@@ -791,8 +799,23 @@ class Desktop(Gtk.Application):
         self.live_timer = 0
         self.live_soft = None
         self.gallery = None
-        self.root.set_child(Gtk.Box(hexpand=True, vexpand=True))
-        self.root.add_overlay(self.fixed)
+        # The still wallpaper: a texture already scaled to the surface size (see load_wall), shown 1:1 so no draw scales it.
+        self.wall_pic = Gtk.Picture(content_fit=Gtk.ContentFit.FILL, can_shrink=True, can_target=False, focusable=False,
+                                    hexpand=True, vexpand=True)
+        self.wall_key = None  # (path, mtime) of the picture that is shown or being prepared
+        self.wall_src = None  # (key, decoded pixbuf): decoded once per picture, not per size
+        self.wall_size = (0, 0)
+        self.wall_gen = 0
+        self.wall_ready = False
+        self.surf_size = (0, 0)
+        self.insets = (BAR_FALLBACK, DOCK_FALLBACK)
+        self.root.set_child(self.wall_pic)
+        # Icons and widgets live in the area between bar and dock, as before; the margins are that inset.
+        self.stage = Gtk.Box(margin_top=self.insets[0], margin_bottom=self.insets[1])
+        self.fixed.set_hexpand(True)
+        self.fixed.set_vexpand(True)
+        self.stage.append(self.fixed)
+        self.root.add_overlay(self.stage)
         self.icons = []
         self.put_fixed_icons()
         # The files and folders in the Desktop folder follow MWX 7's own icons, as on the web; watched, not polled.
@@ -817,6 +840,14 @@ class Desktop(Gtk.Application):
         self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.cfg_mon.connect('changed', lambda *_a: GLib.timeout_add(200, self.reload_config))
         self.set_live(str(self.cfg.get('live_wallpaper') or ''))
+        # Settings and "Next Wallpaper" write this file: follow it, as swaybg restarts used to.
+        os.makedirs(os.path.dirname(WALL_FILE), exist_ok=True)
+        self.wall_mon = Gio.File.new_for_path(WALL_FILE).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.wall_timer = 0
+        self.wall_mon.connect('changed', lambda *_a: self.wall_later())
+        self.measure_insets()
+        for secs in (1, 3, 8):  # the shell may start after this layer; the dock also changes size with Settings
+            GLib.timeout_add_seconds(secs, lambda: self.measure_insets() and False)
 
         # For screenshots in automated checks (no pointer there): MWX7_DESKTOP_OPEN=menu.
         if os.environ.get('MWX7_DESKTOP_OPEN') == 'menu':
@@ -853,6 +884,134 @@ class Desktop(Gtk.Application):
         w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, wd, h: self.layout(wd, h)))
         return w
 
+    # -- still wallpaper
+    def wall_path(self):
+        try:
+            p = open(WALL_FILE).read().strip()
+        except OSError:
+            p = ''
+        return p if p and os.access(p, os.R_OK) else DEFAULT_WALL
+
+    def wall_later(self):
+        # A write is several change events (truncate, write, rename): one reload after they settle.
+        if self.wall_timer:
+            GLib.source_remove(self.wall_timer)
+        self.wall_timer = GLib.timeout_add(150, self.wall_reload)
+
+    def wall_reload(self):
+        self.wall_timer = 0
+        self.load_wall()
+        return False
+
+    def load_wall(self):
+        """Prepares the picture for the current surface size off the main thread: decoded once per picture, then scaled and
+        cropped once per size ("fill", like swaybg -m fill) into a texture the size of the surface."""
+        w, h = self.surf_size
+        if w <= 0 or h <= 0:
+            return
+        path = self.wall_path()
+        try:
+            key = (path, os.stat(path).st_mtime_ns)
+        except OSError:
+            return
+        if key == self.wall_key and (w, h) == self.wall_size:
+            return
+        self.wall_key, self.wall_size = key, (w, h)
+        self.wall_gen += 1
+        gen, src = self.wall_gen, self.wall_src
+
+        def work():
+            try:
+                pix = src[1] if src and src[0] == key else GdkPixbuf.Pixbuf.new_from_file(path)
+                k = max(w / pix.get_width(), h / pix.get_height())
+                sw, sh = max(w, math.ceil(pix.get_width() * k)), max(h, math.ceil(pix.get_height() * k))
+                big = pix.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
+                out = big.new_subpixbuf((sw - w) // 2, (sh - h) // 2, w, h)
+                if out.get_has_alpha():  # a transparent PNG would make the whole surface non-opaque: flatten it on black
+                    flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, w, h)
+                    flat.fill(0x000000ff)
+                    out.composite(flat, 0, 0, w, h, 0, 0, 1, 1, GdkPixbuf.InterpType.NEAREST, 255)
+                    out = flat
+                GLib.idle_add(self.wall_done, gen, key, pix, out.copy())
+            except GLib.Error:
+                GLib.idle_add(self.wall_failed, gen)
+        threading.Thread(target=work, daemon=True).start()
+
+    def wall_failed(self, gen):
+        if gen == self.wall_gen:
+            self.wall_key = None  # swaybg (or the previous picture) stays; try again on the next change
+        return False
+
+    def wall_done(self, gen, key, src, scaled):
+        if gen != self.wall_gen:  # a newer picture or size was asked for meanwhile
+            return False
+        self.wall_src = (key, src)
+        self.wall_pic.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
+        self.wall_ready = True
+        self.update_background()
+        return False
+
+    def update_background(self):
+        """Opaque desktop (CSS .opaque makes GTK send the opaque region, so the compositor skips what is beneath) while a
+        still wallpaper is shown; transparent over the video layer while the live wallpaper plays."""
+        still = self.wall_ready and not self.live_win
+        self.wall_pic.set_visible(bool(still))
+        if still:
+            self.win.add_css_class('opaque')
+            self.retire_swaybg()
+        else:
+            self.win.remove_css_class('opaque')
+
+    def retire_swaybg(self):
+        """swaybg only covers for this layer; once our first opaque frame is out it is a full-screen surface drawn for
+        nothing. Stopped after a few frames (and at most 1.5 s later), so the screen never shows a gap."""
+        if getattr(self, 'swaybg_gone', False):
+            return
+        self.swaybg_gone = True
+        done = [False]
+
+        def kill(*_a):
+            if not done[0]:
+                done[0] = True
+                subprocess.run(['pkill', '-u', str(os.getuid()), '-x', 'swaybg'])
+            return False
+        frames = [0]
+
+        def tick(_w, _clock):
+            frames[0] += 1
+            if frames[0] >= 3:
+                kill()
+                return GLib.SOURCE_REMOVE
+            return GLib.SOURCE_CONTINUE
+        self.win.add_tick_callback(tick)
+        GLib.timeout_add(1500, kill)
+
+    # -- bar and dock strips
+    def measure_insets(self):
+        """The surface covers the whole output now, so ask Wayfire how tall the bar and the dock really are."""
+        def work():
+            bar = dock = None
+            for v in wayfire_views() or []:
+                geo = v.get('geometry') if isinstance(v, dict) and isinstance(v.get('geometry'), dict) else None
+                if not geo:
+                    continue
+                if v.get('app-id') == 'mwx7-bar':
+                    bar = max(0, int(geo.get('y', 0)) + int(geo.get('height', 0)))
+                elif v.get('app-id') == 'mwx7-dock' and self.surf_size[1]:
+                    dock = max(0, self.surf_size[1] - int(geo.get('y', 0)))
+            GLib.idle_add(self.set_insets, bar, dock)
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def set_insets(self, bar, dock):
+        top, bottom = bar if bar is not None else self.insets[0], dock if dock is not None else self.insets[1]
+        if (top, bottom) != self.insets:
+            self.insets = (top, bottom)
+            self.stage.set_margin_top(top)
+            self.stage.set_margin_bottom(bottom)
+            self.relayout(self.surf_size[1] - top - bottom, force=True)
+        return False
+
     def num(self, key, default):
         v = self.cfg.get(key)
         return float(v) if isinstance(v, (int, float)) else default
@@ -886,7 +1045,9 @@ class Desktop(Gtk.Application):
     def layout(self, width, height):
         # Called on every layout: move things only when the size really changed, or moving them asks for another
         # layout, forever.
-        self.relayout(height)
+        self.surf_size = (width, height)
+        self.load_wall()  # no-op unless the output size changed
+        self.relayout(height - sum(self.insets))
         if width != getattr(self, 'width', 0):
             self.width = width
             self.place_gadgets()
@@ -1096,10 +1257,7 @@ class Desktop(Gtk.Application):
             self.cfg['live_wallpaper'] = ''
             save_json(CONFIG, self.cfg)
             self.set_live('')
-        # The new wallpaper starts before the old one stops, so the desktop never flashes empty.
-        old = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaybg'], capture_output=True, text=True).stdout.split()
-        launch(['swaybg', '-i', nxt, '-m', 'fill'])
-        GLib.timeout_add(700, lambda: [subprocess.run(['kill', p]) for p in old] and False)
+        # The wallpaper file monitor (wall_mon) shows it; the old picture stays until the new one is ready.
 
     def trash(self, path):
         try:
@@ -1353,6 +1511,7 @@ class Desktop(Gtk.Application):
         self.show_icons(cfg.get('icons', True) is not False)
         self.gadgets_on = cfg.get('gadgets', True) is not False
         self.apply_gadgets()
+        GLib.timeout_add(600, lambda: self.measure_insets() and False)  # a new dock size changes its strip
         if self.live_name != str(cfg.get('live_wallpaper') or ''):
             self.set_live(str(cfg.get('live_wallpaper') or ''))
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
@@ -1473,9 +1632,9 @@ class Desktop(Gtk.Application):
             if self.live_win:
                 self.live_win.destroy()
                 self.live_win = None
-            if was_live:  # bring the still wallpaper back
-                subprocess.Popen(['/usr/share/mwx7/bin/mwx7-wallpaper'], start_new_session=True,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if was_live:  # bring the still wallpaper back (painted by this layer)
+                self.load_wall()
+                self.update_background()
             return
         if not self.live_win:
             self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
@@ -1491,6 +1650,7 @@ class Desktop(Gtk.Application):
             w.set_child(self.live_pic)
             self.live_win = w
             w.present()
+            self.update_background()  # transparent over the video
         media = Gtk.MediaFile.new_for_filename(path)
         media.set_loop(True)
         media.set_muted(True)
