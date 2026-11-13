@@ -636,11 +636,14 @@ class Shell(Gtk.Application):
         right.append(self.upd_btn)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
         self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
-        net_btn = Gtk.Button()
-        net_btn.add_css_class('flat-ico')
+        net_btn = Gtk.MenuButton()
+        net_btn.add_css_class('tray-btn')
         net_btn.set_child(self.net)
-        # NetworkManager's own editor for now (Wi-Fi passwords, VPN); MWX 7 Settings will take this over.
-        net_btn.connect('clicked', lambda *_: self.launch(['nm-connection-editor']))
+        # Windows 7's network flyout: what you're connected to, the Wi-Fi networks around, and the full settings.
+        net_pop = Gtk.Popover()
+        net_pop.add_css_class('start')
+        net_pop.connect('show', lambda p: self.fill_network(p))
+        net_btn.set_popover(net_pop)
         self.net_btn = net_btn
         right.append(net_btn)
         # Volume: click for a slider; scrolling over it also works.
@@ -1428,6 +1431,108 @@ class Shell(Gtk.Application):
         w.present()
         return False
 
+    def fill_network(self, pop):
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_size_request(260, -1)
+        head = Gtk.Label(label='Currently connected to:', xalign=0)
+        head.add_css_class('menu-head')
+        col.append(head)
+        self.net_now = Gtk.Label(label='\u2026', xalign=0, margin_start=10, margin_bottom=6)
+        col.append(self.net_now)
+        self.wifi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        col.append(self.wifi_box)
+        sep = Gtk.Box()
+        sep.add_css_class('menu-sep')
+        col.append(sep)
+        more = Gtk.Button(label='Open Network Settings')
+        more.add_css_class('menu-row')
+        more.get_child().set_xalign(0)
+        more.connect('clicked', lambda *_: (pop.popdown(), self.launch(['nm-connection-editor'])))
+        col.append(more)
+        pop.set_child(col)
+
+        def work():
+            dev = self.capture(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device']) or ''
+            wifi = self.capture(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list',
+                                 '--rescan', 'auto']) or ''
+            GLib.idle_add(self.show_network, pop, dev, wifi)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_network(self, pop, dev, wifi):
+        conns = [l.split(':', 2)[2] for l in dev.splitlines() if l.count(':') >= 2 and l.split(':')[1] == 'connected']
+        self.net_now.set_label(', '.join(c for c in conns if c) or 'Not connected')
+        nets, seen = [], set()
+        for line in wifi.splitlines():
+            parts = line.replace('\\:', '\0').split(':')
+            if len(parts) < 4:
+                continue
+            use, ssid, signal, sec = (p.replace('\0', ':') for p in parts[:4])
+            if ssid and ssid not in seen:
+                seen.add(ssid)
+                nets.append((use == '*', ssid, int(signal or 0), sec not in ('', '--')))
+        if nets:
+            h = Gtk.Label(label='Wireless Network Connection', xalign=0)
+            h.add_css_class('menu-head')
+            self.wifi_box.append(h)
+        for on, ssid, signal, locked in sorted(nets, key=lambda n: (not n[0], -n[2]))[:8]:
+            b = Gtk.Button()
+            b.add_css_class('menu-row')
+            row = Gtk.Box(spacing=8)
+            bars = 'network-wireless-signal-' + ('excellent' if signal > 75 else 'good' if signal > 50 else
+                                                  'ok' if signal > 25 else 'weak') + '-symbolic'
+            row.append(Gtk.Image.new_from_icon_name(bars))
+            row.append(Gtk.Label(label=ssid, xalign=0, hexpand=True, ellipsize=3))
+            if locked:
+                row.append(Gtk.Image.new_from_icon_name('system-lock-screen-symbolic'))
+            if on:
+                row.append(Gtk.Label(label='Connected'))
+            b.set_child(row)
+            # Known or open networks connect at once; a protected one we have no key for asks for it.
+            b.connect('clicked', lambda *_a, n=ssid, k=locked: (pop.popdown(), self.wifi_connect(n, k)))
+            self.wifi_box.append(b)
+        return False
+
+    def wifi_connect(self, ssid, locked, key=None):
+        def work():
+            cmd = ['nmcli', 'device', 'wifi', 'connect', ssid] + (['password', key] if key else [])
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
+                ok = r.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            if not ok:
+                GLib.idle_add(self.ask_wifi_key, ssid, bool(key)) if locked else None
+        threading.Thread(target=work, daemon=True).start()
+
+    def ask_wifi_key(self, ssid, retry):
+        w = Gtk.Window(title=f'Connect to {ssid}', resizable=False)
+        w.add_css_class('mwx7-power')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=16, margin_bottom=14,
+                      margin_start=18, margin_end=18)
+        t = Gtk.Label(label=('That key did not work. ' if retry else '') + f'Type the network security key for {ssid}:',
+                      xalign=0, wrap=True, max_width_chars=40)
+        box.append(t)
+        e = Gtk.PasswordEntry(show_peek_icon=True)
+        box.append(e)
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        cancel, ok = Gtk.Button(label='Cancel'), Gtk.Button(label='Connect')
+        ok.add_css_class('suggested-action')
+        btns.append(cancel)
+        btns.append(ok)
+        box.append(btns)
+        w.set_child(box)
+        cancel.connect('clicked', lambda *_: w.close())
+
+        def go(*_):
+            key = e.get_text()
+            w.close()
+            if key:
+                self.wifi_connect(ssid, True, key)
+        ok.connect('clicked', go)
+        e.connect('activate', go)
+        w.present()
+        return False
+
     def fill_app_menu(self):
         pop, v = self.app_pop, getattr(self, 'focused_view', None)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -1607,7 +1712,7 @@ class Shell(Gtk.Application):
                 if parts[0] == 'ethernet':
                     icon, tip = 'network-wired-symbolic', f'Connected: {parts[2]}'
         self.net.set_from_icon_name(icon)
-        self.net_btn.set_tooltip_text(tip + ' (click for network settings)')
+        self.net_btn.set_tooltip_text(tip)
         return False
 
     def on_volume(self, scale):
