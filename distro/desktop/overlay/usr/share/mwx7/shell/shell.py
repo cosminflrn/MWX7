@@ -1908,6 +1908,8 @@ class Shell(Gtk.Application):
             Layer.set_keyboard_mode(win, Layer.KeyboardMode.ON_DEMAND)
             return False
         Layer.set_keyboard_mode(win, Layer.KeyboardMode.EXCLUSIVE)
+        # Safety net: exclusive focus also keeps clicked windows from typing, so it never outlives 20 s (one shot).
+        GLib.timeout_add_seconds(20, release)
         if not getattr(win, '_mwx_focus_keys', False):
             win._mwx_focus_keys = True
             kc = Gtk.EventControllerKey()
