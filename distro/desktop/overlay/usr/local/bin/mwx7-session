@@ -39,7 +39,12 @@ LOG="${XDG_RUNTIME_DIR:-/tmp}/wayfire.log"
 # VMware's 3D driver (vmwgfx): Xwayland's GL acceleration (glamor) crashed it as soon as an X11 app like VLC drew
 # ("The X11 connection broke"); X11 apps draw in software there instead. Wayland apps keep the GPU.
 for drv in /sys/class/drm/card*/device/driver; do
-  [ "$(basename "$(readlink -f "$drv")")" = vmwgfx ] && export XWAYLAND_NO_GLAMOR=1
+  if [ "$(basename "$(readlink -f "$drv")")" = vmwgfx ]; then
+    export XWAYLAND_NO_GLAMOR=1
+    # VMware Workstation's cursor plane with atomic modesetting makes the pointer lag and stutter (KDE bug 478487,
+    # same on wlroots): draw the cursor ourselves and use legacy modesetting. Hovering and dragging felt slow here.
+    export WLR_NO_HARDWARE_CURSORS=1 WLR_DRM_NO_ATOMIC=1
+  fi
 done
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
   exec dbus-run-session -- wayfire -c "$CONF/wayfire.ini" > "$LOG" 2>&1
