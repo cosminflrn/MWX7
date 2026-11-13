@@ -2,6 +2,16 @@
 
 Derived from the git history. Newest first.
 
+## v1.12.0
+- **Get Apps**: VLC, GIMP, LibreOffice, OBS, Steam, Discord, Spotify and more in one click (Flathub), no terminal
+- **Native games**: Mines, Solitaire and Space Pinball are real apps now; no web pages left
+- **Status bar**: clipboard history; battery and brightness on laptops
+- **Settings**: Bluetooth, Printers, Backup to an external drive (scheduled too), the NVIDIA driver in one click
+- **Safer updates**: if MWX 7 doesn't start twice after an update, it goes back to the version before
+- Live wallpapers (Meadow, Sierra) and a gadget gallery (right-click the desktop → Gadgets…)
+- Open and Save As dialogs in the MWX 7 look
+- Less lag in VMs without 3D acceleration: the Aero blur rests while the processor draws everything
+
 ## v1.11.0
 - **Smoother**: the status bar no longer keeps a processor core busy (the lag)
 - **Real apps**: My Computer, Notepad, Paint, Photos, Media Player, Calculator, Task Manager, Sticky Notes and the
