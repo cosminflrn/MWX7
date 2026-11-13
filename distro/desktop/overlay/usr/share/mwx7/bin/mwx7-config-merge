@@ -83,16 +83,34 @@ def for_this_machine(text, system):
     full = get(sections(system).get('blur', ''), 'blur_by_default')
     text = put(text, 'blur', 'blur_by_default', full) if full else text
     # Key bindings added in later releases reach copies that are already stamped for this version (a dev build).
-    for key, value in sections(system).get('command', '') and COMMAND_KEYS(system, text):
+    for key, value in COMMAND_KEYS(system, text):
         text = put(text, 'command', key, value)
+    # Bindings the system owns (Settings does not change them): always the current ones, or an old Super alone for the
+    # overview would clash with the Start menu's.
+    for sec, keys in SYSTEM_KEYS.items():
+        for key in keys:
+            v = get(sections(system).get(sec, ''), key)
+            if v is not None and get(sections(text).get(sec, ''), key) != v:
+                text = put(text, sec, key, v)
     return text
 
 
+# Keyboard shortcuts and the Alt+Tab switcher's look: owned by the system defaults.
+SYSTEM_KEYS = {
+    'core': ('close_top_view',),
+    'switcher': ('next_view', 'prev_view', 'speed', 'view_thumbnail_scale', 'view_thumbnail_rotation'),
+    'fast-switcher': ('activate', 'activate_backward'),
+    'wm-actions': ('toggle_showdesktop',),
+    'scale': ('toggle',),
+    'grid': ('slot_l', 'slot_r', 'slot_c', 'restore'),
+}
+
+
 def COMMAND_KEYS(system, text):
-    """[command] entries of the system defaults for the shell flyouts that the user's copy lacks."""
+    """[command] entries of the system defaults for the shell flyouts and shortcuts that the user's copy lacks."""
     mine = sections(text).get('command', '')
     out = []
-    for name in ('clipboard', 'search'):
+    for name in ('clipboard', 'search', 'start', 'dock', 'tray', 'computer', 'snip'):
         for prefix in ('binding_', 'command_'):
             v = get(sections(system).get('command', ''), prefix + name)
             if v is not None and get(mine, prefix + name) is None:
