@@ -488,6 +488,11 @@ def fetch_iso(dest):
     if sig:
         with open(part + '.sig', 'wb') as f:
             f.write(sig)
+        if not shutil.which('gpgv'):
+            # Debian 13's apt checks signatures with sqv, so gpgv may be missing on PCs set up before it was a
+            # dependency; it is tiny and comes from the same repository.
+            subprocess.run(['apt-get', 'install', '-y', '-q', 'gpgv'], capture_output=True,
+                           env=dict(os.environ, DEBIAN_FRONTEND='noninteractive'))
         ok = subprocess.run(['gpgv', '--keyring', KEYRING, part + '.sig', part], capture_output=True).returncode == 0
         os.unlink(part + '.sig')
     else:

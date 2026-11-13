@@ -305,6 +305,15 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
                 return view->close();
 
               case wf::decor::DECORATION_ACTION_TOGGLE_MAXIMIZE:
+              {
+                // Fixed-size windows (Settings' Reset, Find...) can't fill the screen: GTK keeps their size, so Full
+                // Screen only stripped the frame and left them stuck in the corner.
+                auto mn = view->toplevel()->get_min_size(), mx = view->toplevel()->get_max_size();
+                if ((mx.width > 0) && (mn.width == mx.width) && (mn.height == mx.height))
+                {
+                    return;
+                }
+              }
                 if (view->pending_tiled_edges())
                 {
                     return wf::get_core().default_wm->tile_request(view, 0);
