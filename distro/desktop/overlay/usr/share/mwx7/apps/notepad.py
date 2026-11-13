@@ -6,6 +6,10 @@ import time
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7ui  # noqa: E402
+import gi  # noqa: E402
+
+gi.require_version('PangoCairo', '1.0')
+from gi.repository import PangoCairo  # noqa: E402
 from mwx7ui import Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 SESSION = os.path.join(GLib.get_user_data_dir(), 'mwx7', 'notepad-session.json')
@@ -105,6 +109,7 @@ class Notepad:
         self.font = None  # (family, size pt, weight, style) once chosen in Format > Font
         self.session_id = 0
         self.recent = []
+        self.print_settings = self.page_setup = None
 
     # the current tab, under the names the menus and the find dialog use
     @property
@@ -167,7 +172,8 @@ class Notepad:
                         for i, p in enumerate(self.recent)]
         self.app.menubar([
             ('File', [('New Tab', 'new', self.new_tab), ('Open…', 'open', self.open),
-                      ('Save', 'save', self.save), ('Save As…', 'saveas', self.save_as), None] + (
+                      ('Save', 'save', self.save), ('Save As…', 'saveas', self.save_as), None,
+                      ('Print…', 'print', self.print_doc), None] + (
                 recent_items + [None] if recent_items else []) + [
                       ('Close Tab', 'closetab', lambda: self.close_doc(self.doc)), ('Exit', 'exit', self.win.close)]),
             ('Edit', [('Undo', 'undo', lambda: self.buf.undo()), ('Redo', 'redo', lambda: self.buf.redo()), None,
@@ -189,7 +195,7 @@ class Notepad:
         ])
         # Shortcuts are fine on the distro (CLAUDE.md rule 0 is for the browser build).
         for name, keys in (('new', ['<Ctrl>t', '<Ctrl>n']), ('open', ['<Ctrl>o']), ('save', ['<Ctrl>s']),
-                           ('saveas', ['<Ctrl><Shift>s']), ('closetab', ['<Ctrl>w']), ('find', ['<Ctrl>f']),
+                           ('saveas', ['<Ctrl><Shift>s']), ('print', ['<Ctrl>p']), ('closetab', ['<Ctrl>w']), ('find', ['<Ctrl>f']),
                            ('replace', ['<Ctrl>h']), ('gotoline', ['<Ctrl>g']),
                            ('zoomin', ['<Ctrl>plus', '<Ctrl>equal', '<Ctrl>KP_Add']),
                            ('zoomout', ['<Ctrl>minus', '<Ctrl>KP_Subtract']), ('zoomreset', ['<Ctrl>0', '<Ctrl>KP_0'])):
@@ -318,6 +324,94 @@ class Notepad:
                          'italic' if desc.get_style() == Pango.Style.ITALIC else 'normal')
             self.apply_font()
         dlg.choose_font(self.win, None, None, done)
+
+    # ---- print ----------------------------------------------------------------------------------------------------
+    def print_doc(self, export=None, done=None):
+        """File > Print: GTK's own dialog (printers, page range, copies, preview). `export` prints to that PDF without a
+        dialog (used by the tests). The text is laid out with Pango at the chosen font (not the zoom: zoom is a screen
+        setting) and cut into pages at line boundaries, so no line is ever split across two pages."""
+        doc = self.doc
+        if not doc:
+            return None
+        text, name = doc.text(), doc.name()
+        fam, size, weight, style = self.font or (None, BASE_PT, 400, 'normal')
+        fd = Pango.FontDescription.from_string(f'{fam or "DejaVu Sans Mono"} {size}')
+        fd.set_weight(Pango.Weight(weight))
+        fd.set_style(Pango.Style.ITALIC if style == 'italic' else Pango.Style.NORMAL)
+        st = {'pages': [], 'layout': None, 'head': None, 'top': 0.0}
+        op = Gtk.PrintOperation(job_name=name, use_full_page=False, n_pages=1, embed_page_setup=True,
+                                allow_async=export is None)
+        op.set_unit(Gtk.Unit.POINTS)
+        if self.print_settings:
+            op.set_print_settings(self.print_settings)
+        if self.page_setup:
+            op.set_default_page_setup(self.page_setup)
+        if export:
+            op.set_export_filename(export)
+
+        def begin(_op, ctx):
+            w, h = ctx.get_width(), ctx.get_height()
+            lay = ctx.create_pango_layout()
+            lay.set_font_description(fd)
+            lay.set_width(int(w * Pango.SCALE))
+            lay.set_wrap(Pango.WrapMode.WORD_CHAR)
+            lay.set_text(text, -1)
+            head = ctx.create_pango_layout()
+            head.set_font_description(Pango.FontDescription.from_string('Sans 9'))
+            head.set_text(name, -1)
+            hh = head.get_pixel_size()[1] * 2  # the header plus a gap under its rule
+            avail, pages, cur, page_top = h - hh, [], [], 0.0
+            it = lay.get_iter()
+            while True:
+                ink, logical = it.get_line_extents()
+                y0, y1 = logical.y / Pango.SCALE, (logical.y + logical.height) / Pango.SCALE
+                if cur and y1 - page_top > avail:
+                    pages.append((page_top, cur))
+                    cur, page_top = [], y0
+                cur.append((it.get_line_readonly(), it.get_baseline() / Pango.SCALE - page_top))
+                if not it.next_line():
+                    break
+            pages.append((page_top, cur))
+            st.update(pages=pages, layout=lay, head=head, hh=hh)
+            _op.set_n_pages(len(pages))
+
+        def draw(_op, ctx, n):
+            cr = ctx.get_cairo_context()
+            w, total = ctx.get_width(), len(st['pages'])
+            head = st['head']
+            cr.set_source_rgb(0.25, 0.25, 0.25)
+            head.set_width(int(w * 0.75 * Pango.SCALE))
+            head.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+            cr.move_to(0, 0)
+            PangoCairo.show_layout(cr, head)
+            num = ctx.create_pango_layout()
+            num.set_font_description(Pango.FontDescription.from_string('Sans 9'))
+            num.set_text(f'Page {n + 1} of {total}', -1)
+            cr.move_to(w - num.get_pixel_size()[0], 0)
+            PangoCairo.show_layout(cr, num)
+            ry = head.get_pixel_size()[1] + 2
+            cr.set_line_width(0.5)
+            cr.move_to(0, ry)
+            cr.line_to(w, ry)
+            cr.stroke()
+            cr.set_source_rgb(0, 0, 0)
+            for line, y in st['pages'][n][1]:
+                cr.move_to(0, st['hh'] + y)
+                PangoCairo.show_layout_line(cr, line)
+
+        def finished(_op, result):
+            if result == Gtk.PrintOperationResult.APPLY:
+                self.print_settings = _op.get_print_settings()
+            if done:
+                done(result)
+        op.connect('begin-print', begin)
+        op.connect('draw-page', draw)
+        op.connect('done', finished)
+        try:
+            op.run(Gtk.PrintOperationAction.EXPORT if export else Gtk.PrintOperationAction.PRINT_DIALOG, self.win)
+        except GLib.Error as e:
+            Gtk.AlertDialog(message='Could not print', detail=e.message).show(self.win)
+        return op
 
     def goto_dialog(self):
         d = mwx7ui.dialog(self.win, 'Go To Line', 'search')

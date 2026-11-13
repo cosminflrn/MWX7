@@ -413,6 +413,8 @@ class Panel(Gtk.Window):
                       margin_top=170)
         self.avatar = Gtk.DrawingArea()
         self.avatar.set_size_request(144, 144)
+        # FILL (the default) stretched the widget to the width of the password row, and the picture is drawn from its left edge.
+        self.avatar.set_halign(Gtk.Align.CENTER)
         self.avatar.connect('draw', self.draw_avatar)
         mid.pack_start(self.avatar, False, False, 0)
         mid.pack_start(label('lock-name', NAME), False, False, 0)
