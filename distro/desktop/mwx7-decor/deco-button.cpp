@@ -20,8 +20,19 @@ void button_t::set_button_type(button_type_t type)
 {
     this->type = type;
     this->hover.animate(0, 0);
+    instant_hover = 0.0;
     update_texture();
     add_idle_damage();
+}
+
+bool button_t::fading() const
+{
+    return (std::string)anim_level == "full";
+}
+
+double button_t::hover_value() const
+{
+    return fading() ? double(hover) : instant_hover;
 }
 
 button_type_t button_t::get_button_type() const
@@ -41,12 +52,14 @@ void button_t::set_hover(bool is_hovered)
     this->is_hovered = is_hovered;
     if (!this->is_pressed)
     {
-        if (is_hovered)
+        const double target = is_hovered ? HOVERED : NORMAL;
+        if (fading())
         {
-            this->hover.animate(HOVERED);
+            this->hover.animate(target);
         } else
         {
-            this->hover.animate(NORMAL);
+            // No fade: one state change, one damage, and no animation left running to damage every frame.
+            instant_hover = target;
         }
     }
 
@@ -60,12 +73,13 @@ void button_t::set_hover(bool is_hovered)
 void button_t::set_pressed(bool is_pressed)
 {
     this->is_pressed = is_pressed;
-    if (is_pressed)
+    const double target = is_pressed ? PRESSED : (is_hovered ? HOVERED : NORMAL);
+    if (fading())
     {
-        this->hover.animate(PRESSED);
+        this->hover.animate(target);
     } else
     {
-        this->hover.animate(is_hovered ? HOVERED : NORMAL);
+        instant_hover = target;
     }
 
     add_idle_damage();
@@ -89,7 +103,7 @@ void button_t::render(const wf::render_target_t& fb, wf::geometry_t geometry,
         OpenGL::TEXTURE_TRANSFORM_INVERT_Y);
     OpenGL::render_end();
 
-    if (this->hover.running())
+    if (fading() && this->hover.running())
     {
         add_idle_damage();
     }
@@ -99,7 +113,7 @@ void button_t::update_texture()
 {
     // Redraw the icon only when it would look different: the hover fade in 12 steps, plus active and type. Drawing
     // with cairo and uploading the texture on every animation frame was the costly part of hovering.
-    const int key = theme.get_title_height() * 100000 + (int)std::lround(double(hover) * 12) * 64 +
+    const int key = theme.get_title_height() * 100000 + (int)std::lround(hover_value() * 12) * 64 +
         (is_active ? 32 : 0) + (int)type % 32;
     if ((key == last_texture_key) && (button_texture.tex != (GLuint)-1))
     {
@@ -117,7 +131,7 @@ void button_t::update_texture()
         .width  = 1.0 * theme.get_title_height(),
         .height = 1.0 * theme.get_title_height(),
         .border = 1.0,
-        .hover_progress = hover,
+        .hover_progress = hover_value(),
         .active = is_active,
     };
 

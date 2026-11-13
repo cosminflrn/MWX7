@@ -31,3 +31,18 @@ elif not soft and saved is not None:
     if base.ini_get('blur', 'blur_by_default') == 'none':
         base.ini_set('blur', 'blur_by_default', saved['blur_by_default'])
     os.unlink(STATE)
+
+# Animations: Reduced (short fades only) on VMware or software drawing, Full again once there is real acceleration.
+# A level the user picked in Settings (animations.json) is never touched; perf-animations.json remembers what we replaced.
+ANIM_USER = os.path.join(base.CONF_DIR, 'animations.json')
+ANIM_AUTO = os.path.join(base.CONF_DIR, 'perf-animations.json')
+if not os.path.exists(ANIM_USER):
+    level = base.ini_get('mwx7-animate', 'level', 'full')
+    if soft and not os.path.exists(ANIM_AUTO) and level == 'full':
+        with open(ANIM_AUTO, 'w') as f:
+            json.dump({'level': level}, f)
+        base.ini_set('mwx7-animate', 'level', 'reduced')
+    elif not soft and os.path.exists(ANIM_AUTO):
+        if level == 'reduced':
+            base.ini_set('mwx7-animate', 'level', 'full')
+        os.unlink(ANIM_AUTO)

@@ -3,6 +3,11 @@
 	<plugin name="mwx7-animate">
 		<_short>MWX 7 animations</_short>
 		<category>Effects</category>
+		<option name="level" type="string">
+			<_short>Animation level</_short>
+			<_long>full, reduced (short fades only, no genie or zoom, no hover fade) or off. Set in Settings, Display.</_long>
+			<default>full</default>
+		</option>
 		<option name="genie_duration" type="int">
 			<_short>Genie duration</_short>
 			<_long>How long minimizing into the dock and restoring from it take, in milliseconds.</_long>
