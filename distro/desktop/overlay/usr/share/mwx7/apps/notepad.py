@@ -35,6 +35,8 @@ class Notepad:
                       ('Copy', 'copy', lambda: self.view.emit('copy-clipboard')),
                       ('Paste', 'paste', lambda: self.view.emit('paste-clipboard')),
                       ('Delete', 'delete', lambda: self.buf.delete_selection(True, True)), None,
+                      ('Find…', 'find', lambda: self.find_dialog(False)), ('Replace…', 'replace', lambda: self.find_dialog(True)),
+                      None,
                       ('Select All', 'selectall', lambda: self.buf.select_range(*self.buf.get_bounds())),
                       ('Time/Date', 'timedate', lambda: self.buf.insert_at_cursor(time.strftime('%H:%M %d/%m/%Y')))]),
             ('Format', [('Word Wrap', 'wrap', self.toggle_wrap), ('Font…', 'font', self.choose_font)]),
@@ -100,6 +102,88 @@ class Notepad:
                                       f'font-family: "{desc.get_family()}"; font-size: {size}pt; '
                                       f'font-weight: {weight}; font-style: {style}; }}').encode())
         dlg.choose_font(self.win, None, None, done)
+
+    # ---- find and replace, as Notepad's dialogs ----
+    def find_next(self, text, case, backwards=False):
+        flags = Gtk.TextSearchFlags.TEXT_ONLY | (0 if case else Gtk.TextSearchFlags.CASE_INSENSITIVE)
+        ins, bound = self.buf.get_selection_bounds() or (self.buf.get_iter_at_mark(self.buf.get_insert()),) * 2
+        if backwards:
+            hit = ins.backward_search(text, flags, None) or self.buf.get_end_iter().backward_search(text, flags, None)
+        else:
+            hit = bound.forward_search(text, flags, None) or self.buf.get_start_iter().forward_search(text, flags, None)
+        if not hit:
+            return False
+        self.buf.select_range(hit[0], hit[1])
+        self.view.scroll_to_iter(hit[0], 0.2, False, 0, 0)
+        return True
+
+    def find_dialog(self, replace):
+        d = Gtk.Window(title='Replace' if replace else 'Find', transient_for=self.win, resizable=False)
+        grid = Gtk.Grid(row_spacing=8, column_spacing=8, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
+        what = Gtk.Entry(width_chars=26)
+        sel = self.buf.get_selection_bounds()
+        if sel:
+            what.set_text(self.buf.get_text(sel[0], sel[1], False)[:80])
+        grid.attach(Gtk.Label(label='Find what:', xalign=0), 0, 0, 1, 1)
+        grid.attach(what, 1, 0, 1, 1)
+        with_ = Gtk.Entry(width_chars=26)
+        if replace:
+            grid.attach(Gtk.Label(label='Replace with:', xalign=0), 0, 1, 1, 1)
+            grid.attach(with_, 1, 1, 1, 1)
+        case = Gtk.CheckButton(label='Match case')
+        grid.attach(case, 0, 2, 2, 1)
+        status = Gtk.Label(xalign=0)
+        grid.attach(status, 0, 3, 2, 1)
+        btns = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        nxt = Gtk.Button(label='Find Next')
+        nxt.add_css_class('suggested-action')
+        btns.append(nxt)
+
+        def find(*_):
+            t = what.get_text()
+            if t:
+                status.set_label('' if self.find_next(t, case.get_active()) else f'Cannot find "{t}"')
+        nxt.connect('clicked', find)
+        what.connect('activate', find)
+        if replace:
+            one, every = Gtk.Button(label='Replace'), Gtk.Button(label='Replace All')
+
+            def rep(*_):
+                t = what.get_text()
+                b = self.buf.get_selection_bounds()
+                if t and b and (self.buf.get_text(b[0], b[1], False) == t if case.get_active()
+                                else self.buf.get_text(b[0], b[1], False).lower() == t.lower()):
+                    self.buf.delete(b[0], b[1])
+                    self.buf.insert_at_cursor(with_.get_text())
+                find()
+
+            def rep_all(*_):
+                t = what.get_text()
+                if not t:
+                    return
+                self.buf.place_cursor(self.buf.get_start_iter())
+                n = 0
+                self.buf.begin_user_action()
+                while self.find_next(t, case.get_active()):
+                    b = self.buf.get_selection_bounds()
+                    if n and b[0].get_offset() < last:
+                        break
+                    self.buf.delete(b[0], b[1])
+                    self.buf.insert_at_cursor(with_.get_text())
+                    last = self.buf.get_iter_at_mark(self.buf.get_insert()).get_offset()
+                    n += 1
+                self.buf.end_user_action()
+                status.set_label(f'Replaced {n} time{"s" if n != 1 else ""}.')
+            one.connect('clicked', rep)
+            every.connect('clicked', rep_all)
+            btns.append(one)
+            btns.append(every)
+        cancel = Gtk.Button(label='Cancel')
+        cancel.connect('clicked', lambda *_: d.close())
+        btns.append(cancel)
+        grid.attach(btns, 2, 0, 1, 4)
+        d.set_child(grid)
+        d.present()
 
     # ---- files ----------------------------------------------------------------------------------------------------
     def new(self):

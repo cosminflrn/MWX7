@@ -53,8 +53,28 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 .ex-details-title { font-weight: 600; color: #1c3150; }
 .ex-drive-bar trough { min-height: 10px; background: #e3e8ef; border: 1px solid #9aa9bd; border-radius: 1px; }
 .ex-drive-bar progress { min-height: 10px; background: linear-gradient(180deg, #5fb0ff, #2a7fd9); border-radius: 1px; }
+.ex-cols button { padding: 2px 0; font-size: 11px; min-height: 0; border: none; border-right: 1px solid #dfe7f1; border-radius: 0;
+  background: none; box-shadow: none; color: #4a5f7d; }
+.ex-cols button:hover { background: linear-gradient(180deg, #f4f9ff, #dbeafc); }
 .ex-group { padding: 12px 14px 4px; font-weight: 600; color: #1e3f66; }
 """
+
+
+def kind_icon(path):
+    """MWX 7's own icon for a file, by what it is (the concept's Explorer does the same)."""
+    ctype, _u = Gio.content_type_guess(path, None)
+    mime = Gio.content_type_get_mime_type(ctype) or ''
+    if mime.startswith('image/'):
+        return 'image'
+    if mime.startswith('audio/'):
+        return 'audio'
+    if mime.startswith('video/'):
+        return 'video'
+    if mime.startswith('text/') or mime in ('application/json', 'application/xml', 'application/x-shellscript'):
+        return 'text'
+    if any(k in mime for k in ('zip', 'tar', 'compressed', 'x-7z', 'rar', 'xz', 'bzip', 'gzip', 'zstd', 'debian')):
+        return 'archive'
+    return 'file'
 
 
 def human(n):
@@ -80,6 +100,8 @@ class Explorer:
         self.clip, self.clip_cut = [], False
         self.view = 'icons'
         self.query = ''
+        # Details view: each column's header and cells share a width.
+        self.col_groups = [Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL) for _ in range(3)]
 
     # ---- layout ---------------------------------------------------------------------------------------------------
     def build(self, app, win):
@@ -95,7 +117,20 @@ class Explorer:
         nav.append(self.fwd_btn)
         self.crumbs = Gtk.Box(hexpand=True)
         self.crumbs.add_css_class('ex-crumbs')
-        nav.append(self.crumbs)
+        # Clicking the empty part of the address bar turns it into a box to type a place in, as in Explorer.
+        self.addr = Gtk.Entry(hexpand=True)
+        self.addr.add_css_class('ex-search')
+        self.addr.connect('activate', lambda e: self.typed_place(e.get_text()))
+        focus = Gtk.EventControllerFocus()
+        focus.connect('leave', lambda *_: self.addr_stack.set_visible_child(self.crumbs))
+        self.addr.add_controller(focus)
+        self.addr_stack = Gtk.Stack(hexpand=True)
+        self.addr_stack.add_child(self.crumbs)
+        self.addr_stack.add_child(self.addr)
+        bg = Gtk.GestureClick()
+        bg.connect('released', lambda *_: self.edit_place())
+        self.crumbs.add_controller(bg)
+        nav.append(self.addr_stack)
         self.search = Gtk.SearchEntry(placeholder_text='Search', width_chars=22)
         self.search.add_css_class('ex-search')
         self.search.connect('search-changed', lambda e: (setattr(self, 'query', e.get_text().lower()), self.fill()))
@@ -248,6 +283,25 @@ class Explorer:
             self.fill_pending = True
             GLib.timeout_add(250, lambda: (setattr(self, 'fill_pending', False), self.fill(), False)[2])
 
+    def edit_place(self):
+        if self.addr_stack.get_visible_child() is self.addr:
+            return
+        self.addr.set_text(os.path.expanduser('~') if self.loc == COMPUTER else self.loc)
+        self.addr_stack.set_visible_child(self.addr)
+        GLib.idle_add(lambda: (self.addr.grab_focus(), self.addr.select_region(0, -1), False)[2])
+
+    def typed_place(self, text):
+        path = os.path.expanduser(text.strip())
+        self.addr_stack.set_visible_child(self.crumbs)
+        if text.strip().lower() in ('my computer', 'computer'):
+            self.go(COMPUTER)
+        elif os.path.isdir(path):
+            self.go(os.path.abspath(path))
+        elif os.path.isfile(path):
+            self.open_item(path)
+        else:
+            self.alert(f'MWX 7 can\u2019t find \u201c{text.strip()}\u201d.', 'Check the spelling and try again.')
+
     def title_of(self, path):
         if path == COMPUTER:
             return 'My Computer'
@@ -300,7 +354,19 @@ class Explorer:
                 continue
             p = os.path.join(folder, n)
             out.append((p, n, os.path.isdir(p)))
-        out.sort(key=lambda t: (not t[2], t[1].lower()))
+        col, desc = getattr(self, 'sort', ('name', False))
+
+        def key(t):
+            p, n, d = t
+            try:
+                st = os.stat(p)
+            except OSError:
+                st = None
+            v = {'name': n.lower(), 'date': st.st_mtime if st else 0, 'size': (st.st_size if st and not d else -1),
+                 'type': ('' if d else os.path.splitext(n)[1].lower(), n.lower())}[col]
+            return v
+        out.sort(key=key, reverse=desc)
+        out.sort(key=lambda t: not t[2])  # folders first, whatever the order
         return out
 
     def icon_for(self, path, is_dir, size):
@@ -322,10 +388,7 @@ class Explorer:
                 return False
             GLib.idle_add(load)
             return img
-        ctype, _u = Gio.content_type_guess(path, None)
-        img = Gtk.Image.new_from_gicon(Gio.content_type_get_icon(ctype))
-        img.set_pixel_size(size)
-        return img
+        return mwx7ui.icon(kind_icon(path), size)
 
     def fill(self):
         self.fill_crumbs()
@@ -359,11 +422,31 @@ class Explorer:
             self.fill_computer()
         else:
             details = self.view == 'details'
+            if details:
+                self.content.prepend(self.columns())
             self.flow.set_max_children_per_line(1 if details else 40)
             self.flow.set_homogeneous(not details)
             for path, name, is_dir in self.items():
                 self.flow.append(self.cell(path, name, is_dir, details))
         self.details()
+
+    def columns(self):
+        """Details view's column headers, as in Explorer: click one to sort by it, again to reverse."""
+        col, desc = getattr(self, 'sort', ('name', False))
+        row = Gtk.Box(spacing=8, margin_start=11, margin_end=11, margin_top=4)
+        row.add_css_class('ex-cols')
+        for key, label, w in (('name', 'Name', 0), ('date', 'Date modified', 16), ('type', 'Type', 18), ('size', 'Size', 9)):
+            arrow = (' \u25be' if desc else ' \u25b4') if key == col else ''
+            b = Gtk.Button(label=label + arrow, hexpand=not w)
+            b.get_child().set_xalign(0)
+            if w:
+                b.get_child().set_width_chars(w)
+                self.col_groups[('date', 'type', 'size').index(key)].add_widget(b)
+            b.connect('clicked', lambda _b, k=key: (setattr(self, 'sort', (k, not desc if k == col else False)),
+                                                    self.fill()))
+            row.append(b)
+        row.get_first_child().set_margin_start(24)  # over the names, past the icons
+        return row
 
     def cell(self, path, name, is_dir, details):
         c = Gtk.FlowBoxChild()
@@ -381,10 +464,11 @@ class Explorer:
                 size = '' if is_dir else human(st.st_size)
             except OSError:
                 when = size = ''
-            for text, w in ((when, 16), ('File folder' if is_dir else Gio.content_type_get_description(
-                    Gio.content_type_guess(path, None)[0]), 18), (size, 9)):
+            for i, (text, w) in enumerate(((when, 16), ('File folder' if is_dir else Gio.content_type_get_description(
+                    Gio.content_type_guess(path, None)[0]), 18), (size, 9))):
                 l = Gtk.Label(label=text, xalign=0, width_chars=w, max_width_chars=w, ellipsize=3)
                 l.add_css_class('ex-meta')
+                self.col_groups[i].add_widget(l)
                 row.append(l)
             c.set_child(row)
         else:
