@@ -1,4 +1,4 @@
-"""MWX 7 desktop layer: desktop icons and gadgets as one layer-shell surface between the wallpaper and the windows.
+"""MWX 7 desktop layer: desktop icons and widgets as one layer-shell surface between the wallpaper and the windows.
 
 GTK4 + gtk4-layer-shell, same patterns as the shell. The surface is transparent, so the wallpaper (swaybg, background
 layer) shows through. Nothing here runs faster than once a second, except the short needle animation of the CPU/RAM
@@ -50,7 +50,9 @@ ITEMS = [
 CELL_W, CELL_H, ORIGIN = 96, 92, 10
 # View -> Large / Medium / Small icons: (icon px, cell width, cell height).
 SIZES = {'large': (64, 112, 112), 'medium': (48, 96, 92), 'small': (32, 84, 72)}
-GADGET_W, GADGET_GAP, GADGET_TOP, GADGET_RIGHT = 148, 10, 10, 16
+GADGET_W, GADGET_GAP, GADGET_TOP, GADGET_RIGHT = 148, 12, 10, 16
+# Widgets snap to a grid: columns 160px apart from the right edge, rows 16px apart from the top.
+WGRID = 16
 
 
 
@@ -82,7 +84,7 @@ def launch(cmd, fallback=None):
 WALL_FILE = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
 LIVE = '/usr/share/mwx7/live'  # live wallpaper loops: <name>.mp4, chosen by desktop.json's "live_wallpaper"
-# What the gadget gallery lists, in the column's order: (id, title, one line about it)
+# What the widget gallery lists, in the column's order: (id, title, one line about it)
 GADGET_INFO = [('clock', 'Clock', 'Analog clock with the date.'), ('calendar', 'Calendar', 'This month, today marked.'),
                ('meter', 'CPU Meter', 'Processor and memory load.'), ('weather', 'Weather', 'Temperature for your city.')]
 
@@ -803,7 +805,7 @@ class Desktop(Gtk.Application):
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         self.clock, self.cal, self.meter = Clock(), Calendar(), Meter()
         self.weather = Weather(city, lat, lon)
-        # Gadgets sit on the same surface as the icons and can be dragged anywhere, as in Windows 7; each keeps its place.
+        # Gadgets sit on the same surface as the icons and snap to a grid when dropped; each keeps its place.
         self.gadgets = [('clock', self.clock), ('calendar', self.cal), ('meter', self.meter), ('weather', self.weather)]
         for name, g in self.gadgets:
             g.set_visible(self.gadget_shown(name))
@@ -893,32 +895,63 @@ class Desktop(Gtk.Application):
             item.set_visible(on)
         self.icons_on = on
 
-    def gadget_home(self, name):
-        """Where a gadget is: where the person left it (kept as distance from the right edge, so it stays put when the
-        screen size changes), else in the column at the top right."""
+    def widget_span(self, g):
+        """Rows a widget covers: its height plus the gap, in grid rows (so neighbours keep a consistent gap)."""
+        return -(-(g.HEIGHT + GADGET_GAP) // WGRID)
+
+    def widget_want(self, name):
+        """The cell (column from the right edge, row from the top) a widget asks for: where the person left it (kept as
+        distance from the right edge, so it stays put when the screen size changes), else the next slot in the column."""
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
         pos = at.get(name)
-        if isinstance(pos, list) and len(pos) == 2:
-            return max(0, self.width - pos[0]), max(0, pos[1])
-        y = GADGET_TOP
+        if isinstance(pos, list) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
+            return (round((pos[0] - GADGET_RIGHT - GADGET_W) / (GADGET_W + GADGET_GAP)), round((pos[1] - GADGET_TOP) / WGRID))
+        row = 0
         for n, g in self.gadgets:
             if n == name:
                 break
             if self.gadget_shown(n):
-                y += g.HEIGHT + GADGET_GAP
-        return self.width - GADGET_RIGHT - GADGET_W, y
+                row += self.widget_span(g)
+        return 0, row
+
+    def widget_cells(self, first=None, want=None):
+        """Snap every shown widget to the grid with no overlap. `first` (with its wanted cell `want`) is placed before the
+        rest, so a dropped widget gets its spot and the others keep theirs; a taken spot moves to the nearest free one."""
+        cols = max(1, (self.width - GADGET_RIGHT - GADGET_W) // (GADGET_W + GADGET_GAP) + 1)
+        rows = max(1, (getattr(self, 'height', 600) - GADGET_TOP) // WGRID)
+        taken, out = set(), {}
+        order = [(n, g) for n, g in self.gadgets if self.gadget_shown(n)]
+        order.sort(key=lambda t: t[0] != first)
+        for n, g in order:
+            span = min(self.widget_span(g), rows)
+            c0, r0 = want if n == first and want else self.widget_want(n)
+            c0, r0 = max(0, min(cols - 1, c0)), max(0, min(rows - span, r0))
+            best = None
+            for c in range(cols):
+                for r in range(rows - span + 1):
+                    if any((c, r + k) in taken for k in range(span)):
+                        continue
+                    d = ((c - c0) * (GADGET_W + GADGET_GAP)) ** 2 + ((r - r0) * WGRID) ** 2
+                    if best is None or d < best[0]:
+                        best = (d, c, r)
+            c, r = (best[1], best[2]) if best else (c0, r0)
+            taken.update((c, r + k) for k in range(span))
+            out[n] = (c, r)
+        return out
 
     def place_gadgets(self):
         if not getattr(self, 'width', 0):
             return
-        for name, g in self.gadgets:
-            self.fixed.move(g, *self.gadget_home(name))
+        for name, (c, r) in self.widget_cells().items():
+            g = dict(self.gadgets)[name]
+            self.fixed.move(g, self.width - GADGET_RIGHT - GADGET_W - c * (GADGET_W + GADGET_GAP), GADGET_TOP + r * WGRID)
 
     def gadget_drop(self, name, g, x, y):
-        x = max(0, min(self.width - GADGET_W, x))
-        y = max(0, min(getattr(self, 'height', 600) - g.HEIGHT, y))
+        want = (round((self.width - GADGET_RIGHT - GADGET_W - x) / (GADGET_W + GADGET_GAP)), round((y - GADGET_TOP) / WGRID))
+        c, r = self.widget_cells(name, want)[name]
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
-        at[name] = [int(self.width - x), int(y)]
+        # Still the distance from the right edge to the widget's left edge, as older versions saved it.
+        at[name] = [GADGET_RIGHT + GADGET_W + c * (GADGET_W + GADGET_GAP), GADGET_TOP + r * WGRID]
         self.cfg['gadgets_at'] = at
         save_json(CONFIG, self.cfg)
         self.place_gadgets()
@@ -1238,8 +1271,8 @@ class Desktop(Gtk.Application):
             box.append(b)
         over = self.hit(x, y)
         if isinstance(over, Gadget) and not on_file:
-            row('Close gadget', 'delete', lambda n=over.gadget_name: self.set_gadget(n, False))
-            row('Gadgets\u2026', 'gadgets', self.show_gallery)
+            row('Close widget', 'delete', lambda n=over.gadget_name: self.set_gadget(n, False))
+            row('Widgets\u2026', 'gadgets', self.show_gallery)
             pop.set_child(box)
             pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
             pop.popup()
@@ -1266,8 +1299,8 @@ class Desktop(Gtk.Application):
         sep()
         row('New Folder', 'new-folder', lambda: self.new_item(True))
         row('New Text Document', 'new-file', lambda: self.new_item(False))
-        row('Gadgets\u2026', 'gadgets', self.show_gallery)
-        row('Hide Gadgets' if self.gadgets_on else 'Show Gadgets', 'gadgets', self.toggle_gadgets)
+        row('Widgets\u2026', 'gadgets', self.show_gallery)
+        row('Hide Widgets' if self.gadgets_on else 'Show Widgets', 'gadgets', self.toggle_gadgets)
         sep()
         row('Show Desktop', 'desktop', lambda: wayfire('wm-actions/toggle_showdesktop'))
         row('Overview', 'maximize', lambda: wayfire('scale/toggle'))
@@ -1339,7 +1372,7 @@ class Desktop(Gtk.Application):
         if self.gallery:
             self.gallery.present()
             return
-        win = Gtk.Window(title='Gadgets', resizable=False, default_width=380)
+        win = Gtk.Window(title='Widgets', resizable=False, default_width=380)
         win.set_application(self)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=12, margin_bottom=12, margin_start=12,
                       margin_end=12)

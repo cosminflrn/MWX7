@@ -565,7 +565,7 @@ class Settings(Gtk.Application):
             cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
             if mm_w and cur_w and cur_w / (mm_w / 25.4) > 140 and float(o.get('scale', 1)) < 1.25:
                 p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
-        # Night light: warmer colours from sunset to sunrise, where the weather gadget's city is.
+        # Night light: warmer colours from sunset to sunrise, where the weather widget's city is.
         p.append(section('Night light'))
         flag = os.path.join(CONF_DIR, 'nightlight')
         night = Gtk.CheckButton(label='Warmer colours from sunset to sunrise')
@@ -583,7 +583,7 @@ class Settings(Gtk.Application):
                 run(['pkill', '-u', str(os.getuid()), '-x', 'wlsunset'])
         night.connect('toggled', toggled)
         p.append(night)
-        p.append(note('The times follow the city chosen for the weather gadget (Settings \u2192 Desktop).'))
+        p.append(note('The times follow the city chosen for the weather widget (Settings \u2192 Desktop).'))
         self.graphics_driver(p)
         return p
 
@@ -899,10 +899,10 @@ class Settings(Gtk.Application):
         p.append(left)
         return p
 
-    # ---- Desktop (icons and gadgets; the desktop layer watches its settings file) ---------------------------------------
+    # ---- Desktop (icons and widgets; the desktop layer watches its settings file) ---------------------------------------
     def page_desktop(self):
         p = page()
-        p.append(heading('Desktop icons and gadgets'))
+        p.append(heading('Desktop icons and widgets'))
         p.append(note('What the desktop shows. Right-click the desktop for the same choices.'))
         path = os.path.join(CONF_DIR, 'desktop.json')
 
@@ -924,7 +924,7 @@ class Settings(Gtk.Application):
         icons.set_active(cfg.get('icons', True) is not False)
         icons.connect('toggled', lambda c: save(icons=c.get_active()))
         p.append(icons)
-        gadgets = Gtk.CheckButton(label='Show gadgets (clock, calendar, CPU and memory, weather)')
+        gadgets = Gtk.CheckButton(label='Show widgets (clock, calendar, CPU and memory, weather)')
         gadgets.set_active(cfg.get('gadgets', True) is not False)
         gadgets.connect('toggled', lambda c: save(gadgets=c.get_active()))
         p.append(gadgets)

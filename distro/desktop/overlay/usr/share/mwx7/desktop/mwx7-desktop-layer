@@ -1,5 +1,5 @@
 #!/bin/sh
-# Starts the MWX 7 desktop layer (desktop icons + gadgets) and keeps it running.
+# Starts the MWX 7 desktop layer (desktop icons + widgets) and keeps it running.
 # gtk4-layer-shell must be loaded before libwayland-client, which Python cannot guarantee on its own.
 export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so.0
 # Same renderer choice as the shell: GTK's GPU renderers draw badly or not at all on some drivers (VMware/VirtualBox 3D).

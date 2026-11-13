@@ -1,5 +1,5 @@
 #!/bin/sh
-# Night light (Settings -> Display): warmer colours from sunset to sunrise where the person lives (the weather gadget's
+# Night light (Settings -> Display): warmer colours from sunset to sunrise where the person lives (the weather widget's
 # city, Bucharest by default). wlsunset follows the sun by itself; this only starts it when night light is on.
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
 [ -e "$CONF/nightlight" ] || exit 0

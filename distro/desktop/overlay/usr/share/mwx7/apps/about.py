@@ -12,7 +12,7 @@ WHATS_NEW = [
     'Real apps: My Computer, Notepad, Paint, Photos, Media Player, Calculator, Task Manager, Sticky Notes, Snipping Tool',
     'Aero Peek with window thumbnails, Aero Shake, Full Screen into the top bar',
     'Start menu with your most-used programs, jump lists in the dock',
-    'Drag icons and gadgets anywhere; Aurora and Dusk themes; Night light',
+    'Drag icons and widgets onto the desktop grid; Aurora and Dusk themes; Night light',
     'Startup and log-off sounds; network and volume flyouts',
 ]
 CSS = """

@@ -22,7 +22,7 @@ SLIDES = [
      ['computer', 'browser', 'mediaplayer', 'photos']),
     ('Make it yours', 'Open Settings to change how MWX 7 looks.',
      [('Wallpapers', 'Meadows, mountains and more.'), ('Window Color', 'Tint the glass and set its intensity.'),
-      ('Gadgets', 'Clock, calendar, meters and weather, right on the desktop.')],
+      ('Widgets', 'Clock, calendar, meters and weather, right on the desktop.')],
      ['settings', 'paint']),
 ]
 CSS = """

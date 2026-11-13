@@ -8,7 +8,7 @@ Derived from the git history. Newest first.
 - **Status bar**: clipboard history; battery and brightness on laptops
 - **Settings**: Bluetooth, Printers, Backup to an external drive (scheduled too), the NVIDIA driver in one click
 - **Safer updates**: if MWX 7 doesn't start twice after an update, it goes back to the version before
-- Live wallpapers (Meadow, Sierra) and a gadget gallery (right-click the desktop → Gadgets…)
+- Live wallpapers (Meadow, Sierra) and a widget gallery (right-click the desktop → Widgets…); widgets snap to a grid
 - Open and Save As dialogs in the MWX 7 look
 - Less lag in VMs without 3D acceleration: the Aero blur rests while the processor draws everything
 
@@ -19,7 +19,7 @@ Derived from the git history. Newest first.
 - Window buttons as on the web: green minimizes, yellow is Full Screen, red closes; Full Screen merges the title
   bar into the top bar
 - A window menu on the title bar, jump lists in the dock, a Windows 7-style Recycle Bin
-- Start menu lists every program; drag icons and gadgets anywhere on the desktop
+- Start menu lists every program; drag icons and widgets onto the desktop grid
 - Startup and log-off sounds, network and volume flyouts, Night light, Dock and clock settings
 - After an update of MWX 7 itself, Restart is offered (its frames, bar and dock only change after one)
 - Settings → Repair or reset: just two buttons, Repair (keeps everything) and Reset to factory; the recovery copy is
@@ -33,7 +33,7 @@ Derived from the git history. Newest first.
   Settings and Search on the dark glass on the right, Log off and Shut down underneath
 - **The dock as on the web**: flush with the bottom edge, My Computer, Internet, Media Player, Notepad, Calculator and
   Settings, Trash at the end; icons grow when you point at them
-- **Desktop icons and gadgets**: My Computer, Internet, Notepad, Calculator, Space Pinball and About on the desktop; the
+- **Desktop icons and widgets**: My Computer, Internet, Notepad, Calculator, Space Pinball and About on the desktop; the
   clock, calendar, CPU and memory meters and the weather on the right (right-click the desktop to hide them)
 - **The web's apps on your PC**: Notepad, Calculator, Paint, Photo Viewer, Media Player, Mines, Solitaire, Space
   Pinball and Sticky Notes, each in its own window
