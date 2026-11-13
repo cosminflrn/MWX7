@@ -378,10 +378,14 @@ class Settings(Gtk.Application):
         live = [f[:-4] for f in sorted(os.listdir(LIVE)) if f.endswith('.mp4')] if os.path.isdir(LIVE) else []
         if live:
             p.append(heading('Live wallpapers'))
+            soft = self.acceleration().startswith('Off')  # the desktop will not play a video drawn by the CPU
+            if soft:
+                p.append(note('Needs 3D acceleration (off on this PC)'))
             p.append(note('A moving background. It pauses while a window covers the desktop. Click it again to turn it off.'))
             lf = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
                              row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
             lf.add_css_class('walls')
+            lf.set_sensitive(not soft)
             for n in live:
                 child = Gtk.FlowBoxChild()
                 child.live = n
