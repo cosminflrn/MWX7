@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+"""At sign-in: without 3D acceleration (VMware with "Accelerate 3D graphics" off, llvmpipe) the processor draws every
+frame, and the Aero blur behind each window is what makes moving windows lag. Then the glass stays, unblurred; the
+blur comes back by itself on the first sign-in with acceleration."""
+import json
+import os
+import sys
+
+sys.path.insert(0, '/usr/share/mwx7/settings')
+import settings as base  # noqa: E402
+
+STATE = os.path.join(base.CONF_DIR, 'perf.json')
+soft = base.Settings.acceleration().startswith('Off')
+try:
+    saved = json.load(open(STATE))
+except (OSError, ValueError):
+    saved = None
+blur = base.ini_get('blur', 'blur_by_default')
+if soft and saved is None and blur and blur != 'none':
+    with open(STATE, 'w') as f:
+        json.dump({'blur_by_default': blur}, f)
+    base.ini_set('blur', 'blur_by_default', 'none')
+elif not soft and saved is not None:
+    if base.ini_get('blur', 'blur_by_default') == 'none':
+        base.ini_set('blur', 'blur_by_default', saved['blur_by_default'])
+    os.unlink(STATE)
