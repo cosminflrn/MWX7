@@ -50,8 +50,8 @@ ITEMS = [
 CELL_W, CELL_H, ORIGIN = 96, 92, 10
 # View -> Large / Medium / Small icons: (icon px, cell width, cell height).
 SIZES = {'large': (64, 112, 112), 'medium': (48, 96, 92), 'small': (32, 84, 72)}
-# Widgets are squares that fill 2x2 icon cells and snap to the icon grid: rows from ORIGIN down, columns counted from
-# the right edge (GADGET_RIGHT in). Their drawing code works in a D x D design space that is scaled to the real side.
+# Widgets are squares that fill 2x2 icon cells and snap to a grid of whole 2x2 blocks: rows from ORIGIN down,
+# columns counted from the right edge (GADGET_RIGHT in). Their drawing code works in a D x D design space that is scaled to the real side.
 GADGET_RIGHT, D = ORIGIN, 184
 
 
@@ -901,30 +901,47 @@ class Desktop(Gtk.Application):
         return 2 * min(self.cell_w, self.cell_h)
 
     def widget_x(self, c):
-        """Left edge of a widget in column c (0 = rightmost 2x2 block), centred in its block when the cells aren't square."""
-        return self.width - GADGET_RIGHT - (c + 2) * self.cell_w + (2 * self.cell_w - self.widget_side()) // 2
+        """Left edge of a widget in slot column c (0 = rightmost). A slot is one widget block (2x2 icon cells), so columns are
+        exactly one block apart; centred in its block when the cells aren't square."""
+        return self.width - GADGET_RIGHT - (2 * c + 2) * self.cell_w + (2 * self.cell_w - self.widget_side()) // 2
+
+    def widget_y(self, r):
+        return ORIGIN + r * 2 * self.cell_h
+
+    def widget_saved(self, c, r):
+        """gadgets_at keeps the distance from the right edge to the widget's left edge and the top y, as older versions did."""
+        return [GADGET_RIGHT + (2 * c + 2) * self.cell_w, self.widget_y(r)]
+
+    def widget_slots(self):
+        """(columns, rows) of widget slots that fit: whole blocks from the right edge and from the top."""
+        cols = max(1, (self.width - GADGET_RIGHT) // (2 * self.cell_w))
+        rows = max(1, (getattr(self, 'height', 600) - ORIGIN) // (2 * self.cell_h))
+        return cols, rows
 
     def widget_want(self, name):
-        """The (column from the right edge, row from the top) a widget asks for. Saved positions are the distance from the
-        right edge to its left edge and the top y; older versions saved them on a 160px / 16px grid, so they are rounded
-        to the nearest 2x2 block here. Without one, the next free block in the right-hand column."""
+        """The (slot column from the right edge, slot row from the top) a widget asks for. Saved positions are rounded to the
+        nearest block: older versions snapped to single icon cells, which let columns sit half a widget apart (a staircase).
+        Without one, the default is a compact block at the top right, filled column by column (two rows high, or one on a
+        screen with room for just one), so the first two widgets stack in the rightmost column and the next two beside them."""
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
         pos = at.get(name)
         if isinstance(pos, list) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
-            return max(0, round((pos[0] - GADGET_RIGHT) / self.cell_w) - 2), max(0, round((pos[1] - ORIGIN) / self.cell_h))
-        row = 0
+            c = max(0, round((pos[0] - GADGET_RIGHT) / self.cell_w) - 2)
+            r = max(0, round((pos[1] - ORIGIN) / self.cell_h))
+            return (c + 1) // 2, (r + 1) // 2  # half a block rounds away from the edge/top, so near-ties don't pile onto one slot
+        per_col = min(2, self.widget_slots()[1])
+        idx = 0
         for n, _g in self.gadgets:
             if n == name:
                 break
             if self.gadget_shown(n):
-                row += 2
-        return 0, row
+                idx += 1
+        return idx // per_col, idx % per_col
 
     def widget_cells(self, first=None, want=None):
-        """Snap every shown widget to the icon grid with no overlap. `first` (with its wanted cell `want`) is placed before
-        the rest, so a dropped widget gets its spot and the others keep theirs; a taken spot moves to the nearest free one."""
-        cols = max(1, (self.width - GADGET_RIGHT) // self.cell_w - 1)
-        rows = max(1, (getattr(self, 'height', 600) - ORIGIN) // self.cell_h - 1)
+        """Snap every shown widget to a block slot with no overlap. `first` (with its wanted slot `want`) is placed before
+        the rest, so a dropped widget gets its spot and the others keep theirs; a taken slot moves to the nearest free one."""
+        cols, rows = self.widget_slots()
         taken, out = set(), {}
         order = [n for n, _g in self.gadgets if self.gadget_shown(n)]
         order.sort(key=lambda n: n != first)
@@ -934,13 +951,13 @@ class Desktop(Gtk.Application):
             best = None
             for c in range(cols):
                 for r in range(rows):
-                    if any((c + i, r + j) in taken for i in (0, 1) for j in (0, 1)):
+                    if (c, r) in taken:
                         continue
                     d = (c - c0) ** 2 + (r - r0) ** 2
                     if best is None or d < best[0]:
                         best = (d, c, r)
             c, r = (best[1], best[2]) if best else (c0, r0)
-            taken.update((c + i, r + j) for i in (0, 1) for j in (0, 1))
+            taken.add((c, r))
             out[n] = (c, r)
         return out
 
@@ -953,19 +970,18 @@ class Desktop(Gtk.Application):
         for name, (c, r) in self.widget_cells().items():
             g = dict(self.gadgets)[name]
             g.set_side(side)
-            self.fixed.move(g, self.widget_x(c), ORIGIN + r * self.cell_h)
-            norm[name] = [GADGET_RIGHT + (c + 2) * self.cell_w, ORIGIN + r * self.cell_h]
+            self.fixed.move(g, self.widget_x(c), self.widget_y(r))
+            norm[name] = self.widget_saved(c, r)
         if norm != at:  # normalize what an older version (or another screen size) saved, once
             self.cfg['gadgets_at'] = norm
             save_json(CONFIG, self.cfg)
 
     def gadget_drop(self, name, g, x, y):
-        want = (round((self.width - GADGET_RIGHT - x + (2 * self.cell_w - self.widget_side()) // 2) / self.cell_w) - 2,
-                round((y - ORIGIN) / self.cell_h))
+        want = (round((self.width - GADGET_RIGHT - x + (2 * self.cell_w - self.widget_side()) // 2) / (2 * self.cell_w)) - 1,
+                round((y - ORIGIN) / (2 * self.cell_h)))
         c, r = self.widget_cells(name, want)[name]
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
-        # Still the distance from the right edge to the widget's left edge, as older versions saved it.
-        at[name] = [GADGET_RIGHT + (c + 2) * self.cell_w, ORIGIN + r * self.cell_h]
+        at[name] = self.widget_saved(c, r)
         self.cfg['gadgets_at'] = at
         save_json(CONFIG, self.cfg)
         self.place_gadgets()
