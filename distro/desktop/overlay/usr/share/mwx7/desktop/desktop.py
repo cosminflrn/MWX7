@@ -959,12 +959,18 @@ class Desktop(Gtk.Application):
             names = []
         for name in names[:60]:
             f = Gio.File.new_for_path(os.path.join(desktop_dir(), name))
-            try:
-                info = f.query_info('standard::icon,standard::display-name', Gio.FileQueryInfoFlags.NONE, None)
-                img = Gtk.Image.new_from_gicon(info.get_icon())
-                label = info.get_display_name()
-            except GLib.Error:
-                img, label = Gtk.Image.new_from_icon_name('text-x-generic'), name
+            # MWX 7's own icons by kind, as My Computer shows them (the theme's generic ones looked foreign here).
+            path = os.path.join(desktop_dir(), name)
+            if os.path.isdir(path):
+                kind = 'folder'
+            else:
+                mime = Gio.content_type_get_mime_type(Gio.content_type_guess(path, None)[0]) or ''
+                kind = next((k for k, test in (('image', mime.startswith('image/')), ('audio', mime.startswith('audio/')),
+                                               ('video', mime.startswith('video/')), ('text', mime.startswith('text/')),
+                                               ('archive', any(z in mime for z in ('zip', 'tar', 'compressed', '7z'))))
+                             if test), 'file')
+            img = Gtk.Image.new_from_file(os.path.join(ICONS, kind + '.png'))
+            label = name
             item = DesktopIcon(label, img, self.select,
                                lambda u=f.get_uri(): Gio.AppInfo.launch_default_for_uri(u, None), self.icon_px, self.cell_w)
             self.draggable(item, 'file:' + name)

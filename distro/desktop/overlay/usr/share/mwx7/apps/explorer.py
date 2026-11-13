@@ -57,6 +57,23 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 """
 
 
+def kind_icon(path):
+    """MWX 7's own icon for a file, by what it is (the concept's Explorer does the same)."""
+    ctype, _u = Gio.content_type_guess(path, None)
+    mime = Gio.content_type_get_mime_type(ctype) or ''
+    if mime.startswith('image/'):
+        return 'image'
+    if mime.startswith('audio/'):
+        return 'audio'
+    if mime.startswith('video/'):
+        return 'video'
+    if mime.startswith('text/') or mime in ('application/json', 'application/xml', 'application/x-shellscript'):
+        return 'text'
+    if any(k in mime for k in ('zip', 'tar', 'compressed', 'x-7z', 'rar', 'xz', 'bzip', 'gzip', 'zstd', 'debian')):
+        return 'archive'
+    return 'file'
+
+
 def human(n):
     for unit in ('bytes', 'KB', 'MB', 'GB', 'TB'):
         if n < 1024 or unit == 'TB':
@@ -322,10 +339,7 @@ class Explorer:
                 return False
             GLib.idle_add(load)
             return img
-        ctype, _u = Gio.content_type_guess(path, None)
-        img = Gtk.Image.new_from_gicon(Gio.content_type_get_icon(ctype))
-        img.set_pixel_size(size)
-        return img
+        return mwx7ui.icon(kind_icon(path), size)
 
     def fill(self):
         self.fill_crumbs()
