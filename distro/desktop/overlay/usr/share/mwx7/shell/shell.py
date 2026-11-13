@@ -1076,6 +1076,8 @@ class Shell(Gtk.Application):
         v.append(dot)
         trash.set_child(v)
         trash.connect('clicked', lambda *_: self.launch([APP, 'explorer', os.path.join(GLib.get_user_data_dir(), 'Trash')]))
+        # Files dragged onto the Trash go into it, as on the web dock (and macOS).
+        self.on_file_drop(trash, lambda files: [self.trash_file(f) for f in files])
         self.hover_zoom(trash, self.trash_img)
         shelf.append(trash)
         self.update_trash()
@@ -1104,6 +1106,19 @@ class Shell(Gtk.Application):
         sep = Gtk.Box()
         sep.add_css_class('dock-sep')
         return sep
+
+    @staticmethod
+    def on_file_drop(widget, fn):
+        tgt = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        tgt.connect('drop', lambda _t, value, _x, _y: (fn(list(value.get_files())), True)[1])
+        widget.add_controller(tgt)
+
+    @staticmethod
+    def trash_file(f):
+        try:
+            f.trash(None)
+        except GLib.Error:
+            pass
 
     @staticmethod
     def hover_zoom(button, img):
@@ -1136,6 +1151,11 @@ class Shell(Gtk.Application):
         right_click.connect('pressed', lambda *_a: self.dock_menu(b, label, launch, ids))
         b.add_controller(right_click)
         self.dock_box.append(b)
+        # Files dropped on an app open in it (Notepad, Photos, Media Player...), as on a Mac's dock.
+        if launch:
+            app = next((a for a in (app_for_id(i) for i in ids) if a), None)
+            if app and app.supports_uris():
+                self.on_file_drop(b, lambda files, a=app: a.launch(files, None))
         self.dock_items.append((b, ids))
         return b
 
