@@ -235,7 +235,7 @@ class Notepad:
         return store
 
     def open(self):
-        dlg = Gtk.FileDialog(title='Open', initial_folder=self.documents(), filters=self.text_filters())
+        dlg = mwx7ui.FileDialog(title='Open', initial_folder=self.documents(), filters=self.text_filters())
 
         def done(d, res):
             try:
@@ -252,9 +252,9 @@ class Notepad:
             self.save_as(then)
 
     def save_as(self, then=None):
-        dlg = Gtk.FileDialog(title='Save As', initial_name=(self.name() if self.path else 'Untitled.txt'),
-                             initial_folder=(Gio.File.new_for_path(os.path.dirname(self.path)) if self.path
-                                             else self.documents()), filters=self.text_filters())
+        dlg = mwx7ui.FileDialog(title='Save As', initial_name=(self.name() if self.path else 'Untitled.txt'),
+                                initial_folder=(Gio.File.new_for_path(os.path.dirname(self.path)) if self.path
+                                                else self.documents()), filters=self.text_filters())
 
         def done(d, res):
             try:

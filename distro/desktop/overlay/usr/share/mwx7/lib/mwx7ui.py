@@ -74,6 +74,239 @@ window.mwx7-settings popovermenubar > item:hover, window.mwx7-settings popoverme
 """
 
 
+# ---- Open / Save As ---------------------------------------------------------------------------------------------------
+FILE_CSS = """
+window.mwx7-filedlg > box { background: #ffffff; }
+.fd-nav { padding: 6px 8px; background: linear-gradient(180deg, #e9f2fc, #d5e5f7); border-bottom: 1px solid #a9c1de; }
+.fd-nav entry { min-height: 26px; border-radius: 3px; border: 1px solid #8ea8c9; background: #ffffff; }
+.fd-side { background: linear-gradient(90deg, #f3f8fd, #e6eff9); border-right: 1px solid #cfdcec; padding: 6px 0; }
+.fd-side row, .fd-list row { padding: 3px 8px; border-radius: 3px; margin: 0 4px; }
+.fd-side row:selected, .fd-list row:selected { background: linear-gradient(180deg, #e5f1fd, #c9e0fa);
+  box-shadow: inset 0 0 0 1px #84acdd; color: #10223b; }
+.fd-side row:hover, .fd-list row:hover { background-color: #eaf3fd; }
+.fd-list { background: #ffffff; }
+.fd-head { padding: 4px 12px; color: #4b5d78; font-size: 0.9em; border-bottom: 1px solid #e3e9f1; }
+.fd-dim { color: #6b7b92; }
+.fd-foot { padding: 10px 12px; background: linear-gradient(180deg, #f4f7fb, #e5ecf5); border-top: 1px solid #c9d6e6; }
+"""
+FILE_KINDS = (('image/', 'image'), ('audio/', 'audio'), ('video/', 'video'), ('text/', 'text'))
+PLACES = [(GLib.UserDirectory.DIRECTORY_DESKTOP, 'Desktop', 'desktop'),
+          (GLib.UserDirectory.DIRECTORY_DOCUMENTS, 'Documents', 'folder-documents'),
+          (GLib.UserDirectory.DIRECTORY_DOWNLOAD, 'Downloads', 'folder'),
+          (GLib.UserDirectory.DIRECTORY_MUSIC, 'Music', 'folder-music'),
+          (GLib.UserDirectory.DIRECTORY_PICTURES, 'Pictures', 'folder-pictures'),
+          (GLib.UserDirectory.DIRECTORY_VIDEOS, 'Videos', 'folder')]
+_file_css = None
+
+
+class FileDialog:
+    """Open / Save As in the MWX 7 look (an Explorer in miniature), with Gtk.FileDialog's calls so apps swap one for
+    the other: FileDialog(title=, initial_folder=, initial_name=, filters=).open(parent, None, cb) -> cb(dlg, res),
+    then dlg.open_finish(res) / save_finish(res) give a Gio.File or raise GLib.Error when cancelled."""
+
+    def __init__(self, title='Open', initial_folder=None, initial_name='', filters=None):
+        self.title, self.name = title, initial_name or ''
+        self.folder = initial_folder.get_path() if initial_folder else None
+        if not self.folder and self.name and os.path.isabs(self.name):
+            self.folder, self.name = os.path.split(self.name)
+        self.folder = self.folder or GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) or \
+            os.path.expanduser('~')
+        self.filters = [filters.get_item(i) for i in range(filters.get_n_items())] if filters else []
+        self.result = None
+
+    def open(self, parent, _cancellable, callback):
+        self.run(parent, callback, saving=False)
+
+    def save(self, parent, _cancellable, callback):
+        self.run(parent, callback, saving=True)
+
+    def open_finish(self, _res):
+        if self.result is None:
+            raise GLib.Error('Dismissed by user')
+        return self.result
+
+    save_finish = open_finish
+
+    # ---- the window --------------------------------------------------------------------------------------------------
+    def run(self, parent, callback, saving):
+        global _file_css
+        if _file_css is None:
+            _file_css = css(FILE_CSS, 3)
+        self.saving, self.callback, self.done = saving, callback, False
+        w = self.win = dialog(parent, self.title, 'explorer')
+        w.set_resizable(True)
+        w.set_default_size(720, 470)
+        w.add_css_class('mwx7-filedlg')
+        w.connect('close-request', lambda *_a: self.finish(None, close=False) or False)
+        if parent is not None:
+            # Keep it over its app: GTK can't make it transient (MWX 7 frames only windows without a parent).
+            w.set_modal(True)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        nav = Gtk.Box(spacing=6, css_classes=['fd-nav'])
+        up = Gtk.Button(icon_name='go-up-symbolic', tooltip_text='Up one level')
+        up.connect('clicked', lambda *_a: self.go(os.path.dirname(self.folder) or '/'))
+        self.addr = Gtk.Entry(hexpand=True)
+        self.addr.connect('activate', lambda e: self.go(os.path.expanduser(e.get_text())))
+        nav.append(up)
+        nav.append(self.addr)
+        root.append(nav)
+
+        mid = Gtk.Paned(vexpand=True, position=170, shrink_start_child=False)
+        side = Gtk.ListBox(css_classes=['fd-side'])
+        self.places = []
+        home = os.path.expanduser('~')
+        for d, label, ic in PLACES:
+            path = GLib.get_user_special_dir(d)
+            if path and os.path.isdir(path) and path != home and path not in [p for p, _l in self.places]:
+                self.places.append((path, label))
+                side.append(self.place_row(ic, label))
+        self.places += [(home, GLib.get_user_name()), ('/', 'Computer')]
+        side.append(self.place_row('user', GLib.get_user_name()))
+        side.append(self.place_row('computer', 'Computer'))
+        side.connect('row-activated', lambda _b, r: self.go(self.places[r.get_index()][0]))
+        side.set_activate_on_single_click(True)
+        mid.set_start_child(Gtk.ScrolledWindow(child=side, hscrollbar_policy=Gtk.PolicyType.NEVER))
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        head = Gtk.Box(css_classes=['fd-head'])
+        head.append(Gtk.Label(label='Name', xalign=0, hexpand=True))
+        head.append(Gtk.Label(label='Date modified', xalign=0, width_chars=18))
+        head.append(Gtk.Label(label='Size', xalign=1, width_chars=9))
+        right.append(head)
+        self.list = Gtk.ListBox(css_classes=['fd-list'])
+        self.list.connect('row-activated', lambda _b, r: self.activate(r.path, r.is_dir))
+        self.list.connect('row-selected', self.selected)
+        right.append(Gtk.ScrolledWindow(child=self.list, vexpand=True))
+        mid.set_end_child(right)
+        root.append(mid)
+
+        foot = Gtk.Grid(column_spacing=8, row_spacing=8, css_classes=['fd-foot'])
+        foot.attach(Gtk.Label(label='File name:', xalign=1), 0, 0, 1, 1)
+        self.entry = Gtk.Entry(hexpand=True, text=self.name)
+        self.entry.connect('activate', lambda *_a: self.accept())
+        foot.attach(self.entry, 1, 0, 1, 1)
+        self.kind = None
+        if self.filters:
+            self.kind = Gtk.DropDown.new_from_strings([f.get_name() or 'Files' for f in self.filters])
+            self.kind.connect('notify::selected', lambda *_a: self.fill())
+            foot.attach(self.kind, 2, 0, 1, 1)
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        ok = Gtk.Button(label='Save' if saving else 'Open', css_classes=['suggested-action'], width_request=88)
+        ok.connect('clicked', lambda *_a: self.accept())
+        cancel = Gtk.Button(label='Cancel', width_request=88)
+        cancel.connect('clicked', lambda *_a: self.finish(None))
+        btns.append(ok)
+        btns.append(cancel)
+        foot.attach(btns, 1, 1, 2, 1)
+        root.append(foot)
+        w.set_child(root)
+        self.go(self.folder)
+        w.present()
+        self.entry.grab_focus()
+        if saving and '.' in self.name:
+            self.entry.select_region(0, self.name.rindex('.'))
+
+    @staticmethod
+    def place_row(ic, label):
+        box = Gtk.Box(spacing=8)
+        box.append(icon(ic, 16))
+        box.append(Gtk.Label(label=label, xalign=0))
+        return box
+
+    def go(self, path):
+        if not os.path.isdir(path):
+            return
+        self.folder = os.path.abspath(path)
+        self.addr.set_text(self.folder)
+        self.fill()
+
+    def wanted(self, info):
+        if not self.filters or info.get_file_type() == Gio.FileType.DIRECTORY:
+            return True
+        return self.filters[self.kind.get_selected()].match(info)
+
+    def fill(self):
+        while (r := self.list.get_first_child()) is not None:
+            self.list.remove(r)
+        try:
+            en = Gio.File.new_for_path(self.folder).enumerate_children(
+                'standard::name,standard::display-name,standard::type,standard::size,standard::content-type,standard::is-hidden,'
+                'time::modified', Gio.FileQueryInfoFlags.NONE, None)
+            infos = [i for i in en if not i.get_is_hidden() and not i.get_name().startswith('.')]
+        except GLib.Error:
+            infos = []
+        infos.sort(key=lambda i: (i.get_file_type() != Gio.FileType.DIRECTORY, i.get_name().lower()))
+        for info in infos:
+            if not self.wanted(info):
+                continue
+            is_dir = info.get_file_type() == Gio.FileType.DIRECTORY
+            mime = Gio.content_type_get_mime_type(info.get_content_type() or '') or ''
+            ic = 'folder' if is_dir else next((k for p, k in FILE_KINDS if mime.startswith(p)), 'file')
+            row = Gtk.ListBoxRow()
+            row.path, row.is_dir = os.path.join(self.folder, info.get_name()), is_dir
+            box = Gtk.Box(spacing=8)
+            box.append(icon(ic, 16))
+            box.append(Gtk.Label(label=info.get_name(), xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.MIDDLE))
+            dt = info.get_modification_date_time()
+            box.append(Gtk.Label(label=dt.to_local().format('%d/%m/%Y %H:%M') if dt else '', xalign=0,
+                                 width_chars=18, css_classes=['fd-dim']))
+            size = '' if is_dir else self.human(info.get_size())
+            box.append(Gtk.Label(label=size, xalign=1, width_chars=9, css_classes=['fd-dim']))
+            row.set_child(box)
+            self.list.append(row)
+
+    @staticmethod
+    def human(n):
+        for unit in ('bytes', 'KB', 'MB', 'GB'):
+            if n < 1024 or unit == 'GB':
+                return f'{n:.0f} {unit}' if unit == 'bytes' else f'{n:.1f} {unit}'
+            n /= 1024
+        return ''
+
+    def selected(self, _box, row):
+        if row is not None and not row.is_dir:
+            self.entry.set_text(os.path.basename(row.path))
+
+    def activate(self, path, is_dir):
+        if is_dir:
+            self.go(path)
+        else:
+            self.entry.set_text(os.path.basename(path))
+            self.accept()
+
+    def accept(self):
+        name = self.entry.get_text().strip()
+        if not name:
+            return
+        path = os.path.join(self.folder, os.path.expanduser(name))
+        if os.path.isdir(path):
+            self.entry.set_text('')
+            self.go(path)
+            return
+        if not self.saving:
+            if os.path.isfile(path):
+                self.finish(path)
+            return
+        if not os.path.isdir(os.path.dirname(path)):
+            return
+        if not os.path.exists(path):
+            self.finish(path)
+            return
+        ask = Gtk.AlertDialog(message='Confirm Save As',
+                              detail=f'{os.path.basename(path)} already exists.\nDo you want to replace it?',
+                              buttons=['Yes', 'No'], default_button=1, cancel_button=1)
+        ask.choose(self.win, None, lambda d, res: (d.choose_finish(res) == 0) and self.finish(path))
+
+    def finish(self, path, close=True):
+        if self.done:
+            return
+        self.done = True
+        self.result = Gio.File.new_for_path(path) if path else None
+        if close:
+            self.win.destroy()
+        self.callback(self, None)
+
+
 class App(Gtk.Application):
     def __init__(self, app_id, title, icon_name, size, extra_css, build, resizable=True):
         super().__init__(application_id=app_id, flags=Gio.ApplicationFlags.HANDLES_OPEN)

@@ -804,7 +804,7 @@ class Paint:
         return True
 
     def open(self):
-        dlg = Gtk.FileDialog(title='Open', initial_folder=self.pictures(), filters=self.filters())
+        dlg = mwx7ui.FileDialog(title='Open', initial_folder=self.pictures(), filters=self.filters())
 
         def done(d, res):
             try:
@@ -821,8 +821,8 @@ class Paint:
             self.save_as(then)
 
     def save_as(self, then=None):
-        dlg = Gtk.FileDialog(title='Save As', initial_folder=self.pictures(),
-                             initial_name=os.path.basename(self.path) if self.path else 'Untitled.png')
+        dlg = mwx7ui.FileDialog(title='Save As', initial_folder=self.pictures(),
+                                initial_name=os.path.basename(self.path) if self.path else 'Untitled.png')
 
         def done(d, res):
             try:
