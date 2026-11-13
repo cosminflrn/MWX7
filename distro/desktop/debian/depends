@@ -15,4 +15,4 @@ plymouth plymouth-themes
 flatpak thunar foot network-manager network-manager-gnome polkitd pkexec lxpolkit sudo nftables systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
-bluez libspa-0.2-bluetooth cups cups-browsed ipp-usb
+bluez libspa-0.2-bluetooth cups cups-browsed ipp-usb brightnessctl upower

@@ -3,8 +3,11 @@
 GTK4 + gtk4-layer-shell, styled by style.css with MWX 7's glass. Window state (running apps, focus, minimize) comes
 from Wayfire's IPC socket, so the dock reflects real windows of real programs.
 """
+import base64
+import glob
 import json
 import os
+import shutil
 import socket
 import struct
 import subprocess
@@ -500,6 +503,7 @@ class Shell(Gtk.Application):
         GLib.timeout_add(200, self.tick_clock)
         threading.Thread(target=self.ipc.watch, args=(lambda ev: GLib.idle_add(self.on_ipc_event),), daemon=True).start()
         self.refresh()
+        self.start_clipboard()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
         what = os.environ.get('MWX7_SHELL_OPEN')
         if what == 'search':
@@ -590,6 +594,7 @@ class Shell(Gtk.Application):
         self.upd_btn.set_child(Gtk.Image.new_from_icon_name('software-update-available-symbolic'))
         self.upd_btn.connect('clicked', lambda *_: self.launch(['/usr/share/mwx7/settings/mwx7-settings', '--updates']))
         right.append(self.upd_btn)
+        self.build_clipboard(right)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
         self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
         net_btn = Gtk.MenuButton()
@@ -650,6 +655,7 @@ class Shell(Gtk.Application):
         scroll.connect('scroll', lambda _c, _dx, dy: (self.vol_scale.set_value(self.vol_scale.get_value() - dy * 5), True)[1])
         self.vol_btn.add_controller(scroll)
         right.append(self.vol_btn)
+        self.build_power(right)
         self.vol_updating = False
         GLib.timeout_add_seconds(2, self.poll_status)
         GLib.idle_add(lambda: self.poll_status() and False)  # once now; an idle source returning True spins forever
@@ -1537,6 +1543,295 @@ class Shell(Gtk.Application):
             if sent.get(v['id']) != hint:
                 self.act('mwx7/set-minimize-hint', {'id': v['id'], 'x': hint[0], 'y': hint[1], 'width': 48, 'height': 48})
         self.hints = live
+
+    # ---- clipboard history -----------------------------------------------------------------------------------------
+    # Kept in memory only (never on disk: copied passwords must not outlive the session). Newest first.
+    CLIP_MAX, CLIP_IMAGE_MAX = 25, 2 * 1024 * 1024
+
+    def build_clipboard(self, right):
+        self.clip_items, self.clip_procs = [], []
+        if not shutil.which('wl-paste'):
+            return
+        btn = Gtk.MenuButton(tooltip_text='Clipboard history')
+        btn.add_css_class('tray-btn')
+        btn.set_child(Gtk.Image.new_from_icon_name('edit-paste-symbolic'))
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.connect('show', lambda p: self.fill_clipboard(p))
+        btn.set_popover(pop)
+        self.clip_btn = btn
+        right.append(btn)
+
+    def start_clipboard(self):
+        """One `wl-paste --watch` per kind: each change prints the content as one base64 line, read in a thread."""
+        if not hasattr(self, 'clip_btn'):
+            return
+        for kind, mime in (('t', 'text'), ('i', 'image/png')):
+            try:
+                proc = subprocess.Popen(['wl-paste', '--type', mime, '--watch', 'sh', '-c', 'base64 -w0; echo'],
+                                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+            except OSError:
+                continue
+            self.clip_procs.append(proc)
+            threading.Thread(target=self.clip_reader, args=(kind, proc), daemon=True).start()
+
+    def clip_reader(self, kind, proc):
+        for line in proc.stdout:  # blocks in this thread; ends when wl-paste exits
+            line = line.strip()
+            if not line or len(line) > self.CLIP_IMAGE_MAX * 4 // 3 + 8:
+                continue  # nothing copied (cleared) or too big
+            try:
+                data = base64.b64decode(line)
+            except ValueError:
+                continue
+            GLib.idle_add(self.clip_add, kind, data)
+
+    def do_shutdown(self):
+        for proc in getattr(self, 'clip_procs', []):
+            proc.terminate()
+        Gtk.Application.do_shutdown(self)
+
+    def clip_add(self, kind, data):
+        if kind == 't':
+            data = data.decode('utf-8', 'replace')
+            if not data.strip():
+                return False
+        item = (kind, data)
+        if item in self.clip_items:
+            self.clip_items.remove(item)  # copied again: back to the top, not a duplicate
+        self.clip_items.insert(0, item)
+        del self.clip_items[self.CLIP_MAX:]
+        return False
+
+    def fill_clipboard(self, pop):
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_size_request(300, -1)
+        head = Gtk.Label(label='Clipboard history', xalign=0)
+        head.add_css_class('menu-head')
+        col.append(head)
+        items = list(self.clip_items)
+        if not items:
+            col.append(Gtk.Label(label='Nothing copied yet', xalign=0, margin_start=10, margin_bottom=6))
+        else:
+            lst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            for kind, data in items:
+                b = Gtk.Button()
+                b.add_css_class('menu-row')
+                row = Gtk.Box(spacing=8)
+                if kind == 'i':
+                    thumb = self.clip_thumb(data)
+                    row.append(thumb if thumb else Gtk.Image.new_from_icon_name('image-x-generic-symbolic'))
+                    row.append(Gtk.Label(label='Image', xalign=0, hexpand=True))
+                else:
+                    preview = ' '.join(data[:200].split())
+                    row.append(Gtk.Label(label=preview[:80] + ('…' if len(preview) > 80 else ''), xalign=0, hexpand=True,
+                                         ellipsize=3, max_width_chars=36))
+                b.set_child(row)
+                b.connect('clicked', lambda *_a, k=kind, d=data: (pop.popdown(), self.clip_restore(k, d)))
+                lst.append(b)
+            scroller = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=360,
+                                          hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroller.set_child(lst)
+            col.append(scroller)
+            sep = Gtk.Box()
+            sep.add_css_class('menu-sep')
+            col.append(sep)
+            clear = Gtk.Button(label='Clear all')
+            clear.add_css_class('menu-row')
+            clear.get_child().set_xalign(0)
+            clear.connect('clicked', lambda *_: (pop.popdown(), self.clip_items.clear()))
+            col.append(clear)
+        pop.set_child(col)
+
+    @staticmethod
+    def clip_thumb(data):
+        try:
+            loader = GdkPixbuf.PixbufLoader()
+            loader.write(data)
+            loader.close()
+            pix = loader.get_pixbuf()
+            scale = 40 / max(pix.get_height(), 1)
+            w = max(1, min(120, int(pix.get_width() * scale)))
+            pix = pix.scale_simple(w, 40, GdkPixbuf.InterpType.BILINEAR)
+            img = Gtk.Image.new_from_paintable(Gdk.Texture.new_for_pixbuf(pix))
+            img.set_pixel_size(40)
+            return img
+        except GLib.Error:
+            return None
+
+    @staticmethod
+    def clip_restore(kind, data):
+        cmd = ['wl-copy'] if kind == 't' else ['wl-copy', '--type', 'image/png']
+        payload = data.encode() if kind == 't' else data
+        # wl-copy stays alive as the clipboard's owner; a thread keeps the shell from waiting on it.
+        threading.Thread(target=lambda: subprocess.run(cmd, input=payload, timeout=10, check=False), daemon=True).start()
+
+    # ---- battery and brightness ------------------------------------------------------------------------------------
+    @staticmethod
+    def sysfs(path, default=None):
+        try:
+            with open(path) as f:
+                return f.read().strip()
+        except OSError:
+            return default
+
+    def build_power(self, right):
+        """Battery icon and flyout (with the brightness slider); with no battery but a backlight: a brightness icon.
+        Nothing at all on desktops and VMs."""
+        self.bat_dir = next(iter(sorted(glob.glob('/sys/class/power_supply/BAT*'))), None)
+        self.has_backlight = bool(glob.glob('/sys/class/backlight/*')) and bool(shutil.which('brightnessctl'))
+        if not self.bat_dir and not self.has_backlight:
+            return
+        self.pwr_img = Gtk.Image.new_from_icon_name('battery-level-100-symbolic' if self.bat_dir else 'display-brightness-symbolic')
+        self.pwr_label = Gtk.Label(label='')
+        box = Gtk.Box(spacing=4)
+        box.append(self.pwr_img)
+        if self.bat_dir:
+            box.append(self.pwr_label)
+        btn = Gtk.MenuButton()
+        btn.add_css_class('tray-btn')
+        btn.set_child(box)
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.connect('show', lambda p: self.fill_power(p))
+        btn.set_popover(pop)
+        self.pwr_btn = btn
+        right.append(btn)
+        if self.bat_dir:
+            GLib.timeout_add_seconds(30, self.poll_battery)  # repeats on purpose
+            GLib.idle_add(lambda: self.poll_battery() and False)  # once now
+
+    def read_battery(self):
+        """(percent, state, seconds remaining or None); runs in a worker thread."""
+        d = self.bat_dir
+        pct = int(self.sysfs(d + '/capacity', '0') or 0)
+        state = (self.sysfs(d + '/status', 'Unknown') or 'Unknown').lower()
+        secs = None
+        if shutil.which('upower'):
+            dev = '/org/freedesktop/UPower/devices/battery_' + os.path.basename(d)
+            out = self.capture(['upower', '-i', dev]) or ''
+            m = re.search(r'time to (?:empty|full):\s*([\d.,]+)\s*(seconds|minutes|hours|days)', out)
+            if m:
+                secs = float(m.group(1).replace(',', '.')) * {'seconds': 1, 'minutes': 60, 'hours': 3600, 'days': 86400}[m.group(2)]
+        if secs is None:
+            unit = 'energy' if os.path.exists(d + '/energy_now') else 'charge'
+            now, full = (int(self.sysfs(f'{d}/{unit}_{k}', '0') or 0) for k in ('now', 'full'))
+            rate = int(self.sysfs(d + ('/power_now' if unit == 'energy' else '/current_now'), '0') or 0)
+            if rate > 0:
+                left = now if state == 'discharging' else full - now if state == 'charging' else 0
+                secs = left / rate * 3600 if left > 0 else None
+        return pct, state, secs
+
+    def poll_battery(self):
+        def work():
+            GLib.idle_add(self.apply_battery, *self.read_battery())
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    @staticmethod
+    def battery_text(pct, state, secs):
+        t = f'{pct}%'
+        if state == 'charging':
+            t += ' (charging)'
+        elif state in ('full', 'not charging'):
+            t += ' (plugged in)'
+        if secs and state in ('charging', 'discharging'):
+            h, m = int(secs // 3600), int(secs % 3600 // 60)
+            t += f', {h} h {m:02d} min ' + ('until full' if state == 'charging' else 'remaining')
+        return t
+
+    def apply_battery(self, pct, state, secs):
+        level = max(0, min(100, round(pct / 10) * 10))
+        suffix = '-charged' if state == 'full' else '-charging' if state == 'charging' else ''
+        self.pwr_img.set_from_icon_name(f'battery-level-{level}{suffix}-symbolic')
+        self.pwr_label.set_label(f'{pct}%')
+        self.pwr_btn.set_tooltip_text(self.battery_text(pct, state, secs))
+        return False
+
+    def fill_power(self, pop):
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_size_request(260, -1)
+        if self.bat_dir:
+            head = Gtk.Label(label='Battery', xalign=0)
+            head.add_css_class('menu-head')
+            col.append(head)
+            self.pwr_now = Gtk.Label(label='…', xalign=0, margin_start=10, margin_bottom=6)
+            col.append(self.pwr_now)
+            self.pwr_modes = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            col.append(self.pwr_modes)
+        if self.has_backlight:
+            if self.bat_dir:
+                sep = Gtk.Box()
+                sep.add_css_class('menu-sep')
+                col.append(sep)
+            head = Gtk.Label(label='Brightness', xalign=0)
+            head.add_css_class('menu-head')
+            col.append(head)
+            self.bright_updating = True
+            self.bright_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 100, 1)
+            self.bright_scale.set_draw_value(False)
+            self.bright_scale.add_css_class('bright-scale')
+            self.bright_scale.set_margin_start(10)
+            self.bright_scale.set_margin_end(10)
+            self.bright_scale.set_margin_bottom(6)
+            self.bright_scale.connect('value-changed', self.on_brightness)
+            col.append(self.bright_scale)
+        pop.set_child(col)
+
+        def work():
+            bat = self.read_battery() if self.bat_dir else None
+            modes = None
+            if self.bat_dir and shutil.which('powerprofilesctl'):
+                modes = self.capture(['powerprofilesctl', 'list']) or ''
+            bright = None
+            if self.has_backlight:
+                out = (self.capture(['brightnessctl', '-m']) or '').split(',')
+                bright = int(out[3].rstrip('%')) if len(out) >= 4 and out[3].rstrip('%').isdigit() else None
+            GLib.idle_add(self.show_power, bat, modes, bright)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_power(self, bat, modes, bright):
+        if bat:
+            self.pwr_now.set_label(self.battery_text(*bat))
+        # powerprofilesctl list: "* balanced:" for the active mode, "  power-saver:" for the others, indented details after
+        found = re.findall(r'^([* ]) (\S+):\s*$', modes or '', re.M)
+        if found:
+            h = Gtk.Label(label='Power mode', xalign=0)
+            h.add_css_class('menu-head')
+            self.pwr_modes.append(h)
+        for mark, name in found:
+            b = Gtk.Button()
+            b.add_css_class('menu-row')
+            row = Gtk.Box(spacing=8)
+            row.append(Gtk.Label(label=name.replace('-', ' ').capitalize(), xalign=0, hexpand=True))
+            if mark == '*':
+                row.append(Gtk.Image.new_from_icon_name('object-select-symbolic'))
+            b.set_child(row)
+            b.connect('clicked', lambda *_a, n=name: (self.pwr_btn.get_popover().popdown(), self.run_bg(['powerprofilesctl', 'set', n])))
+            self.pwr_modes.append(b)
+        if self.has_backlight:
+            if bright is not None:
+                self.bright_scale.set_value(max(1, bright))
+            self.bright_updating = False
+        return False
+
+    @staticmethod
+    def run_bg(cmd):
+        threading.Thread(target=lambda: subprocess.run(cmd, capture_output=True, timeout=10, check=False), daemon=True).start()
+
+    def on_brightness(self, scale):
+        if self.bright_updating:
+            return
+        # Dragging fires many changes: only the last one within 80 ms is written.
+        if getattr(self, 'bright_src', 0):
+            GLib.source_remove(self.bright_src)
+        value = int(scale.get_value())
+
+        def write():
+            self.bright_src = 0
+            self.run_bg(['brightnessctl', '-q', 'set', f'{value}%'])
+            return False
+        self.bright_src = GLib.timeout_add(80, write)
 
     # ---- volume and network ----------------------------------------------------------------------------------------
     @staticmethod
