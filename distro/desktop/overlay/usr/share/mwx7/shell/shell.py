@@ -674,7 +674,7 @@ class Shell(Gtk.Application):
         right.append(self.vol_btn)
         self.build_power(right)
         self.vol_updating = False
-        GLib.timeout_add_seconds(2, self.poll_status)
+        GLib.timeout_add_seconds(5, self.poll_status)
         GLib.idle_add(lambda: self.poll_status() and False)  # once now; an idle source returning True spins forever
         # Search (the Start menu's search box) and all windows side by side, as in the web concept's menu bar.
         find = Gtk.Button()

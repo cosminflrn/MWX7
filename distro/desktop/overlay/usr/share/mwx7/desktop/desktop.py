@@ -1,8 +1,8 @@
 """MWX 7 desktop layer: desktop icons and widgets as one layer-shell surface between the wallpaper and the windows.
 
 GTK4 + gtk4-layer-shell, same patterns as the shell. The surface is transparent, so the wallpaper (swaybg, background
-layer) shows through. Nothing here runs faster than once a second, except the short needle animation of the CPU/RAM
-gauge, and only the gadget that changed is redrawn.
+layer) shows through. Every redraw here makes Wayfire recomposite the screen, so widgets redraw rarely: the clock once
+a minute, the CPU/RAM gauge every 3 s without animating, the calendar when the date changes.
 """
 import glob
 import json
@@ -279,8 +279,12 @@ class Clock(Gadget):
         self.now = time.localtime()
 
     def tick(self):
-        self.now = time.localtime()
-        self.queue_draw()
+        # Redraw once a minute, not every second: each redraw makes Wayfire recomposite the screen, and a ticking
+        # second hand alone cost ~17% of a core in the compositor in the test VM (part of the lag).
+        now = time.localtime()
+        if (now.tm_hour, now.tm_min) != (self.now.tm_hour, self.now.tm_min):
+            self.now = now
+            self.queue_draw()
 
     def paint(self, cr, w, h):
         t = self.now
@@ -311,20 +315,10 @@ class Clock(Gadget):
             cr.stroke()
             cr.restore()
         self.t(cr, 'MWX 7', 50, 33, 5.4 * k, col('#5b6c82'), align='center', spacing=1.2 * k)
-        minutes = t.tm_min + t.tm_sec / 60
+        minutes = t.tm_min
         hours = (t.tm_hour % 12) + minutes / 60
         self.hand(cr, hours * 30, 56, 29, 26, 3.6)
         self.hand(cr, minutes * 6, 58, 17, 14, 2.8)
-        # Second hand: one step per second, no animation loop. Redrawing the face once a second is cheap.
-        cr.save()
-        cr.translate(50, 50)
-        cr.rotate(math.radians(t.tm_sec * 6))
-        cr.move_to(0, 10)
-        cr.line_to(0, -37)
-        cr.set_source_rgba(*col('#d6341f'))
-        cr.set_line_width(1)
-        cr.stroke()
-        cr.restore()
         cr.arc(50, 50, 2.6, 0, 2 * math.pi)
         cr.set_source_rgba(*col('#d6341f'))
         cr.fill()
@@ -420,11 +414,12 @@ class Meter(Gadget):
         new = [max(0.0, min(100.0, cpu)), max(0.0, min(100.0, ram))]
         if all(abs(a - b) < 0.4 for a, b in zip(new, self.target)):
             return
+        # Straight to the new value, no sweep: every animation frame repainted the whole full-screen desktop layer and
+        # made Wayfire recomposite the screen (with the blur) at 60 fps for 0.6 s of every 2 s. With the desktop
+        # paused, Wayfire went from ~69% to ~5% CPU in the test VM: that was the lag (13 Nov 2026).
         self.target = new
-        self.start = list(self.value)
-        self.t0 = None
-        if self.anim is None:
-            self.anim = self.add_tick_callback(self.step)
+        self.value = list(new)
+        self.queue_draw()
 
     def stop(self):
         if self.anim is not None:
@@ -1522,7 +1517,7 @@ class Desktop(Gtk.Application):
         self.meter.update()
         self.weather.refresh()
         # Whole-second timers let GLib batch wakeups with other programs'. Hidden gadgets cost nothing: all stopped.
-        self.timers = [GLib.timeout_add_seconds(1, self.tick), GLib.timeout_add_seconds(2, self.meter_tick),
+        self.timers = [GLib.timeout_add_seconds(1, self.tick), GLib.timeout_add_seconds(3, self.meter_tick),
                        GLib.timeout_add_seconds(1800, self.weather.refresh)]
 
     def stop_timers(self):
