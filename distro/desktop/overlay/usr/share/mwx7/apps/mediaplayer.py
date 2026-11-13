@@ -321,8 +321,11 @@ class Player:
             self.levels = [v * 0.85 for v in self.levels]
         if not hasattr(self, 'shown'):
             self.shown = [0.0] * BANDS
+        quiet = max(self.shown) < 0.002 and max(self.levels) < 0.002
         self.shown = [max(lv, s * 0.88) for lv, s in zip(self.levels, self.shown)]
-        self.viz.queue_draw()
+        # Nothing moves while paused and settled: no redraw, so an idle player costs nothing.
+        if not quiet:
+            self.viz.queue_draw()
         return True
 
     def draw(self, _area, cr, w, h):
