@@ -13,7 +13,7 @@ shift
 case "$id" in
   about) size=420,470;; calculator) size=260,400;; mediaplayer) size=860,560;; notepad) size=640,480;;
   paint) size=1120,720;; photos) size=860,620;; stickynotes) size=260,280;; welcome) size=700,520;;
-  mines) size=300,400;; solitaire) size=820,640;; pinball) size=620,820;; *) size=900,640;;
+  mines) size=300,400;; solitaire) size=820,640;; *) size=900,640;;
 esac
 page=$id.html
 [ -e "/usr/share/mwx7/web/$page" ] || page=index.html
