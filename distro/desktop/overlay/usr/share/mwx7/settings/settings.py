@@ -1187,8 +1187,7 @@ class Settings(Gtk.Application):
             remove_btn.set_visible(has)
 
         def ask_password(*_):
-            dlg = Gtk.Window(title='Password', modal=True, transient_for=self.get_active_window())
-            dlg.add_css_class('mwx7-settings')
+            dlg = self.small_window('Password', 'user')
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16,
                           margin_start=18, margin_end=18)
             a = Gtk.PasswordEntry(placeholder_text='New password', show_peek_icon=True)
@@ -1538,10 +1537,19 @@ class Settings(Gtk.Application):
         load()
         return p
 
-    def confirm_reset(self, keep_all):
-        dlg = Gtk.Window(title='Repair MWX 7' if keep_all else 'Reset to factory', modal=True,
-                         transient_for=self.get_active_window())
+    def small_window(self, title, icon_name):
+        """A small window of Settings' own (password, repair): framed in Aero glass like Settings. Not transient: MWX 7's
+        frames leave windows with a parent to GTK, which drew this one with no frame and a see-through background."""
+        dlg = Gtk.Window(title=title, resizable=False)
         dlg.add_css_class('mwx7-settings')
+        dlg.set_titlebar(self.titlebar(dlg, title, icon_name))
+        parent = self.get_active_window()
+        if parent is not None:
+            parent.connect('close-request', lambda *_a: dlg.destroy() and False)
+        return dlg
+
+    def confirm_reset(self, keep_all):
+        dlg = self.small_window('Repair MWX 7' if keep_all else 'Reset to factory', 'settings')
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
                       margin_start=20, margin_end=20)
         if keep_all:

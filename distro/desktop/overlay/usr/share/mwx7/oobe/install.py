@@ -444,6 +444,7 @@ def fetch_iso(dest):
     download and checks the ISO's signature (the update channel's key) or, for ISOs published before signing, its
     checksum."""
     import hashlib
+    import urllib.error
     import urllib.request
     try:
         latest = json.load(urllib.request.urlopen(GITHUB + '/latest/download/latest.json', timeout=30))
@@ -458,7 +459,13 @@ def fetch_iso(dest):
     while True:
         done = os.path.getsize(part) if os.path.exists(part) else 0
         req = urllib.request.Request(url, headers={'Range': f'bytes={done}-'} if done else {})
-        with urllib.request.urlopen(req, timeout=60) as r:
+        try:
+            r = urllib.request.urlopen(req, timeout=60)
+        except urllib.error.HTTPError as e:
+            if e.code == 416 and done:
+                break  # an earlier try already got all of it: only the check below is left
+            raise
+        with r:
             if done and r.status != 206:
                 done = 0  # the server ignored the resume: start over
             total = done + int(r.headers.get('Content-Length') or 0)
