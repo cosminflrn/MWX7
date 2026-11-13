@@ -2,6 +2,21 @@
 
 Derived from the git history. Newest first.
 
+## v1.14.0
+- **Smoother**: one full-screen layer less to draw (the desktop paints the wallpaper), Animations setting (Full /
+  Reduced / Off; Reduced by itself in VMware)
+- **Start menu**: search finds apps, Settings pages, files and does quick sums; the clock opens a calendar
+- **Notification center**: bell in the bar with history, Clear all and Do Not Disturb
+- **Get Apps**: real icons, categories, every Flathub app, details and Updates
+- **My Computer**: thumbnails, copy progress with Cancel, Undo, search, preview pane
+- **Media Player**: music and video library with album art, now playing, media keys
+- **Paint**: shapes, text, selection, fill, zoom, undo; **Notepad**: tabs; **Calculator**: Scientific and Programmer;
+  **Photos**: zoom, rotate, crop, slideshow
+- **Settings**: sound devices and per-app volume, screen resolution/refresh/scale with "Keep these settings?",
+  night light schedule
+- **Installer**: install alongside Windows (refuses BitLocker or Fast Startup with clear steps)
+- Fix: an empty sticky note no longer opens at every sign-in
+
 ## v1.13.0
 - **Much less lag**: the desktop no longer redraws the whole screen all the time (idle CPU of the window manager
   from ~69% to ~3% in tests): widgets update calmly, the bar's clock has no seconds by default, the bar ignores window
