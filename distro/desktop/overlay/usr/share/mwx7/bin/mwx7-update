@@ -3,12 +3,86 @@
 # Chrome's, all through apt. "check" lists what would change; "install" installs it and records what was upgraded;
 # "needs-restart" says whether the last install needs a restart; "offline reboot|poweroff" restarts into the update
 # screen (system-update.target, see mwx7-offline-update), like "Update and restart" on Windows.
+# Also: "auto" (the daily timer: check, then download quietly), "download" (the quiet download alone), "autocheck
+# on|off|status", and "recover" (finish an interrupted install).
 set -e
 export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
 STATE=/var/lib/mwx7
+# What Settings and the status bar read (world-readable): checked=<epoch> count=<n> version=<MWX 7 version or empty>
+# ready=<1 when everything is already downloaded>.
+INFO=$STATE/updates.state
+# Exists while an install runs (its content: 1 when a previous-version snapshot was kept). Still there at the next
+# start = the install was cut short: mwx7-update recover (mwx7-update-recover.service) puts dpkg right again.
+BUSY=$STATE/update-in-progress
 
 # Package versions now installed, one "name version" per line (for the before/after diff of an install).
 snapshot() { dpkg-query -W -f '${Package} ${Version}\n' | sort; }
+
+info_set() {
+  mkdir -p "$STATE"
+  t=$(mktemp "$STATE/.info.XXXXXX")
+  { [ ! -f "$INFO" ] || grep -v "^$1=" "$INFO" || true; echo "$1=$2"; } >"$t"
+  chmod 644 "$t"
+  mv -f "$t" "$INFO"
+}
+
+# The connection in use is metered (a phone's hotspot, a data plan): nothing is downloaded behind the person's back.
+metered() {
+  command -v nmcli >/dev/null 2>&1 || return 1
+  dev=$(ip -o route show default 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n 1)
+  [ -n "$dev" ] || return 1
+  case "$(nmcli -t -g GENERAL.METERED device show "$dev" 2>/dev/null)" in yes*|guess-yes*) return 0 ;; esac
+  return 1
+}
+
+# The quiet download: apt-get -d at the lowest CPU and disk priority, so the PC stays as fast as it was and
+# installing at Restart / Shut down has nothing left to fetch.
+download() {
+  if metered; then info_set ready 0; return 0; fi
+  mkdir -p "$STATE"
+  nice -n 19 ionice -c3 apt-get -d -y -q -o Dpkg::Use-Pty=0 -o Dpkg::Options::=--force-confold full-upgrade >/dev/null 2>&1 &
+  echo $! >/run/mwx7-download.pid
+  rc=0
+  wait $! || rc=$?
+  rm -f /run/mwx7-download.pid
+  if [ "$rc" = 0 ]; then info_set ready 1; else info_set ready 0; fi
+  return 0
+}
+
+# What's new in the waiting MWX 7 version: its section of CHANGELOG.md, published next to the package (updates.yml).
+# "v1.14.0" is the package version without its build number.
+fetch_changelog() {
+  rm -f "$STATE/whats-new-available"
+  [ -n "$1" ] || return 0
+  url=$(sed -n 's/^URIs: *//p' /etc/apt/sources.list.d/mwx7.sources 2>/dev/null | head -n 1)
+  [ -n "$url" ] || return 0
+  tmp=$(mktemp)
+  if timeout 20 /usr/lib/apt/apt-helper download-file "${url%/}/CHANGELOG.md" "$tmp" >/dev/null 2>&1; then
+    v=$(printf '%s' "$1" | cut -d. -f1-3)
+    awk -v h="## v$v" '$0==h{f=1;next} /^## /{f=0} f&&/^- /{b=b $0 "\n"} END{printf "%s", b}' "$tmp" |
+      sed 's/\*\*//g' >"$STATE/whats-new-available" || true
+    chmod 644 "$STATE/whats-new-available" 2>/dev/null || true
+  fi
+  rm -f "$tmp"
+}
+
+# apt-get update + what would change, recorded for Settings and the status bar.
+check_core() {
+  apt-get update -q >/dev/null
+  list=$(apt list --upgradable 2>/dev/null | sed -n 's|^\([^/]*\)/[^ ]* \([^ ]*\) .*|\1 \2|p')
+  count=$(printf '%s\n' "$list" | grep -c . || true)
+  ours=$(printf '%s\n' "$list" | sed -n 's/^mwx7-desktop //p')
+  info_set checked "$(date +%s)"
+  info_set count "$count"
+  info_set version "$ours"
+  if [ "$count" -gt 0 ]; then
+    fetch_changelog "$ours"
+  else
+    info_set ready 0
+    rm -f "$STATE/whats-new-available"
+  fi
+  printf '%s\n' "$list" | grep . || true
+}
 
 # "MWX 7 (previous version)" in the boot menu: a copy of the system as it was before this update (btrfs shares
 # everything unchanged, so it costs only what the update replaces). Replaced at the next update.
@@ -30,31 +104,97 @@ keep_previous() {
 # Our config files win over a package's new defaults (and nothing stops to ask).
 do_install() {
   mkdir -p "$STATE"
+  # A quiet download still running would hold apt's lock: it stops (what it fetched is kept) and install goes on.
+  [ ! -s /run/mwx7-download.pid ] || kill "$(cat /run/mwx7-download.pid)" 2>/dev/null || true
   kept=
+  echo "MWX7-PROGRESS 2 Preparing"
   keep_previous
+  # From here until it ends cleanly, a cut-off install is finished by the next start (mwx7-update recover).
+  echo "${kept:-0}" >"$BUSY"
+  sync
+  echo "MWX7-PROGRESS 10 Downloading"
   before=$(mktemp)
   after=$(mktemp)
   snapshot >"$before"
   rc=0
-  apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 full-upgrade || rc=$?
+  total=$(apt-get -s full-upgrade 2>/dev/null | grep -c '^Inst ' || true)
+  rcf=$(mktemp)
+  # apt's own lines pass through; MWX7-PROGRESS <percent> <stage> lines (10..95) are added for Settings and the splash.
+  {
+    r=0
+    apt-get -y -q -o DPkg::Lock::Timeout=300 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+      -o Dpkg::Use-Pty=0 full-upgrade 2>&1 || r=$?
+    echo "$r" >"$rcf"
+  } | awk -v n="${total:-0}" 'BEGIN { if (n < 1) n = 1 }
+    { print; fflush() }
+    /^Get:/       { g++; printf "MWX7-PROGRESS %d Downloading\n", 10 + 25 * (g > n ? 1 : g / n); fflush() }
+    /^Unpacking/  { u++; printf "MWX7-PROGRESS %d Installing\n", 35 + 35 * (u > n ? 1 : u / n); fflush() }
+    /^Setting up/ { s++; printf "MWX7-PROGRESS %d Setting up\n", 70 + 25 * (s > n ? 1 : s / n); fflush() }'
+  rc=$(cat "$rcf" 2>/dev/null || echo 1)
+  rm -f "$rcf"
+  if [ "$rc" != 0 ]; then
+    # apt stopped half way: put dpkg right again now, not only at the next start.
+    echo "MWX7-PROGRESS 95 Repairing"
+    recover_core || true
+  fi
   # Recorded even when apt failed half way: what did get upgraded still decides whether a restart is needed.
   snapshot >"$after"
   # Upgraded = the name was installed before and its name+version line changed (new packages are not upgrades).
   comm -13 "$before" "$after" | awk 'NR==FNR { old[$1]=1; next } ($1 in old) { print $1 }' "$before" - >"$STATE/last-upgraded"
   rm -f "$before" "$after"
   [ "$rc" = 0 ] || return "$rc"
+  echo "MWX7-PROGRESS 96 Cleaning up"
   apt-get -y -q autoremove --purge -o Dpkg::Use-Pty=0
   apt-get clean
   # The boot menu gets the previous version's entry (and the current kernel).
   update-grub >/dev/null 2>&1 || true
   # The next starts are counted: two that do not reach the logon screen and GRUB boots the previous version instead.
   [ -z "$kept" ] || /usr/share/mwx7/bin/mwx7-bootcount arm || true
+  rm -f "$BUSY" "$STATE/whats-new-available"
+  info_set count 0
+  info_set version ""
+  info_set ready 0
+  echo "MWX7-PROGRESS 100 Done"
+}
+
+# Finishes what a cut-off or failed install left: dpkg's half-configured packages, then apt's own repair of broken
+# dependencies. dpkg works offline (everything downloaded is in apt's cache); apt may fetch what is still missing.
+recover_core() {
+  ok=1
+  dpkg --configure -a --force-confdef --force-confold || ok=0
+  apt-get -y -q -f install -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Dpkg::Use-Pty=0 || ok=0
+  # A repaired system may have a new kernel: the boot menu follows.
+  update-grub >/dev/null 2>&1 || true
+  # The cut-short update counts as a new version that has not yet proved it starts: if the desktop does not come up
+  # twice, GRUB goes back to the previous version (the safe-boot fallback, see mwx7-bootcount).
+  [ "$(cat "$BUSY" 2>/dev/null)" != 1 ] || /usr/share/mwx7/bin/mwx7-bootcount arm || true
+  [ "$ok" = 1 ] || return 1
+  rm -f "$BUSY"
 }
 
 case "$1" in
   check)
-    apt-get update -q >/dev/null
-    apt list --upgradable 2>/dev/null | sed -n 's|^\([^/]*\)/[^ ]* \([^ ]*\) .*|\1 \2|p' ;;
+    check_core
+    # Found something: fetch it quietly, after this returns (Settings must not wait for it).
+    if [ "$(sed -n 's/^count=//p' "$INFO")" -gt 0 ] 2>/dev/null; then
+      setsid "$0" download </dev/null >/dev/null 2>&1 &
+    fi ;;
+  auto)
+    # mwx7-update-auto.timer, daily: skipped when the person turned "Check automatically" off.
+    [ ! -e "$STATE/no-auto-check" ] || exit 0
+    check_core >/dev/null
+    if [ "$(sed -n 's/^count=//p' "$INFO")" -gt 0 ] 2>/dev/null; then download; fi ;;
+  download)
+    download ;;
+  autocheck)
+    case "$2" in
+      on) rm -f "$STATE/no-auto-check" ;;
+      off) mkdir -p "$STATE"; : >"$STATE/no-auto-check" ;;
+      status) [ -e "$STATE/no-auto-check" ] && echo off || echo on ;;
+      *) echo "usage: mwx7-update autocheck on|off|status" >&2; exit 2 ;;
+    esac ;;
+  recover)
+    recover_core ;;
   install)
     do_install ;;
   needs-restart)
@@ -75,5 +215,5 @@ case "$1" in
     echo "$2" >"$STATE/offline-update"
     ln -sfn "$STATE" /system-update
     systemctl reboot ;;
-  *) echo "usage: mwx7-update check|install|needs-restart|offline reboot|poweroff" >&2; exit 2 ;;
+  *) echo "usage: mwx7-update check|auto|download|autocheck on|off|recover|install|needs-restart|offline reboot|poweroff" >&2; exit 2 ;;
 esac

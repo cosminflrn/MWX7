@@ -29,9 +29,7 @@ progress 5
   /usr/share/mwx7/bin/mwx7-update install 2>&1 | while IFS= read -r line; do
     echo "$line"
     case "$line" in
-      Get:*) progress 20 ;;
-      Unpacking*) progress 50 ;;
-      Setting\ up*) progress 80 ;;
+      MWX7-PROGRESS\ *) p=${line#MWX7-PROGRESS }; progress $((5 + ${p%% *} * 90 / 100)) ;;
     esac
   done
   echo "offline update finished, then: $action"
