@@ -12,6 +12,8 @@ Derived from the git history. Newest first.
 - Start menu lists every program; drag icons and gadgets anywhere on the desktop
 - Startup and log-off sounds, network and volume flyouts, Night light, Dock and clock settings
 - After an update of MWX 7 itself, Restart is offered (its frames, bar and dock only change after one)
+- Settings → Repair or reset: just two buttons, Repair (keeps everything) and Reset to factory; the recovery copy is
+  fetched automatically when needed
 
 ## v1.10.0
 - **Aero glass, as on the web**: window frames are clear tinted glass over the blurred desktop, with the top sheen, the

@@ -1047,8 +1047,8 @@ class Settings(Gtk.Application):
 
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Repair or reset'))
-            p.append(note('Both work offline, from the recovery copy MWX 7 keeps on the disk (this version, nothing to '
-                          'download). Repair also runs from the boot menu: hold Esc while the PC starts.'))
+            p.append(note('Repair fixes this install and keeps everything. Reset to factory deletes everything and installs '
+                          'MWX 7 fresh. Repair also runs from the boot menu: hold Esc while the PC starts.'))
             row = Gtk.Box(spacing=8)
             repair = Gtk.Button(label='Repair MWX 7…')
             repair.connect('clicked', lambda *_: self.confirm_reset(True))
@@ -1058,40 +1058,6 @@ class Settings(Gtk.Application):
             row.append(repair)
             row.append(factory)
             p.append(row)
-            rec_note = note('')
-            prepare = Gtk.Button(label='Prepare the recovery copy', halign=Gtk.Align.START, visible=False)
-            p.append(rec_note)
-            p.append(prepare)
-
-            def rec_state():
-                try:
-                    st = json.load(open('/var/lib/mwx7/recovery.json'))
-                except (OSError, ValueError):
-                    st = None
-                ready = bool(st) and not st.get('missing')
-                repair.set_sensitive(ready)
-                factory.set_sensitive(ready)
-                if ready:
-                    rec_note.set_label('')
-                elif st:
-                    rec_note.set_label(f"The recovery copy misses {st['missing']} package files (they download when the PC "
-                                       'is online).')
-                else:
-                    rec_note.set_label('The recovery copy is being prepared: MWX 7 is downloaded once (about 900 MB).')
-                rec_note.set_visible(not ready)
-                prepare.set_visible(not ready)
-                return False
-            rec_state()
-
-            def do_prepare(*_):
-                prepare.set_sensitive(False)
-                rec_note.set_label('Preparing the recovery copy…')
-
-                def work():
-                    subprocess.run(['pkexec', ADMIN, 'recovery-prepare'], capture_output=True)
-                    GLib.idle_add(lambda: (prepare.set_sensitive(True), rec_state()) and False)
-                threading.Thread(target=work, daemon=True).start()
-            prepare.connect('clicked', do_prepare)
         return p
 
     def confirm_reset(self, keep_all):
@@ -1118,8 +1084,7 @@ class Settings(Gtk.Application):
         cancel.connect('clicked', lambda *_: dlg.close())
         go = Gtk.Button(label='Repair and restart' if keep_all else 'Delete everything and restart')
         go.add_css_class('suggested-action' if keep_all else 'destructive-action')
-        box.append(Gtk.Label(label='Nothing is downloaded. You can keep working until it restarts; if it stops on the '
-                                   'way, nothing has changed.', xalign=0, wrap=True, max_width_chars=60,
+        box.append(Gtk.Label(label='You can keep working until it restarts; if it stops on the way, nothing has changed.', xalign=0, wrap=True, max_width_chars=60,
                              css_classes=['dim-label']))
 
         def do_reset(*_):
