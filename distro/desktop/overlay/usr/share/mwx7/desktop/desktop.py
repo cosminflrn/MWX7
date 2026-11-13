@@ -9,6 +9,7 @@ import socket
 import struct
 import math
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -772,6 +773,20 @@ class Desktop(Gtk.Application):
         click.set_button(0)
         click.connect('pressed', self.desktop_click)
         self.root.add_controller(click)
+        # Files dragged from My Computer onto the desktop move into the Desktop folder.
+        drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
+
+        def dropped(_t, value, _x, _y):
+            for f in value.get_files():
+                src = f.get_path()
+                if src and os.path.exists(src) and os.path.dirname(src) != desktop_dir():
+                    try:
+                        shutil.move(src, unique(desktop_dir(), os.path.basename(src)))
+                    except OSError:
+                        pass
+            return True
+        drop.connect('drop', dropped)
+        self.fixed.add_controller(drop)
         band = Gtk.GestureDrag(button=1)
         band.connect('drag-begin', self.band_begin)
         band.connect('drag-update', self.band_update)

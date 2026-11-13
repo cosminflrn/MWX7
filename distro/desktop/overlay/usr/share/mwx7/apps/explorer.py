@@ -142,6 +142,7 @@ class Explorer:
                                 homogeneous=True, valign=Gtk.Align.START, row_spacing=2, column_spacing=2,
                                 max_children_per_line=40, margin_top=6, margin_start=6, margin_end=6)
         self.flow.add_css_class('ex-items')
+        self.drop_on(self.flow, lambda: self.loc if self.loc not in (COMPUTER,) else COMPUTER)
         self.flow.connect('child-activated', lambda _f, c: self.open_item(c.item))
         self.flow.connect('selected-children-changed', lambda *_: self.details())
         click = Gtk.GestureClick(button=3)
@@ -182,6 +183,7 @@ class Explorer:
     def side_row(self, label, icon, path):
         row = Gtk.ListBoxRow()
         row.path = path
+        self.drop_on(row, lambda: path)
         box = Gtk.Box(spacing=8)
         box.append(mwx7ui.icon(icon, 16))
         box.append(Gtk.Label(label=label, xalign=0))
@@ -366,6 +368,7 @@ class Explorer:
     def cell(self, path, name, is_dir, details):
         c = Gtk.FlowBoxChild()
         c.item = path
+        self.dnd(c, path, is_dir)
         if details:
             row = Gtk.Box(spacing=8)
             row.append(self.icon_for(path, is_dir, 16))
@@ -427,6 +430,50 @@ class Explorer:
             folders.append(self.cell(p, os.path.basename(p), True, False))
         self.content.append(group('Your Folders'))
         self.content.append(folders)
+
+    # ---- drag and drop: drag items onto a folder (or a place on the left) to move them there, as in Explorer ----
+    def dnd(self, widget, path, is_dir):
+        if self.loc == TRASH:
+            return
+        src = Gtk.DragSource(actions=Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
+
+        def prepare(_s, _x, _y):
+            paths = self.selected() if path in self.selected() else [path]
+            files = [Gio.File.new_for_path(p) for p in paths]
+            return Gdk.ContentProvider.new_for_value(Gdk.FileList.new_from_list(files))
+        src.connect('prepare', prepare)
+        widget.add_controller(src)
+        if is_dir:
+            self.drop_on(widget, lambda: path)
+
+    def drop_on(self, widget, where):
+        tgt = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
+
+        def drop(_t, value, _x, _y):
+            dest = where()
+            if dest == COMPUTER:
+                return False
+            files = [f.get_path() for f in value.get_files() if f.get_path()]
+            self.move_into(files, dest)
+            return True
+        tgt.connect('drop', drop)
+        widget.add_controller(tgt)
+
+    def move_into(self, files, dest):
+        to_trash = dest == TRASH
+        for src in files:
+            if not os.path.exists(src) or os.path.dirname(src.rstrip('/')) == dest.rstrip('/') or \
+                    dest.startswith(src.rstrip('/') + '/') or src == dest:
+                continue
+            try:
+                if to_trash:
+                    Gio.File.new_for_path(src).trash(None)
+                else:
+                    shutil.move(src, self.unique(dest, os.path.basename(src)))
+            except (OSError, GLib.Error) as e:
+                self.alert('This could not be moved.', str(e))
+                break
+        self.fill()
 
     # ---- actions --------------------------------------------------------------------------------------------------
     def selected(self):
