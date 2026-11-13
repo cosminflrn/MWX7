@@ -155,6 +155,22 @@ def power(cmd):
     dlg.present()
 
 
+
+def ensure_x11():
+    """Apps that only speak X11 (VLC, Steam, Discord, Spotify, Zoom from Get Apps) need DISPLAY. Wayfire starts
+    Xwayland after the shell and the desktop are already running, so they never got it: without this those apps
+    silently failed to open. Picks up Wayfire's Xwayland socket (owned by this user) the first time it's needed."""
+    if os.environ.get('DISPLAY'):
+        return
+    uid = os.getuid()
+    for path in sorted(glob.glob('/tmp/.X11-unix/X*'), key=lambda p: int(p.rsplit('X', 1)[1] or 0)):
+        try:
+            if os.stat(path).st_uid == uid:
+                os.environ['DISPLAY'] = ':' + path.rsplit('X', 1)[1]
+                return
+        except (OSError, ValueError):
+            continue
+
 class Ipc:
     """Wayfire IPC: 4-byte little-endian length, then a JSON body; one request at a time per socket."""
 
@@ -462,6 +478,7 @@ class StartMenu(Gtk.Popover):
     def on_row(self, _lb, row):
         self.popdown()
         try:
+            ensure_x11()
             row.app.launch([], None)
         except GLib.Error:
             pass
@@ -698,6 +715,9 @@ class Shell(Gtk.Application):
             b = Gtk.Button(tooltip_text=tip, valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
             b.add_css_class('wc')
             b.add_css_class(cls)
+            glyph = Gtk.DrawingArea(content_width=13, content_height=13, can_target=False)
+            glyph.set_draw_func(self.draw_wc_glyph, cls)
+            b.set_child(glyph)
             b.connect('clicked', lambda _b, fn=fn: (v := getattr(self, 'focused_view', None)) and fn(v))
             self.wc.append(b)
         right.append(self.wc)
@@ -822,7 +842,7 @@ class Shell(Gtk.Application):
             if apps:
                 results.append(group('Applications'))
                 for _sc, name, a in apps:
-                    r = row(app_icon_widget(a, 24), name, a.get_description() or '', lambda a=a: a.launch([], None))
+                    r = row(app_icon_widget(a, 24), name, a.get_description() or '', lambda a=a: ensure_x11() or a.launch([], None))
                     results.append(r)
                     first = first or r
             if found:
@@ -1094,7 +1114,7 @@ class Shell(Gtk.Application):
         if launch:
             app = next((a for a in (app_for_id(i) for i in ids) if a), None)
             if app and app.supports_uris():
-                self.on_file_drop(b, lambda files, a=app: a.launch(files, None))
+                self.on_file_drop(b, lambda files, a=app: ensure_x11() or a.launch(files, None))
         self.dock_items.append((b, ids))
         return b
 
@@ -1123,6 +1143,7 @@ class Shell(Gtk.Application):
     # ---- behaviour ------------------------------------------------------------------------------------------------
     @staticmethod
     def launch(cmd):
+        ensure_x11()
         subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def windows_of(self, ids):
@@ -1241,13 +1262,37 @@ class Shell(Gtk.Application):
         full = bool(focused and (focused.get('tiled-edges') == 15 or focused.get('maximized')))
         self.wc.set_visible(full)
         self.bar.add_css_class('fs') if full else self.bar.remove_css_class('fs')
-        # ...and its icon takes the orb's place, as the concept's full-screen bar does.
-        icon = self.icon_path((focused.get('app-id') or '').lower()) if full else None
+        # The focused app's icon takes the orb's place whenever an app is in front (Cosmin: not only in full screen).
+        icon = self.icon_path((focused.get('app-id') or '').lower()) if focused else None
         icon = icon if icon and os.path.exists(icon) else os.path.join(ICONS, 'orb.png')
         if getattr(self, 'orb_icon', None) != icon:
             self.orb_icon = icon
             self.orb_img.set_from_file(icon)
         return False
+
+    @staticmethod
+    def draw_wc_glyph(_area, cr, w, h, cls):
+        """The lights' symbols, always shown, as on the window frames: minus, Full Screen's corner triangles, cross."""
+        cx, cy, s = w / 2, h / 2, w * 0.22
+        cr.set_source_rgba(0.2, 0.12, 0.05, 0.7)
+        cr.set_line_width(1.3)
+        cr.set_line_cap(1)  # round
+        if cls == 'wc-min':
+            cr.move_to(cx - s, cy)
+            cr.line_to(cx + s, cy)
+            cr.stroke()
+        elif cls == 'wc-close':
+            for dx in (s, -s):
+                cr.move_to(cx - s, cy - dx)
+                cr.line_to(cx + s, cy + dx)
+            cr.stroke()
+        else:
+            t = s * 1.1
+            cr.move_to(cx - t, cy - t); cr.line_to(cx + 0.3 * t, cy - t); cr.line_to(cx - t, cy + 0.3 * t)
+            cr.close_path()
+            cr.move_to(cx + t, cy + t); cr.line_to(cx - 0.3 * t, cy + t); cr.line_to(cx + t, cy - 0.3 * t)
+            cr.close_path()
+            cr.fill()
 
     # ---- the window menu: right-click on a window's title bar (Windows 7) ------------------------------------------
     def listen_winmenu(self):

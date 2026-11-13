@@ -282,10 +282,9 @@ cairo_surface_t*decoration_theme_t::get_button_surface(button_type_t button,
     cairo_pattern_destroy(gloss);
     cairo_restore(cr);
 
-    // Symbol on hover.
-    if (fabs(state.hover_progress) > 1e-3)
+    // Symbols always show (Cosmin's call: clearer than the Mac's hover-only ones); hover makes them stronger.
     {
-        const double a = std::min(1.0, fabs(state.hover_progress));
+        const double a = 0.6 + 0.4 * std::min(1.0, fabs(state.hover_progress));
         const double s = r * 0.45;
         cairo_set_source_rgba(cr, 0.25 * dark.r, 0.25 * dark.g, 0.25 * dark.b, 0.85 * a);
         cairo_set_line_width(cr, std::max(1.2, r * 0.18));
