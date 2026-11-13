@@ -17,6 +17,8 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 sys.path.insert(0, '/usr/share/mwx7/settings')
 import settings as base  # noqa: E402  (the Aero title bar, the window colour and the shared look)
+sys.path.insert(0, '/usr/share/mwx7/lib')
+from mwx7ui import FileDialog  # noqa: E402  (Open/Save in the MWX 7 look)
 
 MODES = [('rect', 'Rectangular Snip'), ('window', 'Window Snip'), ('full', 'Full-screen Snip')]
 CSS = """
@@ -196,8 +198,8 @@ class Snip(Gtk.Application):
     def save(self):
         pics = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_PICTURES) or os.path.expanduser('~/Pictures')
         os.makedirs(pics, exist_ok=True)
-        dlg = Gtk.FileDialog(title='Save Snip', initial_name=time.strftime('Snip %Y-%m-%d %H-%M-%S.png'),
-                             initial_folder=Gio.File.new_for_path(pics))
+        dlg = FileDialog(title='Save Snip', initial_name=time.strftime('Snip %Y-%m-%d %H-%M-%S.png'),
+                        initial_folder=Gio.File.new_for_path(pics))
 
         def done(d, res):
             try:
