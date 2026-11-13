@@ -1,11 +1,19 @@
 """My Computer (native): the concept's Explorer, Windows 7 style. Back/forward, the path as clickable parts, search
-in the folder; Favorites, My Computer and the Trash on the left; large icons or details; open, cut/copy/paste,
-rename, new folder, move to Trash, restore, properties. My Computer itself shows the disk and the person's folders."""
+in the folder (recursive, streamed in from a background thread); Favorites, My Computer and the Trash on the left; large
+icons (with image and video thumbnails, cached as the freedesktop spec says) or details; a preview pane; open, open with,
+cut/copy/paste with a progress window and a conflicts dialog, rename, new folder, move to Trash, restore, properties,
+Undo (Ctrl+Z), and the usual keys. My Computer itself shows the disk and the person's folders."""
 import datetime
+import hashlib
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
+import threading
+import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7ui  # noqa: E402
@@ -22,6 +30,9 @@ SPECIAL = [(GLib.UserDirectory.DIRECTORY_DESKTOP, 'desktop'), (GLib.UserDirector
            (GLib.UserDirectory.DIRECTORY_DOWNLOAD, 'folder'), (GLib.UserDirectory.DIRECTORY_MUSIC, 'folder-music'),
            (GLib.UserDirectory.DIRECTORY_PICTURES, 'folder-pictures'), (GLib.UserDirectory.DIRECTORY_VIDEOS, 'folder')]
 IMAGES = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
+THUMB_DIR = os.path.join(GLib.get_user_cache_dir(), 'thumbnails', 'normal')  # freedesktop spec: 128 px PNGs named md5(uri)
+THUMB_BOX = (96, 72)  # what a thumbnail may fill in the icon view
+CHUNK = 1 << 20
 CSS = """
 window.mwx7-explorer > box { background: #ffffff; }
 .ex-nav { padding: 6px 8px; background: linear-gradient(180deg, #e9f2fc, #d5e5f7); border-bottom: 1px solid #a9c1de; }
@@ -56,6 +67,11 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 .ex-cols button { padding: 2px 0; font-size: 11px; min-height: 0; border: none; border-right: 1px solid #dfe7f1; border-radius: 0;
   background: none; box-shadow: none; color: #4a5f7d; }
 .ex-cols button:hover { background: linear-gradient(180deg, #f4f9ff, #dbeafc); }
+.ex-preview { border-left: 1px solid #c8d8ea; background: #f7fafe; padding: 10px; }
+.ex-preview textview, .ex-preview text { background: #ffffff; color: #1c2530; font-family: monospace; font-size: 11px; }
+.ex-progress-title { font-size: 14px; color: #1c3150; }
+.ex-progress-from { color: #1e3f66; font-weight: 600; }
+.ex-cmd button.ex-on { border-color: #7da2ce; background: linear-gradient(180deg, #dcebfc, #c1dcfc); }
 .ex-group { padding: 12px 14px 4px; font-weight: 600; color: #1e3f66; }
 """
 
@@ -94,12 +110,267 @@ def special_dirs():
     return out
 
 
+def is_media(path):
+    return path.lower().endswith(IMAGES) or kind_icon(path) == 'video'
+
+
+def make_thumb(path):
+    """A pixbuf for an image or a video, from (or into) the shared thumbnail cache. Runs in a worker thread."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    uri = Gio.File.new_for_path(path).get_uri()
+    cached = os.path.join(THUMB_DIR, hashlib.md5(uri.encode()).hexdigest() + '.png')
+    pb = None
+    try:
+        pb = GdkPixbuf.Pixbuf.new_from_file(cached)
+        if pb.get_option('tEXt::Thumb::MTime') != str(int(st.st_mtime)):
+            pb = None
+    except GLib.Error:
+        pass
+    if pb is None:
+        try:
+            if path.lower().endswith(IMAGES):
+                if st.st_size > 120 << 20:
+                    return None
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 128, 128, True)
+            else:
+                pb = video_frame(path)
+        except GLib.Error:
+            pb = None
+        if pb is None:
+            return None
+        try:
+            os.makedirs(THUMB_DIR, mode=0o700, exist_ok=True)
+            tmp = cached + f'.{os.getpid()}.tmp'
+            pb.savev(tmp, 'png', ['tEXt::Thumb::URI', 'tEXt::Thumb::MTime'], [uri, str(int(st.st_mtime))])
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, cached)
+        except (GLib.Error, OSError):
+            pass
+    w, h = pb.get_width(), pb.get_height()
+    k = min(THUMB_BOX[0] / w, THUMB_BOX[1] / h, 1)
+    return pb.scale_simple(max(1, int(w * k)), max(1, int(h * k)), GdkPixbuf.InterpType.BILINEAR) if k < 1 else pb
+
+
+def video_frame(path):
+    """A frame of a video as a 128 px pixbuf: ffmpegthumbnailer if installed, else GStreamer's own command line."""
+    with tempfile.TemporaryDirectory() as d:
+        out = os.path.join(d, 't.png')
+        if shutil.which('ffmpegthumbnailer'):
+            cmd = ['ffmpegthumbnailer', '-i', path, '-o', out, '-s', '128', '-t', '10%']
+        elif shutil.which('gst-launch-1.0'):
+            cmd = ['gst-launch-1.0', '-q', 'uridecodebin', 'uri=' + Gio.File.new_for_path(path).get_uri(), '!', 'videoconvert',
+                   '!', 'videoscale', '!', 'video/x-raw,width=128', '!', 'pngenc', 'snapshot=true', '!', 'filesink',
+                   'location=' + out]
+        else:
+            return None
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+            return GdkPixbuf.Pixbuf.new_from_file(out)
+        except (OSError, subprocess.SubprocessError, GLib.Error):
+            return None
+
+
+def tree_size(path):
+    if os.path.islink(path) or not os.path.isdir(path):
+        try:
+            return os.lstat(path).st_size
+        except OSError:
+            return 0
+    total = 0
+    for r, _d, fs in os.walk(path):
+        for f in fs:
+            try:
+                total += os.lstat(os.path.join(r, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def unique_in(folder, name):
+    base, ext = os.path.splitext(name)
+    cand, i = name, 2
+    while os.path.lexists(os.path.join(folder, cand)):
+        cand = f'{base} ({i}){ext}'
+        i += 1
+    return os.path.join(folder, cand)
+
+
+def remove_any(p):
+    shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
+
+
+def trashed_name_of(orig):
+    """After Gio trashed `orig`: the name it got in the Trash (the newest .trashinfo that points back at it)."""
+    info_dir, best = os.path.join(TRASH, 'info'), (0, None)
+    try:
+        for n in os.listdir(info_dir):
+            fp = os.path.join(info_dir, n)
+            for line in open(fp, errors='replace'):
+                if line.startswith('Path=') and urllib.parse.unquote(line[5:].strip()) == orig:
+                    best = max(best, (os.path.getmtime(fp), n[:-len('.trashinfo')]))
+    except OSError:
+        pass
+    return best[1]
+
+
+class Cancelled(Exception):
+    pass
+
+
+class Job:
+    """Copy, move, trash or delete in a worker thread, with what a progress window needs (bytes, speed, time left) and a
+    conflicts question that blocks the worker until the person answers. kind: copy | move | trash | delete."""
+
+    def __init__(self, kind, srcs, dest=None):
+        self.kind, self.srcs, self.dest = kind, list(srcs), dest
+        self.total = self.done = 0          # bytes for copy/move, items for trash/delete
+        self.items_left, self.name = len(self.srcs), ''
+        self.cancel = threading.Event()
+        self.finished = False
+        self.error = None
+        self.results = []                   # [(src, dst)] for Undo
+        self.ask = None                     # set by the UI: ask(src, dst, answer) -> answer('replace'|'skip'|'keep', all?)
+        self.apply_all = None
+        self.t0 = time.monotonic()
+        self.same_dev = False
+
+    def start(self, on_done):
+        def run():
+            try:
+                self.run()
+            except Cancelled:
+                pass
+            except (OSError, GLib.Error) as e:
+                self.error = str(e)
+            self.finished = True
+            GLib.idle_add(on_done, self)
+        threading.Thread(target=run, daemon=True).start()
+
+    def check(self):
+        if self.cancel.is_set():
+            raise Cancelled()
+
+    def run(self):
+        if self.kind in ('copy', 'move'):
+            self.total = sum(tree_size(s) for s in self.srcs) or 1
+            try:
+                self.same_dev = os.stat(self.dest).st_dev == os.stat(os.path.dirname(self.srcs[0].rstrip('/'))).st_dev
+            except OSError:
+                pass
+        else:
+            self.total = len(self.srcs)
+        for src in self.srcs:
+            self.check()
+            self.name = os.path.basename(src.rstrip('/'))
+            if self.kind == 'trash':
+                Gio.File.new_for_path(src).trash(None)
+                self.results.append((src, trashed_name_of(src)))
+                self.done += 1
+            elif self.kind == 'delete':
+                remove_any(src)
+                info = os.path.join(TRASH, 'info', os.path.basename(src) + '.trashinfo')
+                if os.path.dirname(src) == os.path.join(TRASH, 'files') and os.path.exists(info):
+                    os.remove(info)
+                self.done += 1
+            else:
+                dst = os.path.join(self.dest, os.path.basename(src.rstrip('/')))
+                if self.kind == 'copy' and os.path.dirname(src.rstrip('/')) == self.dest.rstrip('/'):
+                    dst = unique_in(self.dest, os.path.basename(src))  # pasted into its own folder: "name (2)"
+                final = self.xfer(src, dst, self.kind == 'move')
+                if final:
+                    self.results.append((src, final))
+            self.items_left -= 1
+
+    def conflict(self, src, dst):
+        if self.apply_all:
+            return self.apply_all
+        ev, box = threading.Event(), []
+
+        def answer(choice, all_):
+            box.append(choice)
+            self.apply_all = choice if all_ else None
+            ev.set()
+        GLib.idle_add(lambda: (self.ask(src, dst, answer), False)[1])
+        while not ev.wait(0.2):
+            self.check()
+        self.check()
+        return box[0]
+
+    def xfer(self, src, dst, move):
+        """Copies or moves one thing to `dst`; returns where it ended up, or None if it was skipped."""
+        self.check()
+        if os.path.lexists(dst) and not (os.path.isdir(src) and os.path.isdir(dst) and not os.path.islink(src)):
+            choice = self.conflict(src, dst)
+            if choice == 'skip':
+                self.done += tree_size(src)
+                return None
+            if choice == 'keep':
+                dst = unique_in(os.path.dirname(dst), os.path.basename(dst))
+            else:
+                remove_any(dst)
+        if os.path.isdir(src) and not os.path.islink(src):
+            if os.path.isdir(dst):  # merge into the folder that is already there
+                for n in os.listdir(src):
+                    self.xfer(os.path.join(src, n), os.path.join(dst, n), move)
+                if move:
+                    try:
+                        os.rmdir(src)
+                    except OSError:
+                        pass
+                return dst
+            if move and self.same_dev:
+                os.rename(src, dst)
+                self.done += tree_size(dst)
+                return dst
+            os.mkdir(dst)
+            for n in os.listdir(src):
+                self.xfer(os.path.join(src, n), os.path.join(dst, n), move)
+            shutil.copystat(src, dst, follow_symlinks=False)
+            if move:
+                try:
+                    os.rmdir(src)
+                except OSError:
+                    pass
+            return dst
+        self.name = os.path.basename(src)
+        if move and self.same_dev:
+            size = os.lstat(src).st_size
+            os.rename(src, dst)
+            self.done += size
+            return dst
+        if os.path.islink(src):
+            os.symlink(os.readlink(src), dst)
+        else:
+            try:
+                with open(src, 'rb') as fi, open(dst, 'wb') as fo:
+                    while chunk := fi.read(CHUNK):
+                        fo.write(chunk)
+                        self.done += len(chunk)
+                        self.check()
+                shutil.copystat(src, dst)
+            except Cancelled:
+                try:
+                    os.remove(dst)
+                except OSError:
+                    pass
+                raise
+        if move:
+            os.remove(src)
+        return dst
+
+
 class Explorer:
     def __init__(self):
         self.loc, self.back, self.fwd = COMPUTER, [], []
         self.clip, self.clip_cut = [], False
         self.view = 'icons'
-        self.query = ''
+        self.undo_stack = []
+        self.searching, self.search_gen, self.search_cancel = False, 0, threading.Event()
+        self.thumbs = ThreadPoolExecutor(max_workers=2)
+        self.preview_gen = 0
         # Details view: each column's header and cells share a width.
         self.col_groups = [Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL) for _ in range(3)]
 
@@ -133,7 +404,8 @@ class Explorer:
         nav.append(self.addr_stack)
         self.search = Gtk.SearchEntry(placeholder_text='Search', width_chars=22)
         self.search.add_css_class('ex-search')
-        self.search.connect('search-changed', lambda e: (setattr(self, 'query', e.get_text().lower()), self.fill()))
+        self.search.connect('search-changed', lambda e: self.search_changed(e.get_text()))
+        self.search.connect('stop-search', lambda *_: self.stop_search(True))
         nav.append(self.search)
         root.append(nav)
         cmd = Gtk.Box(spacing=2)
@@ -142,7 +414,7 @@ class Explorer:
         menu = Gio.Menu()
         for label, name, fn in (('Cut', 'cut', lambda: self.copy(True)), ('Copy', 'copy', lambda: self.copy(False)),
                                 ('Paste', 'paste', self.paste), ('Select all', 'selectall', lambda: self.flow.select_all()),
-                                ('Rename', 'rename', self.rename), ('Delete', 'delete', self.delete),
+                                ('Undo', 'undo', self.undo), ('Rename', 'rename', self.rename), ('Delete', 'delete', self.delete),
                                 ('Properties', 'props', self.properties)):
             a = Gio.SimpleAction.new(name, None)
             a.connect('activate', lambda *_a, f=fn: f())
@@ -161,6 +433,9 @@ class Explorer:
         cmd.append(self.restore_btn)
         spacer = Gtk.Box(hexpand=True)
         cmd.append(spacer)
+        self.preview_btn = Gtk.Button(label='Preview pane')
+        self.preview_btn.connect('clicked', lambda *_: self.toggle_preview())
+        cmd.append(self.preview_btn)
         self.view_btn = Gtk.Button(label='Details')
         self.view_btn.connect('clicked', lambda *_: self.toggle_view())
         cmd.append(self.view_btn)
@@ -185,9 +460,22 @@ class Explorer:
         self.flow.add_controller(click)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.content.append(self.flow)
-        sc = Gtk.ScrolledWindow(hexpand=True)
-        sc.set_child(self.content)
-        body.set_end_child(sc)
+        self.sc = Gtk.ScrolledWindow(hexpand=True)
+        self.sc.set_child(self.content)
+        self.sc.get_vadjustment().connect('value-changed', lambda *_: self.schedule_thumbs())
+        # The preview pane sits to the right of the items, as in Windows 7; hidden until its button is pressed.
+        self.preview = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False, hexpand=False)
+        self.preview.add_css_class('ex-preview')
+        self.preview.set_size_request(260, -1)
+        self.preview_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, vexpand=True)
+        self.preview.append(self.preview_body)
+        right = Gtk.Box()
+        right.append(self.sc)
+        right.append(self.preview)
+        body.set_end_child(right)
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect('key-pressed', self.key_pressed)
+        win.add_controller(keys)
         root.append(body)
         self.detail = Gtk.Box(spacing=12)
         self.detail.add_css_class('ex-details')
@@ -207,6 +495,8 @@ class Explorer:
         start = app.files[0].get_path() if app.files else (sys.argv[1] if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]) else COMPUTER)
         self.fill_side()
         self.go(start, remember=False)
+        # The items, not the search box, get the keys (GTK would focus the first widget it finds once the window shows).
+        win.connect('map', lambda *_: GLib.timeout_add(100, lambda: (self.focus_items(), False)[1]))
         return root
 
     def round(self, icon, tip, fn):
@@ -256,8 +546,7 @@ class Explorer:
         self.loc = path
         if path not in (COMPUTER, TRASH):
             mwx7ui.remember(path)
-        self.search.set_text('')
-        self.query = ''
+        self.stop_search(True, refill=False)
         self.watch()
         self.fill()
 
@@ -266,6 +555,7 @@ class Explorer:
         if src:
             dst.append(self.loc)
             self.loc = src.pop()
+            self.stop_search(True, refill=False)
             self.watch()
             self.fill()
 
@@ -279,7 +569,7 @@ class Explorer:
             self.monitor.connect('changed', lambda *_: self.later_fill())
 
     def later_fill(self):
-        if not getattr(self, 'fill_pending', False):
+        if not getattr(self, 'fill_pending', False) and not self.searching:
             self.fill_pending = True
             GLib.timeout_add(250, lambda: (setattr(self, 'fill_pending', False), self.fill(), False)[2])
 
@@ -350,8 +640,6 @@ class Explorer:
         for n in names:
             if n.startswith('.') and self.loc != TRASH:
                 continue
-            if self.query and self.query not in n.lower():
-                continue
             p = os.path.join(folder, n)
             out.append((p, n, os.path.isdir(p)))
         col, desc = getattr(self, 'sort', ('name', False))
@@ -375,22 +663,13 @@ class Explorer:
                 if p == path:
                     return mwx7ui.icon(icon, size)
             return mwx7ui.icon('folder', size)
-        if path.lower().endswith(IMAGES) and size >= 48:
-            img = Gtk.Image(pixel_size=size)
-            img.set_from_icon_name('image-x-generic')
-
-            def load():
-                try:
-                    pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size, size, True)
-                    img.set_from_paintable(Gdk.Texture.new_for_pixbuf(pb))
-                except GLib.Error:
-                    pass
-                return False
-            GLib.idle_add(load)
-            return img
         return mwx7ui.icon(kind_icon(path), size)
 
     def fill(self):
+        if self.searching:  # a refresh (or a change in the folder) ends a search
+            self.stop_search(True, refill=False)
+        f = self.win.get_focus()
+        had_focus = f is not None and (f is self.flow or f.is_ancestor(self.flow))  # rebuilding the cells would drop it
         self.fill_crumbs()
         self.app.set_title(self.title_of(self.loc))
         self.back_btn.set_sensitive(bool(self.back))
@@ -429,6 +708,9 @@ class Explorer:
             for path, name, is_dir in self.items():
                 self.flow.append(self.cell(path, name, is_dir, details))
         self.details()
+        self.schedule_thumbs()
+        if had_focus:
+            self.focus_items()
 
     def columns(self):
         """Details view's column headers, as in Explorer: click one to sort by it, again to reverse."""
@@ -474,7 +756,18 @@ class Explorer:
         else:
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             box.set_size_request(96, -1)
-            box.append(self.icon_for(path, is_dir, 48))
+            if not is_dir and is_media(path):
+                # Lazy: the thumbnail is made only once the cell scrolls into view (load_visible).
+                holder = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+                holder.set_size_request(*THUMB_BOX)
+                img = self.icon_for(path, False, 48)
+                img.set_hexpand(True)
+                holder.append(img)
+                c.thumb = (holder, img)
+                c.thumb_state = 0
+                box.append(holder)
+            else:
+                box.append(self.icon_for(path, is_dir, 48))
             l = Gtk.Label(label=name, wrap=True, wrap_mode=2, max_width_chars=12, lines=2, ellipsize=3,
                           justify=Gtk.Justification.CENTER)
             l.add_css_class('ex-name')
@@ -544,20 +837,10 @@ class Explorer:
         widget.add_controller(tgt)
 
     def move_into(self, files, dest):
-        to_trash = dest == TRASH
-        for src in files:
-            if not os.path.exists(src) or os.path.dirname(src.rstrip('/')) == dest.rstrip('/') or \
-                    dest.startswith(src.rstrip('/') + '/') or src == dest:
-                continue
-            try:
-                if to_trash:
-                    Gio.File.new_for_path(src).trash(None)
-                else:
-                    shutil.move(src, self.unique(dest, os.path.basename(src)))
-            except (OSError, GLib.Error) as e:
-                self.alert('This could not be moved.', str(e))
-                break
-        self.fill()
+        files = [src for src in files if os.path.exists(src) and os.path.dirname(src.rstrip('/')) != dest.rstrip('/')
+                 and not dest.startswith(src.rstrip('/') + '/') and src != dest]
+        if files:
+            self.run_job(Job('trash' if dest == TRASH else 'move', files, dest))
 
     # ---- actions --------------------------------------------------------------------------------------------------
     def selected(self):
@@ -576,6 +859,7 @@ class Explorer:
 
     def details(self):
         sel = self.selected()
+        self.update_preview(sel)
         if len(sel) == 1:
             p = sel[0]
             is_dir = os.path.isdir(p)
@@ -592,6 +876,12 @@ class Explorer:
                 self.detail_text.set_label(('File folder' if is_dir else human(st.st_size)) + f'  ·  Modified {when}')
             except OSError:
                 self.detail_text.set_label('')
+        elif self.searching and not sel:
+            n, c = 0, self.flow.get_first_child()
+            while c is not None:
+                n, c = n + 1, c.get_next_sibling()
+            self.detail_title.set_label(f'Search results for “{self.search.get_text().strip()}”')
+            self.detail_text.set_label(f'{n} items found  ·  Esc to stop')
         else:
             n = len(sel) if sel else len(self.items()) if self.loc != COMPUTER else 0
             here = 'computer' if self.loc == COMPUTER else 'trash-empty' if self.loc == TRASH else 'folder'
@@ -618,23 +908,13 @@ class Explorer:
     def paste(self):
         if self.loc in (COMPUTER, TRASH) or not self.clip:
             return
-        for src in self.clip:
-            if not os.path.exists(src):
-                continue
-            dst = self.unique(self.loc, os.path.basename(src))
-            try:
-                if self.clip_cut:
-                    shutil.move(src, dst)
-                elif os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
-            except OSError as e:
-                self.alert('This could not be pasted.', str(e))
-                break
+        files = [s for s in self.clip if os.path.exists(s) and not self.loc.startswith(s.rstrip('/') + '/')]
+        if self.clip_cut:
+            files = [s for s in files if os.path.dirname(s.rstrip('/')) != self.loc.rstrip('/')]
+        if files:
+            self.run_job(Job('move' if self.clip_cut else 'copy', files, self.loc))
         if self.clip_cut:
             self.clip = []
-        self.fill()
 
     def new_folder(self):
         if self.loc in (COMPUTER, TRASH):
@@ -679,6 +959,7 @@ class Explorer:
                 return
             try:
                 os.rename(src, dst)
+                self.undo_stack.append(('rename', [(src, dst)]))
             except OSError as e:
                 self.alert('This could not be renamed.', str(e))
             self.fill()
@@ -701,32 +982,50 @@ class Explorer:
                     return
             except GLib.Error:
                 return
-            for p in sel:
-                try:
-                    if self.loc == TRASH:
-                        info = os.path.join(TRASH, 'info', os.path.basename(p) + '.trashinfo')
-                        shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
-                        if os.path.exists(info):
-                            os.remove(info)
-                    else:
-                        Gio.File.new_for_path(p).trash(None)
-                except (OSError, GLib.Error) as e:
-                    self.alert('This could not be deleted.', str(e))
-                    break
-            self.fill()
+            self.run_job(Job('delete' if self.loc == TRASH else 'trash', sel))
         dlg.choose(self.win, None, done)
+
+    def restore_one(self, p):
+        """Puts one thing from the Trash back where it came from (under a new name if that is taken)."""
+        info = os.path.join(TRASH, 'info', os.path.basename(p) + '.trashinfo')
+        orig = next(urllib.parse.unquote(line.split('=', 1)[1].strip()) for line in open(info)
+                    if line.startswith('Path='))
+        os.makedirs(os.path.dirname(orig), exist_ok=True)
+        dst = self.unique(os.path.dirname(orig), os.path.basename(orig))
+        shutil.move(p, dst)
+        os.remove(info)
+        return orig, dst
 
     def restore(self):
         for p in self.selected():
-            info = os.path.join(TRASH, 'info', os.path.basename(p) + '.trashinfo')
             try:
-                orig = next(urllib.parse.unquote(line.split('=', 1)[1].strip()) for line in open(info)
-                            if line.startswith('Path='))
-                os.makedirs(os.path.dirname(orig), exist_ok=True)
-                shutil.move(p, self.unique(os.path.dirname(orig), os.path.basename(orig)))
-                os.remove(info)
+                orig, dst = self.restore_one(p)
+                self.undo_stack.append(('restore', [(orig, dst)]))
             except (OSError, StopIteration) as e:
                 self.alert('This could not be restored.', str(e))
+        self.fill()
+
+    def undo(self):
+        """Ctrl+Z: takes back the last move, rename or move to the Trash (and a restore from it)."""
+        if not self.undo_stack:
+            return
+        kind, pairs = self.undo_stack.pop()
+        try:
+            for a, b in reversed(pairs):
+                if kind == 'trash':  # a = where it was, b = its name in the Trash
+                    p = os.path.join(TRASH, 'files', b or '')
+                    if not b or not os.path.lexists(p):
+                        raise OSError('It is no longer in the Trash.')
+                    self.restore_one(p)
+                elif kind == 'restore':  # a = where it was in the Trash's eyes, b = where it went
+                    Gio.File.new_for_path(b).trash(None)
+                else:  # move / rename: b is where it went, a where it was
+                    if os.path.lexists(a):
+                        raise OSError(f'“{os.path.basename(a)}” already exists in its old place.')
+                    os.makedirs(os.path.dirname(a), exist_ok=True)
+                    shutil.move(b, a)
+        except (OSError, GLib.Error, StopIteration) as e:
+            self.alert('This could not be undone.', str(e))
         self.fill()
 
     def empty_trash(self):
@@ -804,6 +1103,425 @@ class Explorer:
         w.present()
         ok.grab_focus()  # not the first selectable value, which GTK would show selected
 
+    # ---- keyboard ---------------------------------------------------------------------------------------------------
+    def key_pressed(self, _c, keyval, _code, state):
+        K, M = Gdk, Gdk.ModifierType
+        ctrl, alt, shift = bool(state & M.CONTROL_MASK), bool(state & M.ALT_MASK), bool(state & M.SHIFT_MASK)
+        key = K.keyval_to_lower(keyval)
+        focus = self.win.get_focus()
+        typing = isinstance(focus, Gtk.Editable)
+        if keyval == K.KEY_Escape and (self.searching or self.search.get_text()):
+            self.stop_search(True)
+            self.focus_items()
+            return True
+        if ctrl and key == K.KEY_f:
+            self.search.grab_focus()
+            return True
+        if typing:  # the address and search boxes keep their own editing keys
+            return False
+        in_flow = focus is not None and (focus is self.flow or focus.is_ancestor(self.flow))
+        if ctrl and not alt:
+            fn = {K.KEY_c: lambda: self.copy(False), K.KEY_x: lambda: self.copy(True), K.KEY_v: self.paste,
+                  K.KEY_a: lambda: self.flow.select_all(), K.KEY_z: self.undo}.get(key)
+            if key == K.KEY_n and shift:
+                fn = self.new_folder
+            if fn:
+                fn()
+                return True
+            return False
+        if alt:
+            fn = {K.KEY_Up: self.go_up, K.KEY_Left: lambda: self.history(-1), K.KEY_Right: lambda: self.history(1)}.get(keyval)
+            if fn:
+                fn()
+                return True
+            return False
+        if keyval == K.KEY_Delete or keyval == K.KEY_KP_Delete:
+            self.delete()
+        elif keyval == K.KEY_F2:
+            self.rename()
+        elif keyval == K.KEY_F5:
+            self.fill()
+        elif keyval == K.KEY_BackSpace:
+            self.history(-1)
+        elif keyval in (K.KEY_Return, K.KEY_KP_Enter) and in_flow:
+            sel = self.selected()
+            if len(sel) == 1 or any(os.path.isdir(p) for p in sel):
+                self.open_item(sel[0]) if sel else None
+            else:
+                for p in sel:
+                    self.open_item(p)
+        else:
+            return False
+        return True
+
+    def focus_items(self):
+        """Focus goes to an item (the FlowBox itself can't take it), so the keys act on the files, not the search box."""
+        sel = self.flow.get_selected_children()
+        c = sel[0] if sel else self.flow.get_first_child()
+        self.win.set_focus(c)
+
+    def go_up(self):
+        if self.loc == COMPUTER:
+            return
+        self.go(COMPUTER if self.loc in (TRASH, '/') else os.path.dirname(self.loc.rstrip('/')) or '/')
+
+    # ---- search: the folder and everything under it, found by a background thread and streamed into the view --------
+    def search_changed(self, text):
+        if getattr(self, 'quiet', False):
+            return
+        if getattr(self, 'search_timer', 0):
+            GLib.source_remove(self.search_timer)
+            self.search_timer = 0
+        text = text.strip()
+        if not text:
+            self.stop_search(False)
+            return
+
+        def go():
+            self.search_timer = 0
+            self.start_search(text)
+            return False
+        self.search_timer = GLib.timeout_add(250, go)
+
+    def stop_search(self, clear_text, refill=True):
+        self.search_cancel.set()
+        self.search_gen += 1
+        if getattr(self, 'search_timer', 0):
+            GLib.source_remove(self.search_timer)
+            self.search_timer = 0
+        was, self.searching = self.searching, False
+        if clear_text and self.search.get_text():
+            self.quiet = True
+            self.search.set_text('')
+            self.quiet = False
+        if was and refill:
+            self.fill()
+
+    def clear_view(self):
+        while (c := self.flow.get_first_child()) is not None:
+            self.flow.remove(c)
+        child = self.content.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            if child is not self.flow:
+                self.content.remove(child)
+            child = nxt
+
+    def start_search(self, text):
+        self.search_cancel.set()
+        ev = self.search_cancel = threading.Event()
+        self.search_gen += 1
+        gen = self.search_gen
+        self.searching = True
+        home = os.path.expanduser('~')
+        base = home if self.loc == COMPUTER else os.path.join(TRASH, 'files') if self.loc == TRASH else self.loc
+        self.clear_view()
+        details = self.view == 'details' and self.loc != COMPUTER
+        if details:
+            self.content.prepend(self.columns())
+        self.flow.set_max_children_per_line(1 if details else 40)
+        self.flow.set_homogeneous(not details)
+        self.flow.unselect_all()
+        out, found = [], [0]
+        needle = text.lower()
+
+        def work():
+            for root, dirs, files in os.walk(base):
+                if ev.is_set():
+                    return
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for n, is_dir in [(d, True) for d in dirs] + [(f, False) for f in files]:
+                    if needle in n.lower() and not n.startswith('.'):
+                        out.append((os.path.join(root, n), n, is_dir))
+                        if len(out) > 20000:
+                            break
+            out.append(None)  # the end
+
+        threading.Thread(target=work, daemon=True).start()
+
+        def status(done):
+            n = found[0]
+            self.detail_icon.set_from_file(os.path.join(ICONS, 'folder.png'))
+            self.detail_title.set_label(f'Search results for “{text}”')
+            self.detail_text.set_label((f'{n} items found' if done else f'Searching… {n} found') +
+                                       '  ·  Esc to stop')
+
+        def drain():
+            if gen != self.search_gen or ev.is_set():
+                return False
+            batch = out[:150]
+            del out[:len(batch)]
+            done = False
+            for it in batch:
+                if it is None:
+                    done = True
+                    break
+                cell = self.cell(it[0], it[1], it[2], details)
+                cell.set_tooltip_text(os.path.dirname(it[0]))
+                self.flow.append(cell)
+                found[0] += 1
+            if not self.selected():
+                status(done)
+            self.schedule_thumbs()
+            return not done
+        status(False)
+        GLib.timeout_add(120, drain)
+
+    # ---- thumbnails: made in two worker threads, and only for the cells that are on screen --------------------------
+    def schedule_thumbs(self):
+        if getattr(self, 'thumb_timer', 0):
+            return
+        self.thumb_timer = GLib.timeout_add(100, self.load_visible)
+
+    def load_visible(self):
+        self.thumb_timer = 0
+        h = self.sc.get_height()
+        if h <= 0:
+            return True  # not laid out yet
+        c = self.flow.get_first_child()
+        while c is not None:
+            if getattr(c, 'thumb_state', 1) == 0:
+                ok, b = c.compute_bounds(self.sc)
+                if ok and b.get_y() + b.get_height() > -120 and b.get_y() < h + 120:
+                    c.thumb_state = 1
+                    fut = self.thumbs.submit(make_thumb, c.item)
+                    fut.add_done_callback(lambda f, c=c: GLib.idle_add(self.thumb_done, c, f))
+            c = c.get_next_sibling()
+        return False
+
+    def thumb_done(self, cell, fut):
+        try:
+            pb = fut.result()
+        except Exception:  # noqa: BLE001 - a bad file must not break the others
+            pb = None
+        if pb is not None and cell.get_parent() is not None:
+            img = cell.thumb[1]
+            img.set_pixel_size(-1)
+            img.set_from_paintable(Gdk.Texture.new_for_pixbuf(pb))
+        return False
+
+    # ---- preview pane -----------------------------------------------------------------------------------------------
+    def toggle_preview(self):
+        on = not self.preview.get_visible()
+        self.preview.set_visible(on)
+        (self.preview_btn.add_css_class if on else self.preview_btn.remove_css_class)('ex-on')
+        self.update_preview(self.selected())
+
+    def update_preview(self, sel):
+        if not self.preview.get_visible():
+            return
+        self.preview_gen += 1
+        gen = self.preview_gen
+        while (c := self.preview_body.get_first_child()) is not None:
+            self.preview_body.remove(c)
+        if len(sel) != 1:
+            self.preview_body.append(Gtk.Label(label='Select a file to preview it.' if not sel else f'{len(sel)} items selected',
+                                               vexpand=True, css_classes=['ex-meta']))
+            return
+        p = sel[0]
+        is_dir = os.path.isdir(p)
+        slot = Gtk.Box(vexpand=True)
+        self.preview_body.append(slot)
+        name = Gtk.Label(label=os.path.basename(p), wrap=True, wrap_mode=2, max_width_chars=28, css_classes=['ex-details-title'])
+        self.preview_body.append(name)
+
+        def plain(text):
+            slot.append(Gtk.Box(vexpand=True))
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, hexpand=True, valign=Gtk.Align.CENTER)
+            col.append(self.icon_for(p, is_dir, 64))
+            col.append(Gtk.Label(label=text, css_classes=['ex-meta']))
+            slot.append(col)
+
+        def load():
+            kind = None
+            try:
+                if p.lower().endswith(IMAGES) and os.path.getsize(p) < 80 << 20:
+                    kind, data = 'image', GdkPixbuf.Pixbuf.new_from_file_at_scale(p, 236, 360, True)
+                elif not is_dir and kind_icon(p) == 'text':
+                    with open(p, 'rb') as f:
+                        raw = f.read(8000)
+                    if b'\0' not in raw:
+                        kind, data = 'text', raw.decode('utf-8', 'replace')
+            except (OSError, GLib.Error):
+                pass
+            GLib.idle_add(show, kind, data if kind else None)
+
+        def show(kind, data):
+            if gen != self.preview_gen:
+                return False
+            if kind == 'image':
+                pic = Gtk.Picture.new_for_paintable(Gdk.Texture.new_for_pixbuf(data))
+                pic.set_can_shrink(True)
+                pic.set_content_fit(Gtk.ContentFit.CONTAIN)
+                pic.set_halign(Gtk.Align.CENTER)
+                slot.append(pic)
+            elif kind == 'text':
+                tv = Gtk.TextView(editable=False, cursor_visible=False, wrap_mode=Gtk.WrapMode.WORD_CHAR, hexpand=True,
+                                  left_margin=6, right_margin=6, top_margin=4)
+                tv.get_buffer().set_text(data)
+                scr = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+                scr.set_child(tv)
+                slot.append(scr)
+            else:
+                plain('Folder' if is_dir else 'No preview available.')
+            return False
+        threading.Thread(target=load, daemon=True).start()
+
+    # ---- open with ----------------------------------------------------------------------------------------------------
+    def apps_for(self, paths):
+        self.with_apps = []
+        if not paths:
+            return []
+        p = paths[0]
+        ctype = 'inode/directory' if os.path.isdir(p) else Gio.content_type_guess(p, None)[0]
+        seen = set()
+        for a in Gio.AppInfo.get_all_for_type(ctype):
+            if a.should_show() and a.get_id() not in seen:
+                seen.add(a.get_id())
+                self.with_apps.append(a)
+        self.with_apps = self.with_apps[:12]
+        return self.with_apps
+
+    def open_with(self, i):
+        sel = self.selected()
+        if sel and i < len(self.with_apps):
+            try:
+                self.with_apps[i].launch([Gio.File.new_for_path(p) for p in sel], None)
+            except GLib.Error as e:
+                self.alert(f'{self.with_apps[i].get_name()} could not open this.', e.message)
+
+    def ctx_action(self, name):
+        if name.startswith('with'):
+            return self.open_with(int(name[4:]))
+        {'open': lambda: [self.open_item(p) for p in self.selected()[:1]], 'cut': lambda: self.copy(True),
+         'copy': lambda: self.copy(False), 'rename': self.rename, 'delete': self.delete, 'props': self.properties,
+         'paste': self.paste, 'newdir': self.new_folder, 'refresh': self.fill, 'restore': self.restore,
+         'empty': self.empty_trash, 'undo': self.undo}[name]()
+
+    # ---- copy, move, delete with a progress window ----------------------------------------------------------------
+    def run_job(self, job):
+        state = {'win': None, 'timer': 0, 'speed': 0.0, 'last': (time.monotonic(), 0)}
+        job.ask = lambda src, dst, answer: self.conflict_dialog(job, src, dst, answer)
+        verb = {'copy': 'Copying', 'move': 'Moving', 'trash': 'Moving to the Trash', 'delete': 'Deleting'}[job.kind]
+
+        def finished(j):
+            if state['timer']:
+                GLib.source_remove(state['timer'])
+            if state['win']:
+                state['win'].destroy()
+            if j.error:
+                self.alert('This could not be finished.', j.error)
+            if j.kind in ('move', 'trash') and j.results:
+                self.undo_stack.append((j.kind, j.results))
+                del self.undo_stack[:-30]
+            self.fill()
+            return False
+
+        def tick():
+            w = state['win']
+            if job.finished or w is None:
+                return not job.finished
+            now = time.monotonic()
+            t, d = state['last']
+            if now - t >= 0.5:
+                inst = (job.done - d) / (now - t)
+                state['speed'] = inst if not state['speed'] else state['speed'] * 0.6 + inst * 0.4
+                state['last'] = (now, job.done)
+            frac = min(1.0, job.done / job.total) if job.total else 0
+            w.bar.set_fraction(frac)
+            w.title_label.set_label(f'{frac * 100:.0f}% complete' if job.total else 'Working…')
+            w.name.set_label(f'Name: {job.name}')
+            by_bytes = job.kind in ('copy', 'move')
+            speed = state['speed']
+            left = (job.total - job.done) / speed if speed > 0 else None
+            w.time.set_label('Time remaining: ' + ('Calculating…' if left is None or now - job.t0 < 1.5 else
+                                                  'Less than a second' if left < 1 else
+                                                  f'About {left:.0f} seconds' if left < 90 else f'About {left / 60:.0f} minutes'))
+            left_bytes = f' ({human(job.total - job.done)})' if by_bytes else ''
+            w.items.set_label(f'Items remaining: {job.items_left}{left_bytes}')
+            w.speed.set_label(f'Speed: {human(speed)}/s' if by_bytes and speed else 'Speed:')
+            return True
+
+        def show():
+            state['timer'] = 0
+            if job.finished:
+                return False
+            n = len(job.srcs)
+            what = f'{n} items' if n > 1 else f'“{os.path.basename(job.srcs[0].rstrip("/"))}”'
+            w = state['win'] = mwx7ui.dialog(self.win, f'{verb} {what}', '16/properties')
+            col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=14, margin_bottom=14,
+                          margin_start=18, margin_end=18)
+            col.set_size_request(420, -1)
+            w.title_label = Gtk.Label(label='', xalign=0, css_classes=['ex-progress-title'])
+            col.append(w.title_label)
+            frm = f'{verb} {what}'
+            if job.dest:
+                frm += f' from {self.title_of(os.path.dirname(job.srcs[0].rstrip("/")))} to {self.title_of(job.dest)}'
+            col.append(Gtk.Label(label=frm, xalign=0, wrap=True, max_width_chars=50, css_classes=['ex-progress-from']))
+            w.bar = Gtk.ProgressBar(margin_top=6, margin_bottom=6)
+            w.bar.add_css_class('ex-drive-bar')
+            col.append(w.bar)
+            for attr in ('name', 'time', 'items', 'speed'):
+                setattr(w, attr, Gtk.Label(label='', xalign=0, css_classes=['ex-meta']))
+                col.append(getattr(w, attr))
+            cancel = Gtk.Button(label='Cancel', halign=Gtk.Align.END, margin_top=6)
+            cancel.connect('clicked', lambda *_: job.cancel.set())
+            col.append(cancel)
+            w.set_child(col)
+            w.connect('close-request', lambda *_: (job.cancel.set(), False)[1])
+            w.present()
+            tick()
+            state['timer'] = GLib.timeout_add(200, tick)
+            return False
+        job.start(finished)
+        # Quick jobs finish before this fires, so they never flash a window.
+        state['timer'] = GLib.timeout_add(500, show)
+
+    def conflict_dialog(self, job, src, dst, answer):
+        """Windows 7's 'Copy File' question: Replace / Skip / Keep both, optionally for every other conflict."""
+        w = mwx7ui.dialog(self.win, 'Replace or Skip Files' if job.kind == 'copy' else 'Move File', '16/properties')
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18,
+                      margin_end=18)
+        name = os.path.basename(dst)
+        col.append(Gtk.Label(label=f'The destination already has an item named “{name}”', xalign=0, wrap=True,
+                             max_width_chars=48, css_classes=['ex-progress-title']))
+        done = {'v': False}
+
+        def info(label, p):
+            try:
+                st = os.stat(p)
+                when = datetime.datetime.fromtimestamp(st.st_mtime).strftime('%d/%m/%Y %H:%M')
+                return f'{label}: {"Folder" if os.path.isdir(p) else human(st.st_size)}, modified {when}'
+            except OSError:
+                return label
+
+        col.append(Gtk.Label(label=info('Existing', dst), xalign=0, css_classes=['ex-meta']))
+        col.append(Gtk.Label(label=info('Incoming', src), xalign=0, css_classes=['ex-meta']))
+        every = Gtk.CheckButton(label='Do this for all conflicts', margin_top=4)
+        col.append(every)
+
+        def pick(choice):
+            if done['v']:
+                return
+            done['v'] = True
+            answer(choice, every.get_active())
+            w.destroy()
+        for label, choice in (('Replace the item in the destination', 'replace'), ('Don’t copy this item', 'skip'),
+                              ('Copy, but keep both items', 'keep')):
+            b = Gtk.Button(label=label, halign=Gtk.Align.FILL)
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda _b, c=choice: pick(c))
+            col.append(b)
+
+        def closed(*_):
+            if not done['v']:
+                job.cancel.set()
+                pick('skip')
+            return False
+        w.connect('close-request', closed)
+        w.set_child(col)
+        w.present()
+
     def alert(self, msg, detail=''):
         Gtk.AlertDialog(message=msg, detail=detail).show(self.win)
 
@@ -821,6 +1539,12 @@ class Explorer:
                 menu.append('Delete permanently', 'win.ctx::delete')
             else:
                 menu.append('Open', 'win.ctx::open')
+                apps = self.apps_for(self.selected()[:1])
+                if apps:
+                    sub = Gio.Menu()
+                    for i, a in enumerate(apps):
+                        sub.append(a.get_name(), f'win.ctx::with{i}')
+                    menu.append_submenu('Open with…', sub)
                 menu.append('Cut', 'win.ctx::cut')
                 menu.append('Copy', 'win.ctx::copy')
                 menu.append('Rename', 'win.ctx::rename')
@@ -835,11 +1559,7 @@ class Explorer:
             menu.append('Empty the Trash', 'win.ctx::empty')
         if not self.win.lookup_action('ctx'):
             act = Gio.SimpleAction.new('ctx', GLib.VariantType.new('s'))
-            act.connect('activate', lambda _a, v: {
-                'open': lambda: [self.open_item(p) for p in self.selected()[:1]], 'cut': lambda: self.copy(True),
-                'copy': lambda: self.copy(False), 'rename': self.rename, 'delete': self.delete,
-                'props': self.properties, 'paste': self.paste, 'newdir': self.new_folder, 'refresh': self.fill,
-                'restore': self.restore, 'empty': self.empty_trash}[v.get_string()]())
+            act.connect('activate', lambda _a, v: self.ctx_action(v.get_string()))
             self.win.add_action(act)
         pop = Gtk.PopoverMenu(menu_model=menu, has_arrow=False)
         pop.set_parent(self.flow)

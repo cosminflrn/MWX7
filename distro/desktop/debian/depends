@@ -12,7 +12,7 @@ xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk xdg-user-dirs
 adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin
 plymouth plymouth-themes
 # Apps and system: Files, Terminal, networking, password prompts, admin, firewall, compressed-RAM swap, updates.
-flatpak thunar foot network-manager network-manager-gnome polkitd pkexec lxpolkit sudo nftables systemd-zram-generator
+flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome polkitd pkexec lxpolkit sudo nftables systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
 bluez libspa-0.2-bluetooth cups cups-browsed ipp-usb brightnessctl upower
