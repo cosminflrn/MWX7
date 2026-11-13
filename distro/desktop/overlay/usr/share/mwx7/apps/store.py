@@ -103,11 +103,33 @@ class Card:
 
     def on_main(self, *_):
         if self.installed:
-            # Flatpak starts the app itself; detached, so closing Get Apps doesn't close it.
-            subprocess.Popen(['flatpak', 'run', self.ref], start_new_session=True, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+            self.launch()
         else:
             self.store.run(self, 'install')
+
+    def launch(self):
+        """Flatpak starts the app itself, detached so closing Get Apps doesn't close it. A first start can take a while
+        in a VM (Flatpak sets the app up), so the button says so; if the app quits at once, the reason is shown."""
+        log = os.path.join(GLib.get_user_cache_dir(), 'mwx7', 'get-apps-' + self.ref + '.log')
+        os.makedirs(os.path.dirname(log), exist_ok=True)
+        with open(log, 'w') as out:
+            p = subprocess.Popen(['flatpak', 'run', self.ref], start_new_session=True, stdout=out, stderr=out)
+        self.main_btn.set_label('Starting…')
+        self.main_btn.set_sensitive(False)
+
+        def check():
+            self.main_btn.set_label('Open')
+            self.main_btn.set_sensitive(True)
+            code = p.poll()
+            if code not in (None, 0):
+                try:
+                    last = [l for l in open(log).read().splitlines() if l.strip()][-1]
+                except (OSError, IndexError):
+                    last = f'it stopped with code {code}'
+                self.store.note.set_label(f'{self.name} did not start: {last[:200]}')
+                self.store.note.set_visible(True)
+            return False
+        GLib.timeout_add_seconds(8, check)
 
     def set_installed(self, yes):
         self.installed = yes
