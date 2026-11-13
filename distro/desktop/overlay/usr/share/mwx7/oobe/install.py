@@ -11,6 +11,8 @@
   install.py reinstall keep|clean   Settings -> Reset MWX 7 (through mwx7-admin): MWX 7 again from the newest ISO on
                                     GitHub at the version this PC has; keep: accounts, files, apps and settings come
                                     along; clean: nothing does, the first-start setup runs. Then a restart.
+  install.py keep-previous          Settings -> Updates "Keep the previous version" (only while running from @previous, after
+                                    the boot menu fell back to it): @previous becomes @, the one that failed is deleted
   install.py update check|install   after a reset, before the setup's pages: what is new, then (if wanted) install
   install.py ready                  tells the serial console the setup is on screen (for the automated boot tests)
 
@@ -850,6 +852,53 @@ def finish(answers_path, here=False):
     say('STEP', 'Done')
 
 
+def keep_previous():
+    """The PC fell back to @previous (the version before the last update) and the person keeps it: @previous becomes @
+    with the same swap as reinstall(), the system that failed to start is deleted, and the boot menu is rebuilt from the
+    new @ (its kernels are the old ones). Takes effect at the next start; a failure swaps back."""
+    global TARGET
+    if not sh('findmnt', '-no', 'SOURCE', '/').strip().endswith('[/@previous]'):
+        raise RuntimeError('This PC is not running the previous version.')
+    root = root_device()
+    top = STATE + '/top'
+    TARGET = STATE + '/target'
+    for d in (top, TARGET):
+        os.makedirs(d, exist_ok=True)
+    sh('mount', '-o', 'subvolid=5', root, top)
+    swapped = False
+    try:
+        if not (os.path.isdir(top + '/@previous') and os.path.isdir(top + '/@')):
+            raise RuntimeError('The previous version is no longer there.')
+        if os.path.isdir(top + '/@failed'):
+            sh('btrfs', '-q', 'subvolume', 'delete', top + '/@failed')
+        os.rename(top + '/@', top + '/@failed')
+        os.rename(top + '/@previous', top + '/@')
+        swapped = True
+        fstab = top + '/@/etc/fstab'
+        text = open(fstab).read()
+        with open(fstab + '.tmp', 'w') as f:  # mwx7-update made it start as @previous
+            f.write(text.replace('subvol=/@previous,', 'subvol=/@,'))
+        os.replace(fstab + '.tmp', fstab)
+        sh('mount', '-o', f'subvol=@,{MOUNT_OPTS}', root, TARGET)
+        bind_system()
+        if os.path.ismount('/boot/efi'):
+            os.makedirs(TARGET + '/boot/efi', exist_ok=True)
+            sh('mount', '--bind', '/boot/efi', TARGET + '/boot/efi')
+        chroot('update-grub')
+        # The counter starts over: nothing is being checked until the next update.
+        subprocess.run(['/usr/share/mwx7/bin/mwx7-bootcount', 'clear'], capture_output=True)
+        unmount_all()
+        subprocess.run(['btrfs', '-q', 'subvolume', 'delete', top + '/@failed'], capture_output=True)
+    except BaseException:
+        unmount_all()
+        if swapped:
+            os.rename(top + '/@', top + '/@previous')
+            os.rename(top + '/@failed', top + '/@')
+        raise
+    finally:
+        subprocess.run(['umount', top], capture_output=True)
+
+
 def finish_reset():
     """End of the first start after a reset: back to the normal logon, the old system's leftovers deleted, restart."""
     for f in ('/etc/mwx7/firstboot', '/etc/sudoers.d/mwx7-firstboot'):
@@ -896,6 +945,8 @@ if __name__ == '__main__':
             recovery_sync(fetch=False) if args == ['sync'] else recovery_prepare()
         elif cmd == 'reinstall' and args in (['keep'], ['clean']) and os.path.exists('/etc/mwx7/installed'):
             reinstall(args[0] == 'keep')
+        elif cmd == 'keep-previous' and not args and os.path.exists('/etc/mwx7/installed'):
+            keep_previous()
         elif cmd == 'update' and args in (['check'], ['install']) and os.path.exists('/etc/mwx7/firstboot'):
             update(args[0])
         elif cmd == 'ready':

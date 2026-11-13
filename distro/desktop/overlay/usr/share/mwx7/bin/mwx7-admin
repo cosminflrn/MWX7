@@ -14,6 +14,10 @@
   mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
                                    restart. Plain: absolutely clean (the first-start setup runs and offers the newest
                                    version). keep: accounts, files, apps and settings stay
+  mwx7-admin keep-previous         after MWX 7 went back to the version before an update by itself: keep that version
+  mwx7-admin backup run UUID       Settings -> Backup: back up /home to the external drive with that file system UUID
+  mwx7-admin backup schedule off|daily|weekly [UUID]   the automatic backup (a systemd timer)
+  mwx7-admin backup drives         the drives a backup can go to (UUID, device, size, file system, name)
   mwx7-admin flatpak setup         adds the Flathub remote (system-wide) if it is missing
   mwx7-admin flatpak install REF   Get Apps: installs one of the curated Flathub apps for everyone (REF is on FLATPAK_REFS)
   mwx7-admin flatpak remove REF    removes it again
@@ -74,6 +78,11 @@ def main():
         os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'recovery', 'prepare'])
     elif cmd in (['reset'], ['reset', 'keep']) and os.path.exists('/etc/mwx7/installed'):
         reset(keep=cmd[1:] == ['keep'])
+    elif cmd == ['keep-previous'] and os.path.exists('/etc/mwx7/installed'):
+        os.execv('/usr/bin/python3', ['python3', '/usr/share/mwx7/oobe/install.py', 'keep-previous'])
+    elif cmd[:1] == ['backup'] and len(cmd) >= 2 and os.path.exists('/etc/mwx7/installed'):
+        # mwx7-backup checks every argument itself (a drive's UUID only, never a path).
+        os.execv('/usr/share/mwx7/bin/mwx7-backup', ['mwx7-backup'] + cmd[1:])
     elif cmd[:1] == ['flatpak'] and (cmd[1:] == ['setup'] or (len(cmd) == 3 and cmd[1] in ('install', 'remove'))):
         flatpak(cmd[1], cmd[2] if len(cmd) == 3 else None)
     else:

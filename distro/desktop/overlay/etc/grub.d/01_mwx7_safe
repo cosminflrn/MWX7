@@ -1,0 +1,34 @@
+#!/bin/sh
+# Starts back into the previous version when the first starts after an update do not work. mwx7-bootcount (run by
+# mwx7-update) arms a counter in a small GRUB environment file on the EFI partition (FAT: GRUB cannot write to btrfs);
+# this adds to the counter at each start and, at the third start with the counter at 2, makes the previous version's
+# entry the default. mwx7-boot-ok.service resets the counter once the logon screen is up. Every part is guarded: no EFI
+# partition, no file or no previous version means a normal boot menu, as before.
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+[ -d /sys/firmware/efi ] && [ -d /boot/efi/EFI/MWX7 ] || exit 0
+[ "$(grub-probe --target=fs / 2>/dev/null)" = btrfs ] || exit 0
+[ "$(grub-probe --target=fs /boot/efi 2>/dev/null)" = fat ] || exit 0
+esp=$(grub-probe --target=fs_uuid /boot/efi 2>/dev/null) || exit 0
+[ -n "$esp" ] || exit 0
+sed "s/@ESP@/$esp/" <<'ENTRY'
+if search --no-floppy --fs-uuid --set=mwx7_esp @ESP@; then
+  set mwx7_env=($mwx7_esp)/EFI/MWX7/mwx7.env
+  if [ -f $mwx7_env ]; then
+    set mwx7_armed=0
+    set mwx7_tries=0
+    load_env -f $mwx7_env
+    if [ "$mwx7_armed" = 1 ]; then
+      if [ "$mwx7_tries" = 2 ]; then
+        set default=mwx7-previous
+      elif [ "$mwx7_tries" = 1 ]; then
+        set mwx7_tries=2
+        save_env -f $mwx7_env mwx7_tries
+      else
+        set mwx7_tries=1
+        save_env -f $mwx7_env mwx7_tries
+      fi
+    fi
+  fi
+fi
+ENTRY

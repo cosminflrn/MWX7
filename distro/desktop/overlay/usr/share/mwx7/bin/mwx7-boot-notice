@@ -1,0 +1,11 @@
+#!/bin/sh
+# At sign-in: when the boot menu went back to the previous version by itself (mwx7-bootcount writes the flag), says so
+# and offers Settings -> Updates, where "Keep the previous version" makes it permanent.
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do [ -e /run/mwx7-fell-back ] && break; sleep 5; done
+[ -e /run/mwx7-fell-back ] || exit 0
+sleep 3
+a=$(notify-send -a "MWX 7" -i /usr/share/mwx7/icons/orb.png -A updates="Open Updates" -w \
+  "MWX 7 went back to the version before the update" \
+  "The updated version did not start, so the previous one started instead. Keep it in Settings, Updates." 2>/dev/null) || exit 0
+[ "$a" = updates ] && exec python3 /usr/share/mwx7/settings/settings.py --updates
+exit 0

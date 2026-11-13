@@ -1,0 +1,30 @@
+#!/bin/sh
+# The start counter behind "go back to the previous version when the new one does not start" (see etc/grub.d/01_mwx7_safe).
+# Root only; every action is harmless when it cannot work (no EFI partition, no grub-editenv): it then does nothing.
+#   mwx7-bootcount arm     after an update that kept a previous version: the next starts are counted
+#   mwx7-bootcount ok      at the logon screen: the start worked, stop counting (run by mwx7-boot-ok.service)
+#   mwx7-bootcount clear   stop counting and forget the count
+ENV=/boot/efi/EFI/MWX7/mwx7.env
+[ "$(id -u)" = 0 ] || exit 0
+[ -d /sys/firmware/efi ] && [ -d /boot/efi/EFI/MWX7 ] && command -v grub-editenv >/dev/null || exit 0
+set_env() { [ -f "$ENV" ] || grub-editenv "$ENV" create; grub-editenv "$ENV" set "$@"; }
+case "$1" in
+  arm)
+    set_env mwx7_tries=0 mwx7_armed=1 2>/dev/null || true ;;
+  ok)
+    # A moment after the logon screen is up, not the instant it is started.
+    sleep 15
+    systemctl is-active -q greetd.service || exit 0
+    if findmnt -no SOURCE / | grep -q '\[/@previous\]$' && [ -f "$ENV" ] && \
+       [ "$(grub-editenv "$ENV" list 2>/dev/null | sed -n 's/^mwx7_tries=//p')" = 2 ]; then
+      # GRUB went back to this version by itself: say so (mwx7-boot-notice) and keep the count at 2 so that the
+      # next starts stay here until the person decides in Settings -> Updates.
+      : > /run/mwx7-fell-back
+      exit 0
+    fi
+    [ -f "$ENV" ] && { set_env mwx7_tries=0 mwx7_armed=0 2>/dev/null || true; } ;;
+  clear)
+    [ -f "$ENV" ] && { set_env mwx7_tries=0 mwx7_armed=0 2>/dev/null || true; } ;;
+  *) echo "usage: mwx7-bootcount arm|ok|clear" >&2; exit 2 ;;
+esac
+exit 0

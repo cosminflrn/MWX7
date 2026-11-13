@@ -1,0 +1,11 @@
+[Unit]
+Description=MWX 7: this start worked, stop counting starts since the update
+After=greetd.service
+ConditionPathExists=/etc/mwx7/installed
+
+[Service]
+Type=simple
+ExecStart=/usr/share/mwx7/bin/mwx7-bootcount ok
+
+[Install]
+WantedBy=graphical.target
