@@ -542,6 +542,7 @@ class Shell(Gtk.Application):
         self.apply_tint()
         self.tint_monitor = Gio.File.new_for_path(WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
         self.tint_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, lambda: self.apply_tint() and False))
+        self.listen_winmenu()
         self.bar = self.build_bar()
         self.dock = self.build_dock()
         self.bar.present()
@@ -1358,6 +1359,73 @@ class Shell(Gtk.Application):
         if getattr(self, 'orb_icon', None) != icon:
             self.orb_icon = icon
             self.orb_img.set_from_file(icon)
+        return False
+
+    # ---- the window menu: right-click on a window's title bar (Windows 7) ------------------------------------------
+    def listen_winmenu(self):
+        """mwx7-decor writes "<view id> <x> <y>" to this FIFO when a title bar is right-clicked."""
+        path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-winmenu')
+        try:
+            if os.path.exists(path) and not os.path.isfile(path):
+                os.remove(path)
+            os.mkfifo(path, 0o600)
+        except OSError:
+            return
+
+        def work():
+            while True:
+                try:
+                    with open(path) as f:
+                        for line in f:
+                            parts = line.split()
+                            if len(parts) == 3 and all(p.lstrip('-').isdigit() for p in parts):
+                                GLib.idle_add(self.show_winmenu, *map(int, parts))
+                except OSError:
+                    time.sleep(1)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_winmenu(self, vid, x, y):
+        view = next((v for v in apps_windows(self.views) if v['id'] == vid), None)
+        maxed = bool(view and (view.get('tiled-edges') == 15 or view.get('maximized')))
+        w = Gtk.Window(title='MWX 7')
+        Layer.init_for_window(w)
+        Layer.set_layer(w, Layer.Layer.OVERLAY)
+        Layer.set_namespace(w, 'mwx7-winmenu')
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(w, e, True)
+        Layer.set_exclusive_zone(w, -1)
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.ON_DEMAND)
+        w.add_css_class('winmenu-layer')
+        spot = Gtk.Fixed(hexpand=True, vexpand=True)
+        w.set_child(spot)
+        # The menu is drawn straight on a transparent full-screen layer, at the pointer (a popover there landed at
+        # the screen's corner); a click anywhere else closes it.
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class('winmenu-card')
+        spot.put(card, max(0, x), max(0, y))
+
+        def item(label, fn, sensitive=True):
+            b = Gtk.Button(label=label, sensitive=sensitive)
+            b.add_css_class('sys-item')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (w.destroy(), fn()))
+            card.append(b)
+        item('Restore', lambda: self.act('mwx7/toggle-maximize', {'id': vid}), maxed)
+        item('Minimize', lambda: self.act('wm-actions/set-minimized', {'view_id': vid, 'state': True}))
+        item('Maximize', lambda: self.act('mwx7/toggle-maximize', {'id': vid}), not maxed)
+        line = Gtk.Box()
+        line.add_css_class('sys-sep')
+        card.append(line)
+        item('Close', lambda: self.act('window-rules/close-view', {'id': vid}))
+        outside = Gtk.GestureClick(button=0)
+
+        def pressed(g, _n, px, py):
+            ok, b = card.compute_bounds(spot)
+            if not (ok and b.get_x() <= px <= b.get_x() + b.get_width() and b.get_y() <= py <= b.get_y() + b.get_height()):
+                w.destroy()
+        outside.connect('pressed', pressed)
+        spot.add_controller(outside)
+        w.present()
         return False
 
     def fill_app_menu(self):
