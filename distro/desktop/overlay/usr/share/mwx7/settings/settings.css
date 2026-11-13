@@ -10,7 +10,7 @@ list.nav row:hover { background: linear-gradient(to bottom, #fafbfd, #ebf3fd); b
 list.nav row:selected { background: linear-gradient(to bottom, #dcebfc, #c1dbfc); box-shadow: inset 0 0 0 1px #7da2ce; color: #000000; font-weight: 600; }
 .page { padding: 18px 26px 26px; }
 .page-title { font-size: 20px; color: #1e3287; margin-bottom: 2px; }
-.section { font-size: 14px; font-weight: 600; color: #1e4f8c; margin-top: 12px; }
+.section { font-size: 14px; font-weight: 600; color: #1e4f8c; margin-top: 14px; }
 .note { color: #5b6f86; font-size: 12px; }
 .key { color: #5b6f86; }
 /* Wallpaper and theme tiles: the pale blue selection box of the web Settings around thumbnail and label. */
