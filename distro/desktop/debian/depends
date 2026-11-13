@@ -6,13 +6,13 @@ btrfs-progs dosfstools e2fsprogs fdisk zstd gpgv ntfs-3g parted
 libgl1-mesa-dri xwayland fonts-dejavu-core pipewire pipewire-pulse wireplumber rtkit alsa-utils pciutils ca-certificates
 # Desktop: Wayfire (frames and animations come from our plugins), the shell (GTK 4 + layer-shell in Python), wallpaper,
 # logon screen (greetd + cage), notifications, lock screen, portals for Chrome's file pickers and screen sharing.
-wayfire swaybg greetd cage dbus-user-session mako-notifier libnotify-bin swaylock swayidle wlr-randr grim slurp wl-clipboard gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-good gstreamer1.0-pipewire gstreamer1.0-libav gstreamer1.0-gtk4 libgtk-4-media-gstreamer wlsunset
+wayfire swaybg greetd cage dbus-user-session mako-notifier libnotify-bin swaylock swayidle wlr-randr wlopm grim slurp wl-clipboard gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 gstreamer1.0-plugins-good gstreamer1.0-pipewire gstreamer1.0-libav gstreamer1.0-gtk4 libgtk-4-media-gstreamer wlsunset
 python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-gtk4layershell-1.0 gir1.2-gtk-3.0 gir1.2-gtksessionlock-0.1 libgtk-session-lock0 libgtk4-layer-shell0 librsvg2-common
 xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk xdg-user-dirs
 adwaita-icon-theme fonts-noto-color-emoji gsettings-desktop-schemas dconf-gsettings-backend libglib2.0-bin
 plymouth plymouth-themes
 # Apps and system: Files, Terminal, networking, password prompts, admin, firewall, compressed-RAM swap, updates.
-flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome polkitd pkexec lxpolkit sudo nftables systemd-zram-generator
+flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome polkitd pkexec lxpolkit sudo nftables ufw systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
 bluez libspa-0.2-bluetooth cups cups-browsed ipp-usb brightnessctl upower

@@ -1,3 +1,68 @@
 #!/bin/sh
-# Locks after 10 idle minutes and before the PC sleeps.
-exec swayidle -w timeout 600 /usr/share/mwx7/bin/mwx7-lock before-sleep /usr/share/mwx7/bin/mwx7-lock
+# What the PC does when nobody touches it (Settings -> Power). Started once per session by Wayfire; Settings starts it
+# again after a change. Settings keeps its choices in ~/.config/mwx7/power.json:
+#   screen  minutes until the screen turns off (0 = never)     sleep  minutes until the PC sleeps (0 = never)
+#   lock    ask for the password after the screen turned off / the PC slept (true/false)
+#   saver   battery percentage at which battery saver starts (0 = never; laptops only)
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/power.json"
+SELF=/usr/share/mwx7/bin/mwx7-idle
+
+outputs() { wlr-randr 2>/dev/null | awk '/^[^ ]/ { print $1 }'; }
+
+case "$1" in
+  screen)  # called by swayidle: "off" / "on"
+    # DPMS (wlr-output-power-management), not wlr-randr --off: turning the output off removes it, and the bar, dock
+    # and desktop came back re-laid out (seen in the test VM).
+    wlopm "--$2" '*' >/dev/null 2>&1
+    exit 0 ;;
+  battery)  # laptops: dims the screen and asks for the power-saver profile while the battery is low and not charging
+    LOW=$2
+    bat=$(ls -d /sys/class/power_supply/BAT* 2>/dev/null | head -n 1)
+    [ -n "$bat" ] && [ "$LOW" -gt 0 ] 2>/dev/null || exit 0
+    on=
+    while sleep 60; do
+      cap=$(cat "$bat/capacity" 2>/dev/null) || continue
+      st=$(cat "$bat/status" 2>/dev/null)
+      if [ -z "$on" ] && [ "$st" = Discharging ] && [ "$cap" -le "$LOW" ]; then
+        on=1
+        command -v brightnessctl >/dev/null && brightnessctl -s set 30% >/dev/null 2>&1
+        command -v powerprofilesctl >/dev/null && powerprofilesctl set power-saver >/dev/null 2>&1
+        notify-send -a "MWX 7" "Battery saver is on" "The battery is at $cap%. The screen is dimmed to make it last longer." 2>/dev/null
+      elif [ -n "$on" ] && { [ "$st" != Discharging ] || [ "$cap" -gt $((LOW + 5)) ]; }; then
+        on=
+        command -v brightnessctl >/dev/null && brightnessctl -r >/dev/null 2>&1
+        command -v powerprofilesctl >/dev/null && powerprofilesctl set balanced >/dev/null 2>&1
+      fi
+    done
+    exit 0 ;;
+esac
+
+# Only whole numbers get through: anything else in the file falls back to the defaults.
+eval "$(python3 - "$CONF" <<'PY'
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    c = {}
+if not isinstance(c, dict):
+    c = {}
+def mins(k, d):
+    v = c.get(k, d)
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1440 else d
+print(f"SCREEN={mins('screen', 10)} SLEEP={mins('sleep', 0)} SAVER={mins('saver', 20)} LOCK={0 if c.get('lock') is False else 1}")
+PY
+)"
+
+LOCKCMD=true
+[ "$LOCK" = 1 ] && LOCKCMD=/usr/share/mwx7/bin/mwx7-lock
+set -- -w
+if [ "$SCREEN" -gt 0 ]; then
+  # Lock first, then the screen goes dark; moving the mouse brings it back.
+  set -- "$@" timeout $((SCREEN * 60)) "$LOCKCMD; $SELF screen off" resume "$SELF screen on"
+fi
+[ "$SLEEP" -gt 0 ] && set -- "$@" timeout $((SLEEP * 60)) "systemctl suspend"
+set -- "$@" before-sleep "$LOCKCMD"
+
+pkill -u "$(id -u)" -f '[m]wx7-idle battery' 2>/dev/null
+"$SELF" battery "$SAVER" &
+exec swayidle "$@"
