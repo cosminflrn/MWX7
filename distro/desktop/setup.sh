@@ -28,10 +28,13 @@ grep -q '127.0.1.1' /etc/hosts 2>/dev/null || printf '127.0.0.1\tlocalhost\n127.
 
 # MWX 7 itself. KEEP_BUILD_DEPS=0: the compilers are removed again so they never ship.
 KEEP_BUILD_DEPS=0 "$SRC/distro/desktop/build-deb.sh" /tmp/mwx7-deb
+# Firmware and CPU microcode are for real PCs (Wi-Fi, graphics, audio; CPU bug fixes): the installed system is a copy of this
+# image, so what is here is what a bare-metal install gets. mokutil is for Secure Boot (NVIDIA driver signing).
 # --force-confold: our overlay's config files win over a package's own (greetd ships a config.toml).
 apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold /tmp/mwx7-deb/mwx7-desktop_*.deb \
   google-chrome-stable firmware-amd-graphics firmware-intel-graphics firmware-misc-nonfree firmware-realtek \
-  firmware-iwlwifi open-vm-tools spice-vdagent qemu-guest-agent cryptsetup cryptsetup-initramfs \
+  firmware-iwlwifi firmware-atheros firmware-mediatek firmware-brcm80211 firmware-linux-free firmware-sof-signed \
+  amd64-microcode intel-microcode mokutil open-vm-tools spice-vdagent qemu-guest-agent cryptsetup cryptsetup-initramfs \
   live-boot squashfs-tools calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window
 # The ISO starts the first-start setup, not the logon screen: its greetd config wins over the package's, even when the
 # build root kept the package's from an earlier build.

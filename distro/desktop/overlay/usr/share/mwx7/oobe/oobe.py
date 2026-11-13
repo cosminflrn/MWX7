@@ -77,9 +77,12 @@ def gb(n):
 
 def describe(disk):
     """What a person would call this disk and what is on it, in plain words."""
-    title = f"{disk['model'] or 'Disk'} — {gb(disk['size'])}"
+    # Model, size, kind and device name: on a real PC with several disks this is how the right one is told apart.
+    kind = {'nvme': 'NVMe', 'sata': 'SATA', 'ata': 'SATA', 'usb': 'USB'}.get(disk.get('tran') or '', '')
+    where = ', '.join(x for x in (kind, disk.get('name')) if x)
+    title = f"{disk['model'] or 'Disk'} — {gb(disk['size'])}" + (f' ({where})' if where else '')
     if disk['live']:
-        return title, 'This is the MWX 7 USB stick you started from.'
+        return title, 'This is the MWX 7 USB stick you started from. It is never touched.'
     if disk['empty']:
         return title, 'Empty: nothing is on it.'
     names = {'windows': 'Windows', 'linux': 'Linux', 'data': 'files', 'recovery': 'recovery', 'efi': 'boot files',
@@ -392,7 +395,9 @@ class Setup(Gtk.Application):
     # ---- 2. disk ------------------------------------------------------------------------------------------------
     def page_disk(self):
         p = self.page()
-        p.append(self.text('MWX 7 is copied to the disk you choose. Nothing is erased unless you choose that below.'))
+        p.append(self.text('MWX 7 is copied to the disk you choose. Nothing is erased unless you choose that below. To keep '
+                           'Windows on the same disk, first make free space in Windows (Disk Management, Shrink Volume), '
+                           'or use Advanced below.'))
         self.disk_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=6)
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -467,7 +472,8 @@ class Setup(Gtk.Application):
                 free.set_sensitive(False)
                 free.set_label('Use the free space (there is not enough of it: MWX 7 needs '
                                f"{gb(self.survey.get('min_size', 20 * 2 ** 30))})")
-            self.erase_ok = Gtk.CheckButton(label=f'Yes, delete everything on this disk ({what})')
+            gone = ' This removes Windows too.' if any(p['kind'] == 'windows' for p in disk['parts']) else ''
+            self.erase_ok = Gtk.CheckButton(label=f"Yes, delete everything on {describe(disk)[0]} ({what}).{gone}")
             self.erase_ok.add_css_class('danger')
             self.erase_ok.set_visible(False)
             self.erase_ok.connect('toggled', lambda *_: self.validate())
