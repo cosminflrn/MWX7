@@ -63,6 +63,17 @@ def pending_updates():
 
 
 SOUND = '/usr/share/mwx7/bin/mwx7-sound'
+# Choices from Settings (Dock, Date & time), as on the web: shell.json in the person's MWX 7 folder.
+SHELL_CONF = os.path.join(GLib.get_user_config_dir(), 'mwx7', 'shell.json')
+DOCK_SIZES = {'small': 40, 'medium': 48, 'large': 56}
+
+
+def shell_conf():
+    try:
+        c = json.load(open(SHELL_CONF))
+        return c if isinstance(c, dict) else {}
+    except (OSError, ValueError):
+        return {}
 # Aero Peek thumbnails: their width in the dock's preview.
 PEEK_SIZE = 180
 
@@ -525,8 +536,11 @@ class StartMenu(Gtk.Popover):
 
 
 class Shell(Gtk.Application):
+    dock_px, magnify, dock_imgs = 48, True, []
+
     def __init__(self):
         super().__init__(application_id='org.mwx7.shell')
+        self.read_conf()
         self.ipc = Ipc()
         self.views = []
 
@@ -542,6 +556,8 @@ class Shell(Gtk.Application):
         self.apply_tint()
         self.tint_monitor = Gio.File.new_for_path(WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
         self.tint_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, lambda: self.apply_tint() and False))
+        self.conf_monitor = Gio.File.new_for_path(SHELL_CONF).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.conf_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, self.conf_changed))
         self.listen_winmenu()
         self.bar = self.build_bar()
         self.dock = self.build_dock()
@@ -1052,7 +1068,7 @@ class Shell(Gtk.Application):
         trash.add_css_class('dock-item')
         trash.set_tooltip_text('Trash')
         self.trash_img = Gtk.Image()
-        self.trash_img.set_pixel_size(48)
+        self.trash_img.set_pixel_size(Shell.dock_px)
         v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         v.append(self.trash_img)
         dot = Gtk.Box()
@@ -1094,16 +1110,17 @@ class Shell(Gtk.Application):
         """The pointed-at icon grows a little, like the web dock's magnification (inside the shelf: the glass behind
         the dock is blurred as one rectangle, so nothing may stick out of it)."""
         motion = Gtk.EventControllerMotion()
-        motion.connect('enter', lambda *_: img.set_pixel_size(56))
-        motion.connect('leave', lambda *_: img.set_pixel_size(48))
+        motion.connect('enter', lambda *_: img.set_pixel_size(Shell.dock_px + (8 if Shell.magnify else 0)))
+        motion.connect('leave', lambda *_: img.set_pixel_size(Shell.dock_px))
         button.add_controller(motion)
+        Shell.dock_imgs.append(img)
 
     def add_dock_item(self, label, img, launch, ids):
         b = Gtk.Button()
         b.add_css_class('dock-item')
         b.set_tooltip_text(label)
         v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.END)
-        img.set_pixel_size(48)
+        img.set_pixel_size(Shell.dock_px)
         dot = Gtk.Box()
         dot.add_css_class('run-dot')
         dot.set_halign(Gtk.Align.CENTER)
@@ -1748,10 +1765,30 @@ class Shell(Gtk.Application):
         if not self.vol_updating:
             subprocess.Popen(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if btn.get_active() else '0'])
 
+    def read_conf(self):
+        c = shell_conf()
+        Shell.dock_px = DOCK_SIZES.get(c.get('dock_size'), 48)
+        Shell.magnify = c.get('dock_magnify', True) is not False
+        self.clock24 = c.get('clock24', True) is not False
+        self.clock_seconds = c.get('clock_seconds', True) is not False
+
+    def conf_changed(self):
+        self.read_conf()
+        Shell.dock_imgs = [i for i in Shell.dock_imgs if i.get_parent() is not None]
+        for img in Shell.dock_imgs:
+            img.set_pixel_size(Shell.dock_px)
+        self.dock.set_default_size(1, 1)  # let the dock shrink when the icons get smaller
+        self.tick_clock()
+        return False
+
     def tick_clock(self):
         # Same format as MWX 7 on the web: "Mon, Nov 9 09:51:37".
         t = time.localtime()
-        self.clock.set_label(time.strftime('%a, %b ', t) + str(t.tm_mday) + time.strftime(' %H:%M:%S', t))
+        fmt = ('%H:%M' if self.clock24 else '%I:%M') + (':%S' if self.clock_seconds else '') + ('' if self.clock24 else ' %p')
+        hm = time.strftime(fmt, t)
+        if not self.clock24:
+            hm = hm.lstrip('0')
+        self.clock.set_label(time.strftime('%a, %b ', t) + str(t.tm_mday) + ' ' + hm)
         return True
 
 

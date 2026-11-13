@@ -183,6 +183,7 @@ class Settings(Gtk.Application):
             ('account', 'User account', 'user', self.page_account),
             ('wincolor', 'Window Color', 'paint', self.page_wincolor),
             ('desktop', 'Desktop', 'desktop', self.page_desktop),
+            ('dock', 'Dock', 'computer', self.page_dock),
             ('display', 'Display', 'computer', self.page_display),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
@@ -696,9 +697,60 @@ class Settings(Gtk.Application):
         return p
 
     # ---- Date & time ------------------------------------------------------------------------------------------------
+    # ---- the shell's own choices (Dock; clock format), as on the web: shell.json, followed live by the bar and dock --
+    SHELL_JSON = os.path.join(CONF_DIR, 'shell.json')
+
+    def shell_get(self, key, default):
+        try:
+            v = json.load(open(self.SHELL_JSON)).get(key, default)
+        except (OSError, ValueError, AttributeError):
+            v = default
+        return v
+
+    def shell_set(self, key, value):
+        try:
+            c = json.load(open(self.SHELL_JSON))
+            c = c if isinstance(c, dict) else {}
+        except (OSError, ValueError):
+            c = {}
+        c[key] = value
+        os.makedirs(CONF_DIR, exist_ok=True)
+        with open(self.SHELL_JSON + '.tmp', 'w') as f:
+            json.dump(c, f)
+        os.replace(self.SHELL_JSON + '.tmp', self.SHELL_JSON)
+
+    def shell_check(self, label, key):
+        c = Gtk.CheckButton(label=label)
+        c.set_active(self.shell_get(key, True) is not False)
+        c.connect('toggled', lambda b: self.shell_set(key, b.get_active()))
+        return c
+
+    def page_dock(self):
+        p = page()
+        p.append(heading('Change how the dock behaves'))
+        p.append(note('Icons grow under the pointer when magnification is on.'))
+        p.append(self.shell_check('Magnification', 'dock_magnify'))
+        p.append(section('Icon size'))
+        row = Gtk.Box(spacing=0, halign=Gtk.Align.START)
+        row.add_css_class('linked')
+        cur = self.shell_get('dock_size', 'medium')
+        first = None
+        for key in ('small', 'medium', 'large'):
+            b = Gtk.ToggleButton(label=key.capitalize(), active=key == cur)
+            if first:
+                b.set_group(first)
+            first = first or b
+            b.connect('toggled', lambda btn, k=key: btn.get_active() and self.shell_set('dock_size', k))
+            row.append(b)
+        p.append(row)
+        return p
+
     def page_datetime(self):
         p = page()
         p.append(heading('Date & time'))
+        p.append(section('Clock in the menu bar'))
+        p.append(self.shell_check('Use 24-hour clock', 'clock24'))
+        p.append(self.shell_check('Show seconds', 'clock_seconds'))
         p.append(section('Time zone'))
         zones = [z for z in run(['timedatectl', 'list-timezones']).split() if '/' in z]
         cur = run(['timedatectl', 'show', '-p', 'Timezone', '--value']).strip() or 'Europe/Bucharest'
