@@ -9,6 +9,7 @@ import calendar
 import collections
 import datetime
 import glob
+import html
 import json
 import operator
 import os
@@ -750,6 +751,76 @@ class StartMenu(Gtk.Popover):
         GLib.idle_add(lambda: self.search.grab_focus() and False)  # grab_focus returns True: once only
 
 
+def _unwrap(x):
+    """makoctl prints D-Bus values as {"type": ..., "data": ...}; this strips that wrapping down to plain values."""
+    if isinstance(x, dict):
+        if set(x) == {'type', 'data'}:
+            return _unwrap(x['data'])
+        return {k: _unwrap(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_unwrap(v) for v in x]
+    return x
+
+
+def parse_mako(out):
+    """The notifications in `makoctl list` / `makoctl history` output, as dicts with id, summary, body, app-name,
+    app-icon, desktop-entry. Reads mako's JSON (any nesting) and, failing that, its older plain-text listing."""
+    found = []
+
+    def walk(x):
+        if isinstance(x, dict) and 'id' in x:
+            found.append(x)
+        elif isinstance(x, dict):
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    try:
+        walk(_unwrap(json.loads(out)))
+    except ValueError:
+        cur = None
+        for line in (out or '').splitlines():
+            m = re.match(r'Notification (\d+): (.*)', line)
+            if m:
+                cur = {'id': int(m.group(1)), 'summary': m.group(2)}
+                found.append(cur)
+            elif cur is not None:
+                m = re.match(r'\s+(App name|Desktop entry|Body|Icon): (.*)', line)
+                if m:
+                    cur[{'App name': 'app-name', 'Desktop entry': 'desktop-entry', 'Body': 'body',
+                         'Icon': 'app-icon'}[m.group(1)]] = m.group(2)
+    clean = []
+    for n in found:
+        try:
+            nid = int(n['id'])
+        except (TypeError, ValueError):
+            continue
+        item = {'id': nid}
+        for k in ('summary', 'body', 'app-name', 'app-icon', 'desktop-entry'):
+            v = n.get(k)
+            item[k] = v if isinstance(v, str) else ''
+        # Texts may carry Pango markup (<b>, &amp;); the flyout shows plain text.
+        for k in ('summary', 'body'):
+            item[k] = html.unescape(re.sub(r'<[^>]+>', '', item[k])).strip()
+        clean.append(item)
+    return clean
+
+
+def ago(ts):
+    """'now', '5 min', '2 h' or a date for something that arrived at time ts; '' when unknown."""
+    if not ts:
+        return ''
+    s = time.time() - ts
+    if s < 60:
+        return 'now'
+    if s < 3600:
+        return f'{int(s // 60)} min'
+    if s < 86400:
+        return f'{int(s // 3600)} h'
+    return time.strftime('%d %b', time.localtime(ts))
+
+
 class Shell(Gtk.Application):
     dock_px, magnify, dock_imgs = 48, True, []
 
@@ -784,12 +855,14 @@ class Shell(Gtk.Application):
         threading.Thread(target=self.ipc.watch, args=(self.ipc_event_filter,), daemon=True).start()
         self.refresh()
         self.start_clipboard()
+        self.start_notifications()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
         what = os.environ.get('MWX7_SHELL_OPEN')
         if what == 'search':
             GLib.timeout_add(1500, lambda: self.open_search() and False)
-        if what in ('start', 'calendar'):
-            btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn}[what]()
+        if what in ('start', 'calendar', 'notifications'):
+            btn = {'start': lambda: self.start_button, 'calendar': lambda: self.clock_btn,
+                   'notifications': lambda: self.nc_btn}[what]()
             GLib.timeout_add(1500, lambda: btn.popup() and False)
 
     def apply_tint(self):
@@ -968,6 +1041,7 @@ class Shell(Gtk.Application):
         clock_btn.set_popover(self.build_calendar())
         self.clock_btn = clock_btn
         right.append(clock_btn)
+        self.build_notifications(right)
         # A full-screen (maximized) window has no frame: its traffic lights move into the bar, as in the concept.
         self.wc = Gtk.Box(spacing=7, visible=False, valign=Gtk.Align.CENTER)
         self.wc.add_css_class('bar-wc')
@@ -2091,7 +2165,7 @@ class Shell(Gtk.Application):
             GLib.idle_add(self.clip_add, kind, data)
 
     def do_shutdown(self):
-        for proc in getattr(self, 'clip_procs', []):
+        for proc in getattr(self, 'clip_procs', []) + getattr(self, 'nc_procs', []):
             proc.terminate()
         Gtk.Application.do_shutdown(self)
 
@@ -2336,6 +2410,253 @@ class Shell(Gtk.Application):
             self.run_bg(['brightnessctl', '-q', 'set', f'{value}%'])
             return False
         self.bright_src = GLib.timeout_add(80, write)
+
+    # ---- notification center (mako) -----------------------------------------------------------------------------------
+    def build_notifications(self, right):
+        """A bell with an unread badge and the flyout of recent notifications. mako keeps them; this only reads them
+        (makoctl list / history) when the flyout opens and when a D-Bus message says something arrived or closed."""
+        self.nc_items, self.nc_active, self.nc_dnd = [], set(), False
+        self.nc_seen = {}          # id -> time first noticed here (mako sends no timestamps)
+        self.nc_hidden = set()     # ids the person dismissed from the flyout (mako's history cannot forget them)
+        self.nc_read, self.nc_unread, self.nc_first = 0, 0, True
+        if not shutil.which('makoctl'):
+            return
+        self.nc_img = Gtk.Image.new_from_icon_name('preferences-system-notifications-symbolic')
+        self.nc_badge = Gtk.Label(label='', visible=False, halign=Gtk.Align.END, valign=Gtk.Align.START, can_target=False)
+        self.nc_badge.add_css_class('nc-badge')
+        over = Gtk.Overlay()
+        over.set_child(self.nc_img)
+        over.add_overlay(self.nc_badge)
+        btn = Gtk.MenuButton(tooltip_text='Notifications')
+        btn.add_css_class('tray-btn')
+        btn.set_child(over)
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.add_css_class('ncflyout')
+        pop.connect('show', lambda p: self.fill_notifications(p))
+        btn.set_popover(pop)
+        self.nc_btn, self.nc_pop, self.nc_pending = btn, pop, False
+        right.append(btn)
+
+    def start_notifications(self):
+        """One long-lived dbus-monitor (no polling): a line per Notify call or NotificationClosed signal wakes a
+        debounced refresh. Without dbus-monitor the flyout still refreshes whenever it opens."""
+        if not hasattr(self, 'nc_btn'):
+            return
+        self.nc_procs = []
+        GLib.idle_add(lambda: self.nc_refresh() and False)
+        if not shutil.which('dbus-monitor'):
+            return
+        try:
+            proc = subprocess.Popen(
+                ['dbus-monitor', '--session', "type='method_call',interface='org.freedesktop.Notifications',member='Notify'",
+                 "type='signal',interface='org.freedesktop.Notifications',member='NotificationClosed'"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, text=True)
+        except OSError:
+            return
+        self.nc_procs.append(proc)
+
+        def read():
+            for line in proc.stdout:  # blocks here, idle until D-Bus says something
+                if line.startswith(('method call', 'signal')):
+                    GLib.idle_add(self.nc_wake)
+        threading.Thread(target=read, daemon=True).start()
+
+    def nc_wake(self):
+        if not self.nc_pending:
+            self.nc_pending = True
+
+            def later():
+                self.nc_pending = False
+                self.nc_refresh()
+                return False
+            GLib.timeout_add(250, later)  # a burst of messages is one refresh
+        return False
+
+    def nc_refresh(self):
+        """Reads mako's current and past notifications and DND mode off the main thread, then applies them."""
+        if getattr(self, 'nc_busy', False):
+            self.nc_again = True
+            return False
+        self.nc_busy, self.nc_again = True, False
+
+        def work():
+            cur, old = self.capture(['makoctl', 'list']), self.capture(['makoctl', 'history'])
+            modes = self.capture(['makoctl', 'mode'])
+            GLib.idle_add(self.nc_apply, cur, old, modes)
+        threading.Thread(target=work, daemon=True).start()
+        return False
+
+    def nc_apply(self, cur, old, modes):
+        self.nc_busy = False
+        if self.nc_again:
+            GLib.idle_add(self.nc_refresh)
+        if cur is None and old is None:
+            return False  # mako did not answer: keep what we had
+        active = parse_mako(cur or '')
+        items = {n['id']: n for n in parse_mako(old or '')}
+        items.update({n['id']: n for n in active})
+        self.nc_active = {n['id'] for n in active}
+        now = None if self.nc_first else time.time()  # what was already there when the shell started has no known time
+        for nid in items:
+            self.nc_seen.setdefault(nid, now)
+        self.nc_first = False
+        # ids are mako's counter: after a mako restart they start over, so forget what was read or dismissed before.
+        top = max(items, default=0)
+        if top < self.nc_read:
+            self.nc_read, self.nc_hidden = 0, set()
+        self.nc_items = sorted((n for i, n in items.items() if i not in self.nc_hidden), key=lambda n: -n['id'])
+        if modes is not None:
+            self.nc_dnd = 'do-not-disturb' in modes.split()
+        if self.nc_pop.is_visible():
+            self.nc_read = top
+            self.nc_render()
+        self.nc_update_badge()
+        return False
+
+    def nc_update_badge(self):
+        n = sum(1 for i in self.nc_items if i['id'] > self.nc_read)
+        if n != self.nc_unread:  # the bar only redraws when something really changed
+            self.nc_unread = n
+            self.nc_badge.set_label('9+' if n > 9 else str(n))
+            self.nc_badge.set_visible(n > 0)
+        name = 'notifications-disabled-symbolic' if self.nc_dnd else 'preferences-system-notifications-symbolic'
+        if getattr(self, 'nc_icon', None) != name:
+            self.nc_icon = name
+            self.nc_img.set_from_icon_name(name)
+            self.nc_btn.set_tooltip_text('Notifications (Do Not Disturb)' if self.nc_dnd else 'Notifications')
+
+    def fill_notifications(self, pop):
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_size_request(340, -1)
+        head = Gtk.Box(spacing=8)
+        title = Gtk.Label(label='Notifications', xalign=0, hexpand=True)
+        title.add_css_class('menu-head')
+        head.append(title)
+        self.nc_clear = Gtk.Button(label='Clear all')
+        self.nc_clear.add_css_class('vol-link')
+        self.nc_clear.connect('clicked', lambda *_: self.nc_clear_all())
+        head.append(self.nc_clear)
+        col.append(head)
+        self.nc_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        scroller = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=380,
+                                      hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller.set_child(self.nc_list)
+        col.append(scroller)
+        sep = Gtk.Box()
+        sep.add_css_class('menu-sep')
+        col.append(sep)
+        dnd = Gtk.Box(spacing=8, margin_start=10, margin_end=10, margin_top=2, margin_bottom=4)
+        dnd.append(Gtk.Label(label='Do Not Disturb', xalign=0, hexpand=True))
+        self.nc_switch = Gtk.Switch(active=self.nc_dnd, valign=Gtk.Align.CENTER)
+        self.nc_switch.connect('state-set', self.nc_set_dnd)
+        dnd.append(self.nc_switch)
+        col.append(dnd)
+        pop.set_child(col)
+        self.nc_read = max((i['id'] for i in self.nc_items), default=self.nc_read)
+        self.nc_update_badge()
+        self.nc_render()
+        self.nc_refresh()  # what arrived since the last message
+
+    def nc_render(self):
+        lst = self.nc_list
+        while (c := lst.get_first_child()):
+            lst.remove(c)
+        self.nc_clear.set_sensitive(bool(self.nc_items))
+        if self.nc_switch.get_active() != self.nc_dnd:
+            self.nc_switch.set_active(self.nc_dnd)
+        if not self.nc_items:
+            lst.append(Gtk.Label(label='No new notifications', xalign=0, margin_start=10, margin_top=8, margin_bottom=10))
+            return
+        for n in self.nc_items:
+            row = Gtk.Box(spacing=2)
+            row.add_css_class('nc-row')
+            b = Gtk.Button(hexpand=True)
+            b.add_css_class('menu-row')
+            inner = Gtk.Box(spacing=10)
+            inner.append(self.nc_icon_for(n))
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.CENTER)
+            line = Gtk.Box(spacing=6)
+            name = Gtk.Label(label=n['summary'] or n['app-name'], xalign=0, hexpand=True, ellipsize=3, max_width_chars=28)
+            name.add_css_class('nc-title')
+            line.append(name)
+            when = Gtk.Label(label=ago(self.nc_seen.get(n['id'])), xalign=1)
+            when.add_css_class('nc-time')
+            line.append(when)
+            text.append(line)
+            if n['body']:
+                body = Gtk.Label(label=n['body'], xalign=0, wrap=True, lines=2, ellipsize=3, max_width_chars=34)
+                body.add_css_class('nc-body')
+                text.append(body)
+            inner.append(text)
+            b.set_child(inner)
+            b.connect('clicked', lambda *_a, n=n: self.nc_open(n))
+            row.append(b)
+            x = Gtk.Button(tooltip_text='Dismiss', valign=Gtk.Align.CENTER)
+            x.add_css_class('nc-x')
+            x.set_child(Gtk.Image.new_from_icon_name('window-close-symbolic'))
+            x.connect('clicked', lambda *_a, i=n['id']: self.nc_dismiss(i))
+            row.append(x)
+            lst.append(row)
+
+    @staticmethod
+    def nc_app(n):
+        return app_for_id((n['desktop-entry'] or n['app-name']).removesuffix('.desktop').lower())
+
+    def nc_icon_for(self, n):
+        icon = n['app-icon']
+        if icon.startswith('file://'):
+            icon = icon[7:]
+        if icon.startswith('/') and os.path.exists(icon):
+            img = Gtk.Image.new_from_file(icon)
+        elif icon:
+            img = Gtk.Image.new_from_icon_name(icon)
+        else:
+            app = self.nc_app(n)
+            img = app_icon_widget(app, 32) if app else Gtk.Image.new_from_icon_name('dialog-information-symbolic')
+        img.set_pixel_size(32)
+        return img
+
+    def nc_open(self, n):
+        """Click: do what the notification offers while mako still holds it; also bring its app forward (its window,
+        else start it when mako no longer has the notification to act on)."""
+        self.nc_pop.popdown()
+        live = n['id'] in self.nc_active
+        if live:
+            self.run_bg(['makoctl', 'invoke', '-n', str(n['id'])])
+        keys = {k.removesuffix('.desktop').lower() for k in (n['desktop-entry'], n['app-name']) if k}
+        wins = self.windows_of(keys) if keys else []
+        if wins:
+            w = wins[0]
+            if w.get('minimized'):
+                self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
+            self.act('window-rules/focus-view', {'id': w['id']})
+        elif not live and (app := self.nc_app(n)):
+            app.launch([], None)
+        self.nc_dismiss(n['id'])
+
+    def nc_dismiss(self, nid):
+        self.nc_hidden.add(nid)
+        if nid in self.nc_active:
+            self.run_bg(['makoctl', 'dismiss', '-n', str(nid)])
+        self.nc_items = [i for i in self.nc_items if i['id'] != nid]
+        self.nc_update_badge()
+        if self.nc_pop.is_visible():
+            self.nc_render()
+
+    def nc_clear_all(self):
+        self.nc_hidden.update(i['id'] for i in self.nc_items)
+        self.run_bg(['makoctl', 'dismiss', '-a'])
+        self.nc_items = []
+        self.nc_update_badge()
+        self.nc_render()
+
+    def nc_set_dnd(self, _switch, on):
+        if on != self.nc_dnd:  # not when the flyout merely shows the current mode
+            self.nc_dnd = on
+            self.run_bg(['makoctl', 'mode', '-a' if on else '-r', 'do-not-disturb'])
+            self.nc_update_badge()
+        return False
 
     # ---- volume and network ----------------------------------------------------------------------------------------
     @staticmethod
