@@ -117,7 +117,20 @@ class Explorer:
         nav.append(self.fwd_btn)
         self.crumbs = Gtk.Box(hexpand=True)
         self.crumbs.add_css_class('ex-crumbs')
-        nav.append(self.crumbs)
+        # Clicking the empty part of the address bar turns it into a box to type a place in, as in Explorer.
+        self.addr = Gtk.Entry(hexpand=True)
+        self.addr.add_css_class('ex-search')
+        self.addr.connect('activate', lambda e: self.typed_place(e.get_text()))
+        focus = Gtk.EventControllerFocus()
+        focus.connect('leave', lambda *_: self.addr_stack.set_visible_child(self.crumbs))
+        self.addr.add_controller(focus)
+        self.addr_stack = Gtk.Stack(hexpand=True)
+        self.addr_stack.add_child(self.crumbs)
+        self.addr_stack.add_child(self.addr)
+        bg = Gtk.GestureClick()
+        bg.connect('released', lambda *_: self.edit_place())
+        self.crumbs.add_controller(bg)
+        nav.append(self.addr_stack)
         self.search = Gtk.SearchEntry(placeholder_text='Search', width_chars=22)
         self.search.add_css_class('ex-search')
         self.search.connect('search-changed', lambda e: (setattr(self, 'query', e.get_text().lower()), self.fill()))
@@ -269,6 +282,25 @@ class Explorer:
         if not getattr(self, 'fill_pending', False):
             self.fill_pending = True
             GLib.timeout_add(250, lambda: (setattr(self, 'fill_pending', False), self.fill(), False)[2])
+
+    def edit_place(self):
+        if self.addr_stack.get_visible_child() is self.addr:
+            return
+        self.addr.set_text(os.path.expanduser('~') if self.loc == COMPUTER else self.loc)
+        self.addr_stack.set_visible_child(self.addr)
+        GLib.idle_add(lambda: (self.addr.grab_focus(), self.addr.select_region(0, -1), False)[2])
+
+    def typed_place(self, text):
+        path = os.path.expanduser(text.strip())
+        self.addr_stack.set_visible_child(self.crumbs)
+        if text.strip().lower() in ('my computer', 'computer'):
+            self.go(COMPUTER)
+        elif os.path.isdir(path):
+            self.go(os.path.abspath(path))
+        elif os.path.isfile(path):
+            self.open_item(path)
+        else:
+            self.alert(f'MWX 7 can\u2019t find \u201c{text.strip()}\u201d.', 'Check the spelling and try again.')
 
     def title_of(self, path):
         if path == COMPUTER:
