@@ -250,13 +250,16 @@ class Settings(Gtk.Application):
         # Right-click on the title bar: Windows 7's window menu.
         menu = Gio.Menu()
         for label, name in (('Restore', 'restore'), ('Minimize', 'minimize'), ('Maximize', 'maximize'), ('Close', 'close')):
-            menu.append(label, 'win.wm-' + name)
+            menu.append(label, 'wmenu.wm-' + name)
         acts = {'restore': lambda: win.unmaximize(), 'minimize': win.minimize, 'maximize': win.maximize,
                 'close': win.close}
+        # An action group of its own: dialogs are plain Gtk.Windows, which have no add_action.
+        group = Gio.SimpleActionGroup()
         for name, fn in acts.items():
             a = Gio.SimpleAction.new('wm-' + name, None)
             a.connect('activate', lambda *_a, f=fn: f())
-            win.add_action(a)
+            group.add_action(a)
+        win.insert_action_group('wmenu', group)
         pop = Gtk.PopoverMenu(menu_model=menu, has_arrow=False)
         pop.set_parent(bar)
         click = Gtk.GestureClick(button=3)
@@ -266,8 +269,8 @@ class Settings(Gtk.Application):
         def on_right(g, _n, x, y):
             g.set_state(Gtk.EventSequenceState.CLAIMED)
             maxed = win.is_maximized()
-            win.lookup_action('wm-restore').set_enabled(maxed)
-            win.lookup_action('wm-maximize').set_enabled(not maxed)
+            group.lookup_action('wm-restore').set_enabled(maxed)
+            group.lookup_action('wm-maximize').set_enabled(not maxed)
             r = Gdk.Rectangle()
             r.x, r.y, r.width, r.height = int(x), int(y), 1, 1
             pop.set_pointing_to(r)

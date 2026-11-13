@@ -30,6 +30,14 @@ def remember(path):
         pass
 
 
+def dialog(parent, title, icon_name='about'):
+    """A small window of an MWX 7 app (Properties, Find, Rename...): the same Aero title bar as its app, not GTK's."""
+    w = Gtk.Window(title=title, transient_for=parent, resizable=False)
+    w.add_css_class('mwx7-settings')
+    w.set_titlebar(base.Settings.titlebar(w, title, icon_name))
+    return w
+
+
 def css(text, priority=1):
     p = Gtk.CssProvider()
     p.load_from_data(text.encode())

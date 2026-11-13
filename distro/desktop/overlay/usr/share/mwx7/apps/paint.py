@@ -713,7 +713,7 @@ class Paint:
         self.touched()
 
     def canvas_dialog(self):
-        d = Gtk.Window(title='Canvas Size', transient_for=self.win, modal=True, resizable=False)
+        d = mwx7ui.dialog(self.win, 'Canvas Size', 'paint')
         grid = Gtk.Grid(row_spacing=8, column_spacing=8, margin_top=14, margin_bottom=14, margin_start=16, margin_end=16)
         wv = Gtk.SpinButton.new_with_range(1, 8000, 1)
         hv = Gtk.SpinButton.new_with_range(1, 8000, 1)
