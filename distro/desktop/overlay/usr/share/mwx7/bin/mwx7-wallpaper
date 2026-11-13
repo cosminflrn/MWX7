@@ -1,5 +1,9 @@
 #!/bin/sh
 # Shows the wallpaper chosen in MWX 7 Settings (or the default meadow).
+# The desktop layer paints the wallpaper itself; swaybg is only the fallback while it is not running (and stays out of the
+# way of a swaybg that is already up). The layer stops swaybg after its own first frame.
+pgrep -u "$(id -u)" -f 'mwx7/desktop/desktop.py' >/dev/null && exit 0
+pgrep -u "$(id -u)" -x swaybg >/dev/null && exit 0
 W=/usr/share/mwx7/wallpaper.jpg
 F="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/wallpaper"
 [ -r "$F" ] && [ -r "$(cat "$F")" ] && W="$(cat "$F")"

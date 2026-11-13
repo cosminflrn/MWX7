@@ -1,7 +1,7 @@
 """MWX 7 Settings: the system settings as an MWX 7 app (GTK 4).
 
 Most settings live in the user's Wayfire config (~/.config/mwx7/wayfire.ini), which Wayfire reloads by itself, so
-changes apply immediately. The wallpaper is a separate swaybg process that this app restarts.
+changes apply immediately. The wallpaper is painted by the desktop layer, which follows the wallpaper file (swaybg is only the fallback).
 """
 import json
 import os
@@ -501,6 +501,9 @@ class Settings(Gtk.Application):
         os.makedirs(CONF_DIR, exist_ok=True)
         with open(WALL_FILE, 'w') as f:
             f.write(path + '\n')
+        # The desktop layer paints the wallpaper itself and follows the file. swaybg is only the fallback when it is not running.
+        if subprocess.run(['pgrep', '-u', str(os.getuid()), '-f', 'mwx7/desktop/desktop.py'], capture_output=True).returncode == 0:
+            return
         # Start the new wallpaper before stopping the old one, so the desktop never flashes empty.
         old = run(['pgrep', '-u', str(os.getuid()), '-x', 'swaybg']).split()
         subprocess.Popen(['swaybg', '-i', path, '-m', 'fill'], start_new_session=True,

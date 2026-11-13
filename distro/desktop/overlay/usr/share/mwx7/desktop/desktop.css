@@ -1,5 +1,8 @@
-/* MWX 7 desktop layer: transparent so the wallpaper (background layer) shows through. */
-window.desktop-layer { background: transparent; }
+/* MWX 7 desktop layer. Transparent until the still wallpaper is ready and while the live wallpaper (background layer)
+   plays; otherwise a solid colour under the wallpaper picture, which makes GTK declare the surface opaque to the compositor
+   (opaque region only when the window background is fully opaque, with no radius or shadow). */
+window.desktop-layer { background: transparent; box-shadow: none; border-radius: 0; }
+window.desktop-layer.opaque { background-color: #10243f; }
 
 /* Same look as the concept's .desk-icon: 48px icon, white label with a soft dark shadow, pale-blue glass selection. */
 .desk-icon {
