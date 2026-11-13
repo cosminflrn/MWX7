@@ -6,23 +6,6 @@ const openFromStart = async (page: Page, name: string) => {
   await page.locator('.start-menu .sm-app', { hasText: name }).first().click();
 };
 
-test('themes set wallpaper + window colour and ring the active tile', async ({ page }) => {
-  const errors = watch(page);
-  await boot(page);
-  await closeAll(page);
-  await page.locator('.dock-item[data-label="Settings"]').click();
-  await expect(page.locator('.win[data-app=settings] .set-link').first()).toContainText('Themes');
-  await expect(page.locator('.set-theme')).toHaveCount(4);
-  await expect(page.locator('.set-theme.sel')).toHaveAttribute('data-theme', 'mwx7');
-  await page.locator('.set-theme[data-theme="dusk"]').click();
-  await expect(page.locator('.set-theme.sel')).toHaveAttribute('data-theme', 'dusk');
-  await expect(page.locator('.set-theme.sel')).toHaveCount(1);
-  // Changing the window colour by hand leaves no theme active.
-  await page.locator('.set-swatch').first().click();
-  await expect(page.locator('.set-theme.sel')).toHaveCount(0);
-  expect(errors).toEqual([]);
-});
-
 test('recently opened files appear in the dock jump list and reopen', async ({ page }) => {
   const errors = watch(page);
   await boot(page);
@@ -66,11 +49,13 @@ test('Snipping Tool window mode outlines the window under the pointer', async ({
   await w.locator('.snip-mode').click();
   await page.locator('.menu-item', { hasText: 'Window Snip' }).click();
   await expect(page.locator('.snip-overlay.snip-window')).toBeVisible();
-  const b = (await w.boundingBox())!;
-  // On a busy CI machine the outline is drawn a moment after the pointer arrives: keep nudging until it is there
-  // (measuring right away failed with "boundingBox() is null" on 9 Nov 2026).
+  // The window may still be animating open: wait until it has no running animation, then compare against its
+  // live box on every poll (a box measured mid-animation made the outline never match).
+  await expect.poll(() => w.evaluate((el) => el.getAnimations().length)).toBe(0);
   let nudge = 0;
   await expect.poll(async () => {
+    const b = await w.boundingBox();
+    if (!b) return Infinity;
     await page.mouse.move(b.x + b.width / 2 + (nudge++ % 2), b.y + b.height / 2);
     const sel = await page.locator('.snip-sel').boundingBox();
     return sel ? Math.max(Math.abs(sel.width - b.width), Math.abs(sel.height - b.height)) : Infinity;

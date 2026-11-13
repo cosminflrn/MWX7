@@ -1,4 +1,4 @@
-/* Desktop gadgets (Win7 style). Between desktop icons and windows. */
+/* Desktop widgets (square, on a grid). Between desktop icons and windows. */
 #gadgets {
   position: absolute;
   inset: 0;
@@ -11,7 +11,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  width: 148px;
+  width: 176px;
+  height: 176px;
   box-sizing: border-box;
   pointer-events: auto;
   user-select: none;
@@ -37,7 +38,7 @@
 .gdg-art svg { display: block; width: 100%; height: auto; }
 .gdg-art { pointer-events: none; }
 
-.gdg-clock { height: 148px; padding: 8px; }
+.gdg-clock { padding: 8px; }
 .gdg-clock .gdg-clock-art { filter: drop-shadow(0 2px 3px rgba(0, 10, 30, 0.45)); }
 .gdg-face { position: relative; width: 100%; height: 100%; }
 .gdg-face > svg { width: 100%; height: 100%; display: block; }
@@ -45,7 +46,7 @@
 @keyframes gdg-sweep { to { transform: rotate(360deg); } }
 .gdg .gdg-h { transform-origin: 50px 50px; }
 
-.gdg-cal { height: 112px; padding: 0; }
+.gdg-cal { padding: 0; }
 .gdg-cal-page {
   position: absolute;
   inset: 8px;
@@ -71,14 +72,14 @@
 .gdg-cal-day { font-size: 42px; line-height: 46px; font-weight: 300; margin-top: 4px; }
 .gdg-cal-wk { font-size: 11px; color: #5b6c82; }
 
-.gdg-cpu { height: 106px; padding: 8px 6px; }
+.gdg-cpu { padding: 8px 6px; display: flex; flex-direction: column; justify-content: center; }
 .gdg-dials { position: relative; display: flex; gap: 2px; }
 .gdg-dial { position: relative; flex: 1; text-align: center; }
 .gdg-dial svg { display: block; width: 100%; filter: drop-shadow(0 1px 2px rgba(0, 10, 30, 0.5)); }
 .gdg-dial-val { margin-top: -2px; font-size: 11px; font-variant-numeric: tabular-nums; color: #d7e9ff; }
 .gdg .gdg-needle { transform-origin: 30px 32px; transform: rotate(-125deg); transition: transform 0.9s cubic-bezier(.3, .9, .3, 1); }
 
-.gdg-wx { height: 108px; padding: 10px 12px; }
+.gdg-wx { padding: 10px 12px; display: flex; flex-direction: column; justify-content: center; }
 .gdg-wx-row { position: relative; display: flex; align-items: center; justify-content: space-between; }
 .gdg-wx-art { width: 62px; }
 .gdg-wx-temp { font-size: 30px; font-weight: 300; line-height: 1; text-shadow: 0 1px 2px rgba(0, 10, 30, 0.5); }

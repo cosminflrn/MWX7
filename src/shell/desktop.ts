@@ -64,7 +64,7 @@ export function mountDesktop(desktop: HTMLElement, iconLayer: HTMLElement): void
         { separator: true },
         { label: 'New Folder', icon: menuIcon('new-folder'), action: () => void createOnDesktop('New folder', true) },
         { label: 'New Text Document', icon: menuIcon('new-file'), action: () => void createOnDesktop('New Text Document.txt', false) },
-        { label: gadgetsShown() ? 'Hide Gadgets' : 'Show Gadgets', icon: menuIcon('gadgets'), action: () => toggleGadgets() },
+        { label: gadgetsShown() ? 'Hide Widgets' : 'Show Widgets', icon: menuIcon('gadgets'), action: () => toggleGadgets() },
         { separator: true },
         { label: 'Show Desktop', icon: menuIcon('desktop'), action: () => showDesktop() },
         { label: 'Overview', icon: menuIcon('maximize'), action: () => openOverview() },

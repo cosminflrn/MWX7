@@ -15,7 +15,7 @@ const defaults: Settings = {
   glassColor: '#1e64dc',
   glassIntensity: 0,
   clock24: true,
-  clockSeconds: true,
+  clockSeconds: false,
   dockMagnify: true,
   dockSize: 'medium',
   showDesktopIcons: true,

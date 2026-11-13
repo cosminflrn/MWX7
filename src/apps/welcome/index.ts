@@ -5,7 +5,7 @@ import { h } from '../../ui/dom';
 import './welcome.css';
 
 // Duplicated from apps/about (apps may not import each other); keep in sync on release.
-const VERSION = '1.10.0';
+const VERSION = '1.14.0';
 const BASE = import.meta.env.BASE_URL;
 // J.S. Bach, Aria da Capo (Goldberg Variations), Kimiko Ishizaka, CC0: a real piano recording, see media/CREDITS.md
 const MUSIC = `${BASE}media/music/goldberg-aria-da-capo.ogg`;
@@ -46,7 +46,6 @@ const buildSlides = (): Slide[] => [
       ['Dock', 'Your apps at the bottom; icons grow as you point at them.'],
       ['Start', 'All programs and instant search in one menu.'],
       ['Overview', 'The button in the top bar lays every window out at once.'],
-      ['Aero Peek', 'Point at a running app in the dock to preview its windows.'],
     ],
     art: `<div class="wl-a2"><div class="wl-mini"><div class="wl-mini-bar"><i></i><i></i><i></i></div>
       <div class="wl-mini-win w1"><b></b></div><div class="wl-mini-win w2"><b></b></div>
@@ -70,7 +69,7 @@ const buildSlides = (): Slide[] => [
     points: [
       ['Wallpapers', native() ? 'Meadows, mountains, beaches and more.' : 'Live video backgrounds of meadow and mountains.'],
       ['Window Color', 'Tint the glass and set its intensity.'],
-      ['Gadgets', 'Clock, calendar and more, right on the desktop.'],
+      ['Widgets', 'Clock, calendar and more, right on the desktop.'],
     ],
     art: `<div class="wl-a4"><div class="wl-shot"><img src="${BASE}media/wallpapers/meadow-thumb.jpg" alt="" draggable="false"><img src="${BASE}media/wallpapers/sierra-thumb.jpg" alt="" draggable="false"></div>
       <div class="wl-sw"><i style="--c:#3d8ae0"></i><i style="--c:#35b0a0"></i><i style="--c:#8a63d2"></i><i style="--c:#e06a8a"></i><i style="--c:#e8a53a"></i></div>

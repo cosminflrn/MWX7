@@ -457,7 +457,7 @@ function copyOf(w: Win, scroll: ScrollMap): HTMLElement {
     if (srcAll[i]?.matches(':hover')) n.classList.add('is-hover');
   });
   c.removeAttribute('id');
-  c.classList.remove('anim', 'peek-target');
+  c.classList.remove('anim');
   // Copies keep the real backdrop blur, so the glass looks exactly like the window's. Their strips add up
   // to one window's area, so the GPU cost is about that of the window itself.
   Object.assign(c.style, {
@@ -946,12 +946,6 @@ function restore(w: Win): void {
   // Focused from the first frame: the copies wear the active look the window will have.
   w.el.classList.add('active');
   w.el.getAnimations().forEach((a) => a.cancel());
-  // Restoring from an Aero Peek thumbnail: Peek is already showing the window in place, so (like Win7)
-  // it simply stays.
-  if (!prev && w.el.style.display !== 'none') {
-    w.el.style.visibility = '';
-    return;
-  }
   w.el.style.display = '';
   w.el.style.visibility = 'hidden';
   applyScroll(w.el, scroll);

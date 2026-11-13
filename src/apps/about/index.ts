@@ -4,18 +4,16 @@ import type { AppManifest } from '../../core/types';
 import { h } from '../../ui/dom';
 import './about.css';
 
-export const VERSION = '1.10.0';
+export const VERSION = '1.14.0';
 
 /** Latest changes shown in About; keep to a few short lines and mirror CHANGELOG.md. */
 const WHATS_NEW = [
-  'MWX 7 OS: first-start setup that puts MWX 7 on the disk in minutes, optional password',
-  'MWX 7 OS: updates from Settings, no new ISO needed',
-  'MWX 7 OS: no status bar freezes, smaller and faster to start',
-  'MWX 7 OS: installer with disk encryption, MWX 7 logon screen',
-  'MWX 7 OS: genie minimize into the dock, running apps in the dock',
-  'MWX 7 OS: boot splash, Aero glass window frames with traffic lights, Settings app',
-  'MWX 7 OS: Start menu with search, volume and network in the status bar',
-  'Notifications at the top right; Files and other apps in the MWX 7 look',
+  'Smoother: Animations setting (Full / Reduced / Off) and less to draw',
+  'Start menu search finds apps, Settings pages and files; the clock opens a calendar',
+  'Notification center in the bar with history and Do Not Disturb',
+  'Get Apps: every Flathub app with categories and updates',
+  'My Computer, Media Player, Paint, Notepad, Calculator and Photos grew up',
+  'Widgets are square and snap to a grid; the bar clock has no seconds by default',
 ];
 
 export const impl: Pick<AppManifest, 'mount'> = {
