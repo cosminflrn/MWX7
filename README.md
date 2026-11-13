@@ -25,7 +25,7 @@ MWX 7 is a vanilla-TypeScript mockup operating system that blends the best of ma
 ### Desktop & shell
 - Power button, BIOS memory test with beep, boot logo, first-run setup and logon screen
 - Glass windows with tintable blur, snap to edges, center on double-click, full screen that merges the title bar into the top bar
-- Genie minimize into the dock, Aero Peek, show desktop, Overview of all windows
+- Genie minimize into the dock, show desktop, Overview of all windows
 - Dock with a Trash, Start menu, Search, calendar flyout, notifications, desktop widgets and icons
 - MWX Commander, a DOS-style two-panel file manager
 

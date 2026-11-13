@@ -3,13 +3,14 @@ import { MENUBAR_H } from '../core/wm';
 import '../styles/gadgets.css';
 
 /**
- * Win7-style desktop gadgets: glossy glass cards, draggable with the mouse, session-only positions.
+ * Win7-style desktop widgets: glossy glass cards, draggable with the mouse, session-only positions.
  * They sit between the desktop icons and the windows. Only one rAF loop exists (clock hand + frame timing),
- * and it stops while the gadgets are hidden or the tab is in the background.
+ * and it stops while the widgets are hidden or the tab is in the background.
  */
 
-const W = 148;
-const GAP = 10;
+// Square, the size of 2×2 desktop icon cells (CELL_W 96 × CELL_H 92), less the gap between neighbours.
+const W = 176;
+const GAP = 8;
 // Right under the status bar, 8px gap (no dead space at the top).
 const TOP = MENUBAR_H + 8;
 const RIGHT = 16;
@@ -249,21 +250,15 @@ export function mountGadgets(desktop: HTMLElement): void {
 
   /**
    * Nearest free slot to (x, y) for `el`, like desktop icons snapping to the nearest free cell: x snaps to a column,
-   * y to a 10px grid or flush against a neighbour (so stacks stay tidy). Other cards never move.
+   * y to a row of the grid. Other cards never move.
    */
   const nearestSlot = (el: HTMLElement, x: number, y: number, others: HTMLElement[]) => {
     const hh = el.offsetHeight;
     const lo = TOP;
     const hi = maxY(hh);
     const ys = new Set<number>();
-    for (let v = lo; v <= hi; v += 10) ys.add(v);
-    ys.add(hi);
-    for (const o of others) {
-      const p = pos.get(o)!;
-      ys.add(p.y + o.offsetHeight + GAP);
-      ys.add(p.y - hh - GAP);
-      ys.add(p.y);
-    }
+    // Widgets are square, so they live on a strict grid of rows below the status bar.
+    for (let v = lo; v <= hi; v += hh + GAP) ys.add(v);
     let best: { col: number; y: number } | null = null;
     let bestD = Infinity;
     for (let col = 0; col <= maxCol(); col++) {

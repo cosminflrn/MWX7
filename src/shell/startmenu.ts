@@ -25,7 +25,7 @@ export function mountStartMenu(): void {
    * the dock — just above fully magnified icons. It only moves when the
    * pointer enters or leaves the dock, never while gliding along it.
    */
-  // Clears fully magnified icons; their labels and Aero Peek previews are layered above the menu instead.
+  // Clears fully magnified icons; their labels are layered above the menu instead.
   const RAISE = 30;
   const place = () => {
     if (!el) return;
@@ -154,7 +154,7 @@ export function mountStartMenu(): void {
     (e) => {
       const t = e.target as HTMLElement;
       // Clicking a window or the dock hands focus to that instead.
-      if (el && !el.contains(t) && !t.closest('.dock-orb')) close(!t.closest('.win, #dock, .peek-pop'));
+      if (el && !el.contains(t) && !t.closest('.dock-orb')) close(!t.closest('.win, #dock'));
     },
     true,
   );

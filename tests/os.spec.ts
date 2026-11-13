@@ -10,6 +10,7 @@ test('boots to the desktop with the Welcome tour and no errors', async ({ page }
 });
 
 test('every app opens, goes full screen, minimizes, restores and closes', async ({ page }) => {
+  test.setTimeout(240_000); // one pass per installed app, each with animations
   const errors = watch(page);
   await boot(page);
   await closeAll(page);

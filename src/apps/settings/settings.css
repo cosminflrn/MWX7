@@ -160,6 +160,3 @@
 .set-segbtn.sel { background: linear-gradient(#cfe4f8, #a9d0f2); border-color: #2c628b; position: relative; }
 
 /* ---- Themes ---- */
-.set-theme-glass { display: block; height: 100%; width: 100%; opacity: 0; }
-.set-theme .set-wall-thumb { position: relative; overflow: hidden; }
-.set-theme .set-theme-glass { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; width: auto; opacity: 0.85; border-top: 1px solid rgba(255, 255, 255, 0.6); }

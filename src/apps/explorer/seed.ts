@@ -63,7 +63,6 @@ const NOTES: Record<string, string> = {
   '/Documents/Ideas for MWX 7.txt': [
     'Ideas for MWX 7',
     '',
-    '  * Peek: hover a dock thumbnail to preview the window',
     '  * Preview: double-click a picture in My Computer',
     '  * Stacks: group a folder into a fan above the dock',
     '  * A slow, calm screensaver drawn from the wallpaper palette',

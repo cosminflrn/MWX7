@@ -10,7 +10,6 @@ import { notify } from '../core/os';
 import { play } from '../core/sound';
 import { confirmDialog } from '../ui/dialog';
 import { h } from '../ui/dom';
-import { attachPeek } from './peek';
 import { menuIcon, openMenu } from '../ui/menu';
 
 /**
@@ -126,7 +125,6 @@ export function mountDock(dock: HTMLElement): void {
       h('span', { class: 'dock-icon', html: app.icon }),
       h('span', { class: 'dock-dot' }),
     );
-    attachPeek(btn, app.id);
     return btn;
   };
 

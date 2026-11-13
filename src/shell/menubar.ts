@@ -8,7 +8,6 @@ import { h } from '../ui/dom';
 import { closeMenu, isMenuOpen, menuIcon, openMenu } from '../ui/menu';
 import { toggleCalendar } from './calendar';
 import { openOverview } from './overview';
-import { logOff, shutDown } from './screens';
 
 /** Two overlapping windows: the Overview (all windows at once) glyph. */
 const DESKTOP_GLYPH =
@@ -23,20 +22,6 @@ export function mountMenubar(bar: HTMLElement): void {
   bar.append(left, right);
 
   let openLabel: string | null = null;
-
-  const systemMenu: MenuDef = {
-    label: '◆',
-    items: [
-      { label: 'About MWX 7', icon: menuIcon('info'), action: () => launch('about') },
-      { separator: true },
-      { label: 'Settings…', icon: menuIcon('settings'), action: () => launch('settings') },
-      { label: 'Search', icon: menuIcon('search'), action: () => bus.emit('search:open', {}) },
-      { label: 'Overview', icon: OVERVIEW_GLYPH, action: () => openOverview() },
-      { separator: true },
-      { label: 'Log Off…', icon: menuIcon('logoff'), action: () => void logOff() },
-      { label: 'Shut Down…', icon: menuIcon('shutdown'), action: () => void shutDown() },
-    ],
-  };
 
   const showMenu = (btn: HTMLElement, menu: MenuDef) => {
     const r = btn.getBoundingClientRect();
@@ -65,14 +50,15 @@ export function mountMenubar(bar: HTMLElement): void {
     return btn;
   };
 
-  // The logo slot holds the MWX orb and, in full screen, the app's own icon; they crossfade.
+  // The logo slot holds the MWX orb on an empty desktop and the focused app's own icon whenever an app is in
+  // front; they crossfade. It is a plain badge, not a button: Start lives in the dock.
   const appIcon = h('span', { class: 'mb-appicon' });
   const logo = h('span', { class: 'mb-logo-stack' }, h('span', { class: 'mb-orb', html: icons.orb }), appIcon);
 
   const render = () => {
     const w = activeWindow();
     left.replaceChildren();
-    left.append(menuButton(systemMenu, 'mb-logo', logo));
+    left.append(h('span', { class: 'mb-logo', 'aria-hidden': 'true' }, logo));
     const appName = w ? w.manifest.name : 'Desktop';
     const appMenu: MenuDef = {
       label: appName,
@@ -139,10 +125,12 @@ export function mountMenubar(bar: HTMLElement): void {
   let fsApp = '';
   const morph = () => {
     const w = target();
-    if (w && fsApp !== w.appId) {
-      appIcon.innerHTML = w.manifest.icon;
-      fsApp = w.appId;
+    const front = activeWindow() ?? w;
+    if (front && fsApp !== front.appId) {
+      appIcon.innerHTML = front.manifest.icon;
+      fsApp = front.appId;
     }
+    bar.classList.toggle('app-front', !!front);
     bar.classList.toggle('fs', !!w);
     bar.classList.toggle('fs-inactive', !!w && w !== activeWindow());
   };
@@ -169,25 +157,13 @@ export function mountMenubar(bar: HTMLElement): void {
     html: OVERVIEW_GLYPH,
     onclick: () => openOverview(),
   });
-  // Show desktop: hover peeks through every window, click minimizes them all (again = bring them back).
-  let peekT = 0;
+  // Show desktop: click minimizes every window (again = bring them back).
   const showDesk = h('button', {
     class: 'mb-item mb-icon',
     title: 'Show desktop',
     'aria-label': 'Show desktop',
     html: DESKTOP_GLYPH,
-    onclick: () => {
-      window.clearTimeout(peekT);
-      document.body.classList.remove('peeking');
-      showDesktop();
-    },
-  });
-  showDesk.addEventListener('pointerenter', () => {
-    peekT = window.setTimeout(() => document.body.classList.add('peeking'), 500);
-  });
-  showDesk.addEventListener('pointerleave', () => {
-    window.clearTimeout(peekT);
-    document.body.classList.remove('peeking');
+    onclick: () => showDesktop(),
   });
   right.append(searchBtn, overviewBtn, showDesk, clock, controls);
 
