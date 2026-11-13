@@ -8,6 +8,7 @@ import os
 import pwd
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import threading
@@ -237,6 +238,12 @@ class Settings(Gtk.Application):
         self.sync_personalize()  # mark the current theme and wallpaper
         root.append(nav)
         root.append(self.stack)
+        # The Sound page polls (input meter, apps list): only while it is on screen and this window is in front.
+        def sound_sync(*_a):
+            self.sound_live(self.stack.get_visible_child_name() == 'sound' and w.is_active())
+        self.stack.connect('notify::visible-child-name', sound_sync)
+        w.connect('notify::is-active', sound_sync)
+        w.connect('close-request', lambda *_a: self.sound_live(False) and False)
         w.set_child(root)
         w.present()
 
@@ -531,73 +538,271 @@ class Settings(Gtk.Application):
 
 
     # ---- Display ----------------------------------------------------------------------------------------------------
+    @staticmethod
+    def read_outputs():
+        """Screens as wlr-randr reports them: [{name, make, model, scale, physical_size, modes: [{width, height, refresh,
+        preferred, current}]}]. `--json` where this wlr-randr has it, else its plain text."""
+        if not shutil.which('wlr-randr'):
+            return []
+        try:
+            data = json.loads(run(['wlr-randr', '--json']) or '[]')
+            if isinstance(data, list) and data:
+                return data
+        except ValueError:
+            pass
+        outs, cur = [], None
+        for line in run(['wlr-randr']).splitlines():
+            if line and not line[0].isspace():
+                cur = {'name': line.split()[0], 'modes': [], 'scale': 1.0}
+                outs.append(cur)
+                continue
+            if cur is None:
+                continue
+            t = line.strip()
+            m = re.match(r'(\d+)x(\d+) px, ([\d.]+) Hz(?: \((.*)\))?', t)
+            if m:
+                flags = (m.group(4) or '').split(', ')
+                cur['modes'].append({'width': int(m.group(1)), 'height': int(m.group(2)), 'refresh': float(m.group(3)),
+                                     'preferred': 'preferred' in flags, 'current': 'current' in flags})
+            elif t.startswith('Scale:'):
+                try:
+                    cur['scale'] = float(t.split(':', 1)[1])
+                except ValueError:
+                    pass
+            elif t.startswith('Make:'):
+                cur['make'] = t.split(':', 1)[1].strip()
+            elif t.startswith('Model:'):
+                cur['model'] = t.split(':', 1)[1].strip()
+        return outs
+
+    @staticmethod
+    def randr(name, mode, scale):
+        """Apply a mode and scale to one screen right now (wlr-randr); True when the compositor accepted it."""
+        w, h, r = mode
+        arg = f'{w}x{h}' + (f'@{r:.3f}Hz' if r else '')
+        try:
+            return subprocess.run(['wlr-randr', '--output', name, '--mode', arg, '--scale', f'{scale:g}'],
+                                  capture_output=True, timeout=10).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def keep_dialog(self, on_keep, on_revert):
+        """"Keep these display settings?": like Windows, goes back by itself after 15 seconds so a screen that shows
+        nothing usable never stays that way."""
+        dlg = self.small_window('Display settings', 'settings')
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=18, margin_bottom=16,
+                      margin_start=20, margin_end=20)
+        box.append(Gtk.Label(label='Keep these display settings?', xalign=0, css_classes=['section']))
+        msg = Gtk.Label(xalign=0, wrap=True, max_width_chars=48)
+        box.append(msg)
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
+        revert = Gtk.Button(label='Revert')
+        keep = Gtk.Button(label='Keep changes', css_classes=['suggested-action'])
+        btns.append(revert)
+        btns.append(keep)
+        box.append(btns)
+        dlg.set_child(box)
+        st = {'left': 15, 'done': False, 'timer': 0}
+
+        def show():
+            msg.set_label(f'Going back to the previous settings in {st["left"]} seconds.')
+
+        def decide(keep_it):
+            # Not tied to the window's destroy signal: every way out (buttons, timeout, close, Settings closing) ends here.
+            if st['done']:
+                return
+            st['done'] = True
+            if st['timer']:
+                GLib.source_remove(st['timer'])
+                st['timer'] = 0
+            (on_keep if keep_it else on_revert)()
+            dlg.destroy()
+
+        def tick():
+            st['left'] -= 1
+            if st['left'] <= 0:
+                st['timer'] = 0
+                decide(False)
+                return False
+            show()
+            return True
+        keep.connect('clicked', lambda _b: decide(True))
+        revert.connect('clicked', lambda _b: decide(False))
+        dlg.connect('close-request', lambda _w: decide(False) and False)
+        parent = self.get_active_window()
+        if parent is not None:
+            parent.connect('close-request', lambda _w: decide(False) and False)
+        show()
+        st['timer'] = GLib.timeout_add_seconds(1, tick)
+        dlg.present()
+
+    def output_controls(self, p, o):
+        """Resolution, refresh rate and size pickers for one screen. A change applies at once, then waits for the
+        15-second "Keep these settings?" answer; only a kept change is written to wayfire.ini."""
+        name = o.get('name', '?')
+        modes = [(m['width'], m['height'], float(m.get('refresh') or 0), bool(m.get('preferred')), bool(m.get('current')))
+                 for m in o.get('modes', [])]
+        p.append(section((f"{o.get('make') or ''} {o.get('model') or ''}".strip() + f' ({name})').strip()))
+        if not modes:
+            p.append(note('This screen reports no modes.'))
+            return
+        sizes = sorted({(m[0], m[1]) for m in modes}, reverse=True)
+        pick = next((m for m in modes if m[4]), modes[0])
+        scales = [1.0, 1.25, 1.5, 1.75, 2.0]
+        try:
+            scale0 = min(scales, key=lambda s: abs(s - float(o.get('scale', 1))))
+        except (TypeError, ValueError):
+            scale0 = 1.0
+        st = {'mode': pick[:3], 'scale': scale0, 'busy': False}
+
+        def rates(size):
+            return sorted({m[2] for m in modes if (m[0], m[1]) == size}, reverse=True)
+
+        def rate_label(r):
+            return (f'{r:.2f}'.rstrip('0').rstrip('.') + ' Hz') if r else 'Default'
+        size_dd = Gtk.DropDown.new_from_strings([f'{w} × {h}' + (' (recommended)' if any(
+            m[3] for m in modes if (m[0], m[1]) == (w, h)) else '') for w, h in sizes])
+        rate_dd = Gtk.DropDown.new_from_strings([rate_label(r) for r in rates(sizes[0])])
+        scale_dd = Gtk.DropDown.new_from_strings([f'{round(s * 100)}%' for s in scales])
+
+        def show(mode, scale):
+            """Put the pickers on a mode without it counting as a change by the person."""
+            st['busy'] = True
+            size = (mode[0], mode[1])
+            size_dd.set_selected(sizes.index(size) if size in sizes else 0)
+            rs = rates(size)
+            rate_dd.set_model(Gtk.StringList.new([rate_label(r) for r in rs]))
+            rate_dd.set_selected(min(range(len(rs)), key=lambda i: abs(rs[i] - mode[2])))
+            scale_dd.set_selected(scales.index(scale))
+            st['busy'] = False
+        show(st['mode'], st['scale'])
+        status = note('')
+
+        def changed(new_mode, new_scale):
+            old_mode, old_scale = st['mode'], st['scale']
+            if (new_mode, new_scale) == (old_mode, old_scale):
+                return
+            if not self.randr(name, new_mode, new_scale):
+                status.set_label('The screen did not accept that setting.')
+                show(old_mode, old_scale)
+                return
+            status.set_label('')
+
+            drops = (size_dd, rate_dd, scale_dd)  # no second change while the question is open
+
+            def keep():
+                for d in drops:
+                    d.set_sensitive(True)
+                st['mode'], st['scale'] = new_mode, new_scale
+                ini_set(f'output:{name}', 'mode', f'{new_mode[0]}x{new_mode[1]}@{int(round(new_mode[2] * 1000))}')
+                ini_set(f'output:{name}', 'scale', f'{new_scale:g}')
+
+            def back():
+                for d in drops:
+                    d.set_sensitive(True)
+                self.randr(name, old_mode, old_scale)
+                show(old_mode, old_scale)
+            for d in drops:
+                d.set_sensitive(False)
+            self.keep_dialog(keep, back)
+
+        def size_changed(d, _p):
+            if st['busy']:
+                return
+            size = sizes[d.get_selected()]
+            rs = rates(size)
+            best = min(rs, key=lambda r: abs(r - st['mode'][2]))  # same refresh rate if the new size has it
+            st['busy'] = True
+            rate_dd.set_model(Gtk.StringList.new([rate_label(r) for r in rs]))
+            rate_dd.set_selected(rs.index(best))
+            st['busy'] = False
+            changed((size[0], size[1], best), st['scale'])
+
+        def rate_changed(d, _p):
+            size = sizes[size_dd.get_selected()]
+            rs = rates(size)
+            if st['busy'] or d.get_selected() >= len(rs):
+                return
+            r = rs[d.get_selected()]
+            changed((size[0], size[1], r), st['scale'])
+        size_dd.connect('notify::selected', size_changed)
+        rate_dd.connect('notify::selected', rate_changed)
+        scale_dd.connect('notify::selected', lambda d, _p: st['busy'] or changed(st['mode'], scales[d.get_selected()]))
+        p.append(field('Resolution', size_dd))
+        p.append(field('Refresh rate', rate_dd))
+        p.append(field('Size of text and apps', scale_dd))
+        p.append(status)
+        # A monitor with tiny text out of the box gets a hint (Wayfire starts every screen at 100%).
+        mm_w = int((o.get('physical_size') or {}).get('width') or 0)
+        if mm_w and st['mode'][0] / (mm_w / 25.4) > 140 and st['scale'] < 1.25:
+            p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
+
     def page_display(self):
         p = page('Display', 'Screen size, text size and night light.')
-        try:
-            outputs = json.loads(run(['wlr-randr', '--json']) or '[]')
-        except ValueError:
-            outputs = []
+        outputs = self.read_outputs()
         if not outputs:
-            p.append(note('No display information is available.'))
-            return p
+            p.append(note('No display information is available here (wlr-randr found no screen).'))
         for o in outputs:
-            name = o.get('name', '?')
-            p.append(section((f"{o.get('make') or ''} {o.get('model') or ''}".strip() + f' ({name})').strip()))
-            modes = []
-            cur = None
-            for m in o.get('modes', []):
-                label = f"{m['width']} × {m['height']}" + (f" at {round(m['refresh'])} Hz" if m.get('refresh', 0) >= 1 else '') + (
-                    ' (recommended)' if m.get('preferred') else '')
-                value = f"{m['width']}x{m['height']}@{int(round(m['refresh'] * 1000))}"
-                if (label, value) not in modes:
-                    modes.append((label, value))
-                if m.get('current'):
-                    cur = value
-            # Highest refresh first within a resolution, so a 144 Hz monitor's best mode is easy to find.
-            modes.sort(key=lambda m: (-int(m[1].split('x')[0]), -int(m[1].split('x')[1].split('@')[0]),
-                                      -int(m[1].split('@')[1])))
-            dd = Gtk.DropDown.new_from_strings([m[0] for m in modes])
-            if cur:
-                dd.set_selected(next((i for i, m in enumerate(modes) if m[1] == cur), 0))
-            dd.connect('notify::selected', lambda d, _p, n=name, ms=modes: ini_set(f'output:{n}', 'mode',
-                                                                               ms[d.get_selected()][1]))
-            p.append(field('Resolution', dd))
-            scales = ['100%', '125%', '150%', '175%', '200%']
-            sd = Gtk.DropDown.new_from_strings(scales)
-            try:
-                sd.set_selected(scales.index(f"{round(float(o.get('scale', 1)) * 100)}%"))
-            except ValueError:
-                pass
-            sd.connect('notify::selected', lambda d, _p, n=name: ini_set(
-                f'output:{n}', 'scale', str(int(scales[d.get_selected()][:-1]) / 100)))
-            p.append(field('Size of text and apps', sd))
-            # A monitor with tiny text out of the box gets a hint (Wayfire starts every screen at 100%).
-            mm_w = int(o.get('physical_size', {}).get('width') or 0)
-            cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
-            if mm_w and cur_w and cur_w / (mm_w / 25.4) > 140 and float(o.get('scale', 1)) < 1.25:
-                p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
+            self.output_controls(p, o)
         self.animations_section(p)
-        # Night light: warmer colours from sunset to sunrise, where the weather widget's city is.
+        self.night_light(p)
+        self.graphics_driver(p)
+        return p
+
+    def night_light(self, p):
+        """Night light: warmer colours from sunset to sunrise (where the weather widget's city is) or between hours of
+        the person's choosing. The flag file's first line holds "custom HH:MM HH:MM" (start, end) for the latter;
+        bin/mwx7-nightlight reads it."""
         p.append(section('Night light'))
         flag = os.path.join(CONF_DIR, 'nightlight')
-        night = Gtk.CheckButton(label='Warmer colors from sunset to sunrise')
+        try:
+            first = open(flag).readline().split()
+        except OSError:
+            first = []
+        custom = len(first) == 3 and first[0] == 'custom'
+        times = [f'{h:02d}:{m:02d}' for h in range(24) for m in (0, 30)]
+        night = Gtk.CheckButton(label='Warmer colors at night')
         night.set_active(os.path.exists(flag))
+        sun = Gtk.CheckButton(label='From sunset to sunrise')
+        hours = Gtk.CheckButton(label='Custom hours', group=sun)
+        (hours if custom else sun).set_active(True)
+        start, end = Gtk.DropDown.new_from_strings(times), Gtk.DropDown.new_from_strings(times)
+        start.set_selected(times.index(first[1]) if custom and first[1] in times else times.index('21:00'))
+        end.set_selected(times.index(first[2]) if custom and first[2] in times else times.index('07:00'))
+        when = Gtk.Box(spacing=8, margin_start=24)
+        when.append(Gtk.Label(label='From'))
+        when.append(start)
+        when.append(Gtk.Label(label='to'))
+        when.append(end)
 
-        def toggled(c):
-            if c.get_active():
+        def apply(*_a):
+            hours.set_sensitive(night.get_active())
+            sun.set_sensitive(night.get_active())
+            when.set_sensitive(night.get_active() and hours.get_active())
+            if night.get_active():
                 os.makedirs(CONF_DIR, exist_ok=True)
-                open(flag, 'w').close()
+                with open(flag, 'w') as f:
+                    if hours.get_active():
+                        f.write(f'custom {times[start.get_selected()]} {times[end.get_selected()]}\n')
                 subprocess.Popen(['/usr/share/mwx7/bin/mwx7-nightlight'], start_new_session=True,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
                 if os.path.exists(flag):
                     os.remove(flag)
                 run(['pkill', '-u', str(os.getuid()), '-x', 'wlsunset'])
-        night.connect('toggled', toggled)
+        apply_later = lambda *_a: apply()
+        night.connect('toggled', apply_later)
+        hours.connect('toggled', apply_later)
+        start.connect('notify::selected', apply_later)
+        end.connect('notify::selected', apply_later)
+        hours.set_sensitive(night.get_active())
+        sun.set_sensitive(night.get_active())
+        when.set_sensitive(night.get_active() and custom)
         p.append(night)
+        p.append(sun)
+        p.append(hours)
+        p.append(when)
         p.append(note('Sunset and sunrise follow the city set on the Desktop page.'))
-        self.graphics_driver(p)
-        return p
 
     ANIM_LEVELS = [('full', 'Full (fades, zoom, genie, hover glow)'), ('reduced', 'Reduced (short fades only)'), ('off', 'Off')]
 
@@ -1008,51 +1213,206 @@ class Settings(Gtk.Application):
         return p
 
     # ---- Sound (PipeWire, through wpctl) --------------------------------------------------------------------------------
-    def page_sound(self):
-        p = page('Sound', 'Volume, where sound plays, and MWX 7\u2019s own sounds.')
-        p.append(section('Volume'))
-        out = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@']).split()
-        try:
-            level = round(float(out[1]) * 100)
-        except (IndexError, ValueError):
-            level = 50
-        vol = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        vol.set_value(level)
-        vol.set_size_request(320, -1)
-        vol.set_draw_value(False)
-        vol.connect('value-changed', lambda s: run(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@',
-                                                    f'{s.get_value() / 100:.2f}']))
-        vol.set_halign(Gtk.Align.START)
-        p.append(vol)
-        mute = Gtk.CheckButton(label='Mute')
-        mute.set_active('[MUTED]' in out)
-        mute.connect('toggled', lambda c: run(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if c.get_active() else '0']))
-        p.append(mute)
-        # Outputs: the "Sinks" part of wpctl status ("│  *   46. Speakers [vol: 0.40]").
-        sinks, cur, in_sinks = [], None, False
-        for line in run(['wpctl', 'status']).splitlines():
-            t = line.strip(' │├└─')
-            if 'Sinks:' in line:
-                in_sinks = True
+    @staticmethod
+    def wpctl_devices(text):
+        """{'Sinks': [(id, name, is_default)], 'Sources': [...]} from `wpctl status` (only its Audio tree)."""
+        found, top, kind = {'Sinks': [], 'Sources': []}, '', None
+        for line in text.splitlines():
+            if line and line[0] not in ' │├└─':
+                top, kind = line.strip(), None
                 continue
-            if in_sinks and (not t or t.endswith(':')):
-                if sinks:
-                    break
+            if not top.startswith('Audio'):
+                continue
+            t = line.strip(' │├└─')
+            if t.endswith(':'):
+                kind = t[:-1]
                 continue
             m = re.match(r'(\*)?\s*(\d+)\.\s+(.*?)(\s+\[vol:.*)?$', t)
-            if in_sinks and m:
-                sinks.append((m.group(2), m.group(3)))
-                if m.group(1):
-                    cur = len(sinks) - 1
-        if len(sinks) > 1:
-            p.append(section('Play sound through'))
-            dd = Gtk.DropDown.new_from_strings([n for _i, n in sinks])
-            if cur is not None:
-                dd.set_selected(cur)
-            dd.connect('notify::selected', lambda d, _p: run(['wpctl', 'set-default', sinks[d.get_selected()][0]]))
-            p.append(field('Output', dd))
-        elif not sinks:
-            p.append(note('No sound output was found.'))
+            if m and kind in found:
+                found[kind].append((m.group(2), m.group(3), bool(m.group(1))))
+        return found
+
+    @staticmethod
+    def audio_streams():
+        """Apps playing sound right now: [(node id, app name)], from pw-dump (the Stream/Output/Audio nodes)."""
+        try:
+            objs = json.loads(run(['pw-dump']) or '[]')
+        except ValueError:
+            return []
+        out = []
+        for o in objs:
+            props = (o.get('info') or {}).get('props') or {}
+            if o.get('type') == 'PipeWire:Interface:Node' and props.get('media.class') == 'Stream/Output/Audio':
+                name = props.get('application.name') or props.get('node.description') or props.get('media.name') or 'Sound'
+                out.append((str(o['id']), name))
+        return out
+
+    @staticmethod
+    def fire(cmd):
+        """Run a command without waiting for it (sliders send many changes; the window must not stall on them)."""
+        try:
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+
+    @staticmethod
+    def get_volume(target):
+        """(0-100, muted) of a wpctl target such as @DEFAULT_AUDIO_SINK@ or a node id; None when unknown."""
+        out = run(['wpctl', 'get-volume', target]).split()
+        try:
+            return round(float(out[1]) * 100), '[MUTED]' in out
+        except (IndexError, ValueError):
+            return None
+
+    def volume_row(self, target, label=None):
+        """A volume slider with a mute box for one wpctl target; returns (row, refresh) where refresh re-reads wpctl."""
+        row = Gtk.Box(spacing=10)
+        if label:
+            row.append(Gtk.Label(label=label, xalign=0, width_chars=20, max_width_chars=20, ellipsize=3, css_classes=['key']))
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_size_request(280, -1)
+        scale.set_draw_value(False)
+        mute = Gtk.CheckButton(label='Mute')
+        busy = [False]
+
+        def refresh():
+            v = self.get_volume(target)
+            busy[0] = True
+            scale.set_value(v[0] if v else 50)
+            mute.set_active(bool(v and v[1]))
+            busy[0] = False
+        scale.connect('value-changed', lambda s: busy[0] or self.fire(['wpctl', 'set-volume', target,
+                                                                      f'{s.get_value() / 100:.2f}']))
+        mute.connect('toggled', lambda c: busy[0] or self.fire(['wpctl', 'set-mute', target, '1' if c.get_active() else '0']))
+        refresh()
+        row.append(scale)
+        row.append(mute)
+        return row, refresh
+
+    def device_picker(self, p, title, devices, refreshers):
+        """A drop-down of audio devices that makes the chosen one the default (wpctl set-default)."""
+        if not devices:
+            p.append(note(f'No {title.split()[0].lower()} device was found.'))
+            return
+        dd = Gtk.DropDown.new_from_strings([n for _i, n, _d in devices])
+        dd.set_selected(next((i for i, d in enumerate(devices) if d[2]), 0))
+
+        def chosen(d, _p):
+            run(['wpctl', 'set-default', devices[d.get_selected()][0]])
+            for fn in refreshers:
+                fn()
+        dd.connect('notify::selected', chosen)
+        p.append(field(title, dd))
+
+    def page_sound(self):
+        p = page('Sound', 'Volume, where sound plays and records, and MWX 7’s own sounds.')
+        self.sound_live = lambda on: None  # replaced below when the sound server can be reached
+        status = run(['wpctl', 'status']) if shutil.which('wpctl') else ''
+        if not status.strip():
+            p.append(note('The sound server is not running here, so volume and devices cannot be shown.'))
+            self.sound_extras(p)
+            return p
+        dev = self.wpctl_devices(status)
+        refreshers = []
+        # Output: the device, its volume, a test sound.
+        p.append(section('Output'))
+        row, r_out = self.volume_row('@DEFAULT_AUDIO_SINK@')
+        refreshers.append(r_out)
+        self.device_picker(p, 'Play sound through', dev['Sinks'], refreshers)
+        p.append(field('Volume', row))
+        test = Gtk.Button(label='Test')
+        test.add_css_class('suggested-action')
+        test.connect('clicked', lambda _b: self.play_test())
+        p.append(field('', test))
+        # Input: the device, its volume and a level meter that only runs while this page is on screen.
+        p.append(section('Input'))
+        mics = [d for d in dev['Sources'] if 'Monitor' not in d[1]]
+        meter = None
+        self.device_picker(p, 'Record sound from', mics, refreshers)
+        if mics:
+            row_in, r_in = self.volume_row('@DEFAULT_AUDIO_SOURCE@')
+            refreshers.append(r_in)
+            p.append(field('Volume', row_in))
+            meter = Gtk.LevelBar.new_for_interval(0, 1)
+            meter.set_size_request(280, 10)
+            p.append(field('Level', meter))
+        # Apps: one slider per app that is playing sound right now.
+        p.append(section('Apps'))
+        apps = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        p.append(apps)
+        self.sound_extras(p)
+
+        st = {'ids': None, 'proc': None, 'tick': 0, 'apps': 0}
+
+        def fill_apps():
+            streams = self.audio_streams()
+            ids = [s[0] for s in streams]
+            if ids == st['ids']:
+                return
+            st['ids'] = ids
+            while apps.get_first_child():
+                apps.remove(apps.get_first_child())
+            if not streams:
+                apps.append(note('No app is playing sound.'))
+            for sid, name in streams:
+                apps.append(self.volume_row(sid, name)[0])
+
+        def level():
+            proc = st['proc']
+            if proc is None:
+                return False
+            peak = 0
+            try:
+                data = proc.stdout.read(8192)  # non-blocking pipe: None when nothing has arrived
+            except OSError:
+                data = None
+            if data:
+                samples = struct.unpack(f'<{len(data) // 2}h', data[:len(data) // 2 * 2])
+                peak = max(abs(s) for s in samples) / 32768
+            meter.set_value(min(1.0, peak * 2.5))
+            return True
+
+        def live(on):
+            """Start (page visible) or stop (hidden or window closed) everything that polls: the meter and the app list."""
+            if on and not st['apps']:
+                fill_apps()
+                st['apps'] = GLib.timeout_add_seconds(3, lambda: fill_apps() or True)
+                if meter is not None and shutil.which('pw-record'):
+                    try:
+                        st['proc'] = subprocess.Popen(
+                            ['pw-record', '--rate', '8000', '--channels', '1', '--format', 's16', '-'],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                        os.set_blocking(st['proc'].stdout.fileno(), False)
+                        st['tick'] = GLib.timeout_add(90, level)
+                    except OSError:
+                        st['proc'] = None
+                for fn in refreshers:
+                    fn()
+            elif not on:
+                for key in ('apps', 'tick'):
+                    if st[key]:
+                        GLib.source_remove(st[key])
+                        st[key] = 0
+                if st['proc']:
+                    st['proc'].kill()
+                    st['proc'].wait()
+                    st['proc'] = None
+                st['ids'] = None
+                if meter is not None:
+                    meter.set_value(0)
+        self.sound_live = live
+        return p
+
+    @staticmethod
+    def play_test():
+        """A short sound through the default output: MWX 7's own notification sound, else the sound theme's."""
+        snd = '/usr/share/mwx7/sounds/notify.ogg'
+        if shutil.which('pw-play') and os.path.exists(snd):
+            Settings.fire(['pw-play', snd])
+        elif shutil.which('canberra-gtk-play'):
+            Settings.fire(['canberra-gtk-play', '-i', 'audio-test-signal'])
+
+    def sound_extras(self, p):
         # MWX 7's own sounds: the startup and log-off chimes and the notification sound.
         p.append(section('MWX 7 sounds'))
         off = os.path.join(CONF_DIR, 'sounds-off')
@@ -1069,7 +1429,6 @@ class Settings(Gtk.Application):
                 open(off, 'w').close()
         chimes.connect('toggled', toggled)
         p.append(chimes)
-        return p
 
     # ---- Date & time ------------------------------------------------------------------------------------------------
     # ---- the shell's own choices (Dock; clock format), as on the web: shell.json, followed live by the bar and dock --
