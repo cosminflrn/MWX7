@@ -1,11 +1,19 @@
 #!/bin/sh
-# The first sign-in of each account, as MWX 7 on the web: a "Welcome" card and the Welcome tour (the web concept's
-# Welcome app). Once per account; the tour is always in the Start menu afterwards.
-DONE="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7/welcomed"
-[ -e "$DONE" ] && exit 0
-mkdir -p "$(dirname "$DONE")" && : > "$DONE"
+# Autostarted at every sign-in (wayfire.ini). The Welcome Center shows at an account's first sign-in, and at later ones only
+# when "Show at startup" is ticked in it (stored in ~/.config/mwx7/welcome.json). It is always in the Start menu.
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
+DONE="$CONF/welcomed"
+first=0
+if [ ! -e "$DONE" ]; then
+  first=1
+  mkdir -p "$CONF" && : > "$DONE"
+elif ! python3 -c "import json,sys; sys.exit(0 if json.load(open('$CONF/welcome.json')).get('show_at_startup') else 1)" 2>/dev/null; then
+  exit 0
+fi
 sleep 4
-name=$(getent passwd "$(id -un)" | cut -d: -f5 | cut -d, -f1)
-notify-send -a "MWX 7" -i /usr/share/mwx7/icons/orb.png "Welcome, ${name:-$(id -un)}" \
-  "Click the orb to start, or the magnifier to search." &
+if [ "$first" = 1 ]; then
+  name=$(getent passwd "$(id -un)" | cut -d: -f5 | cut -d, -f1)
+  notify-send -a "MWX 7" -i /usr/share/mwx7/icons/orb.png "Welcome, ${name:-$(id -un)}" \
+    "Start is the orb in the dock; Super+S searches everything." &
+fi
 exec /usr/share/mwx7/bin/mwx7-app welcome
