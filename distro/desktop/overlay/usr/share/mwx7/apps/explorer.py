@@ -53,6 +53,9 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 .ex-details-title { font-weight: 600; color: #1c3150; }
 .ex-drive-bar trough { min-height: 10px; background: #e3e8ef; border: 1px solid #9aa9bd; border-radius: 1px; }
 .ex-drive-bar progress { min-height: 10px; background: linear-gradient(180deg, #5fb0ff, #2a7fd9); border-radius: 1px; }
+.ex-cols button { padding: 2px 0; font-size: 11px; min-height: 0; border: none; border-right: 1px solid #dfe7f1; border-radius: 0;
+  background: none; box-shadow: none; color: #4a5f7d; }
+.ex-cols button:hover { background: linear-gradient(180deg, #f4f9ff, #dbeafc); }
 .ex-group { padding: 12px 14px 4px; font-weight: 600; color: #1e3f66; }
 """
 
@@ -97,6 +100,8 @@ class Explorer:
         self.clip, self.clip_cut = [], False
         self.view = 'icons'
         self.query = ''
+        # Details view: each column's header and cells share a width.
+        self.col_groups = [Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL) for _ in range(3)]
 
     # ---- layout ---------------------------------------------------------------------------------------------------
     def build(self, app, win):
@@ -317,7 +322,19 @@ class Explorer:
                 continue
             p = os.path.join(folder, n)
             out.append((p, n, os.path.isdir(p)))
-        out.sort(key=lambda t: (not t[2], t[1].lower()))
+        col, desc = getattr(self, 'sort', ('name', False))
+
+        def key(t):
+            p, n, d = t
+            try:
+                st = os.stat(p)
+            except OSError:
+                st = None
+            v = {'name': n.lower(), 'date': st.st_mtime if st else 0, 'size': (st.st_size if st and not d else -1),
+                 'type': ('' if d else os.path.splitext(n)[1].lower(), n.lower())}[col]
+            return v
+        out.sort(key=key, reverse=desc)
+        out.sort(key=lambda t: not t[2])  # folders first, whatever the order
         return out
 
     def icon_for(self, path, is_dir, size):
@@ -373,11 +390,31 @@ class Explorer:
             self.fill_computer()
         else:
             details = self.view == 'details'
+            if details:
+                self.content.prepend(self.columns())
             self.flow.set_max_children_per_line(1 if details else 40)
             self.flow.set_homogeneous(not details)
             for path, name, is_dir in self.items():
                 self.flow.append(self.cell(path, name, is_dir, details))
         self.details()
+
+    def columns(self):
+        """Details view's column headers, as in Explorer: click one to sort by it, again to reverse."""
+        col, desc = getattr(self, 'sort', ('name', False))
+        row = Gtk.Box(spacing=8, margin_start=11, margin_end=11, margin_top=4)
+        row.add_css_class('ex-cols')
+        for key, label, w in (('name', 'Name', 0), ('date', 'Date modified', 16), ('type', 'Type', 18), ('size', 'Size', 9)):
+            arrow = (' \u25be' if desc else ' \u25b4') if key == col else ''
+            b = Gtk.Button(label=label + arrow, hexpand=not w)
+            b.get_child().set_xalign(0)
+            if w:
+                b.get_child().set_width_chars(w)
+                self.col_groups[('date', 'type', 'size').index(key)].add_widget(b)
+            b.connect('clicked', lambda _b, k=key: (setattr(self, 'sort', (k, not desc if k == col else False)),
+                                                    self.fill()))
+            row.append(b)
+        row.get_first_child().set_margin_start(24)  # over the names, past the icons
+        return row
 
     def cell(self, path, name, is_dir, details):
         c = Gtk.FlowBoxChild()
@@ -395,10 +432,11 @@ class Explorer:
                 size = '' if is_dir else human(st.st_size)
             except OSError:
                 when = size = ''
-            for text, w in ((when, 16), ('File folder' if is_dir else Gio.content_type_get_description(
-                    Gio.content_type_guess(path, None)[0]), 18), (size, 9)):
+            for i, (text, w) in enumerate(((when, 16), ('File folder' if is_dir else Gio.content_type_get_description(
+                    Gio.content_type_guess(path, None)[0]), 18), (size, 9))):
                 l = Gtk.Label(label=text, xalign=0, width_chars=w, max_width_chars=w, ellipsize=3)
                 l.add_css_class('ex-meta')
+                self.col_groups[i].add_widget(l)
                 row.append(l)
             c.set_child(row)
         else:
