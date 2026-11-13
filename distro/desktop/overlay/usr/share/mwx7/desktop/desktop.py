@@ -50,9 +50,9 @@ ITEMS = [
 CELL_W, CELL_H, ORIGIN = 96, 92, 10
 # View -> Large / Medium / Small icons: (icon px, cell width, cell height).
 SIZES = {'large': (64, 112, 112), 'medium': (48, 96, 92), 'small': (32, 84, 72)}
-GADGET_W, GADGET_GAP, GADGET_TOP, GADGET_RIGHT = 148, 12, 10, 16
-# Widgets snap to a grid: columns 160px apart from the right edge, rows 16px apart from the top.
-WGRID = 16
+# Widgets are squares that fill 2x2 icon cells and snap to the icon grid: rows from ORIGIN down, columns counted from
+# the right edge (GADGET_RIGHT in). Their drawing code works in a D x D design space that is scaled to the real side.
+GADGET_RIGHT, D = ORIGIN, 184
 
 
 
@@ -245,27 +245,35 @@ def glass_tile(cr, w, h):
 
 # ---- gadgets --------------------------------------------------------------------------------------------------------
 class Gadget(Gtk.DrawingArea):
-    HEIGHT = 100
-
     def __init__(self):
         super().__init__()
-        self.set_content_width(GADGET_W)
-        self.set_content_height(self.HEIGHT)
+        self.k = 1.0  # real px per design unit; text() wants device px, so labels multiply their sizes by it
+        self.set_content_width(D)
+        self.set_content_height(D)
         self.set_halign(Gtk.Align.START)
         self.set_valign(Gtk.Align.START)
         self.set_draw_func(self.on_draw)
 
-    def on_draw(self, _area, cr, w, h):
-        glass_tile(cr, w, h)
-        self.paint(cr, w, h)
+    def set_side(self, side):
+        if side != self.get_content_width():
+            self.set_content_width(side)
+            self.set_content_height(side)
+            self.queue_draw()
+
+    def on_draw(self, _area, cr, w, _h):
+        self.k = w / D
+        cr.scale(self.k, self.k)
+        glass_tile(cr, D, D)
+        self.paint(cr, D, D)
+
+    def t(self, cr, s, x, y, px, rgba, weight=Pango.Weight.NORMAL, align='left', spacing=0.0):
+        text(cr, s, x, y, px * self.k, rgba, weight, align, spacing)
 
     def paint(self, cr, w, h):
         raise NotImplementedError
 
 
 class Clock(Gadget):
-    HEIGHT = 148
-
     def __init__(self):
         super().__init__()
         self.now = time.localtime()
@@ -302,7 +310,7 @@ class Clock(Gadget):
             cr.set_line_cap(cairo.LINE_CAP_ROUND)
             cr.stroke()
             cr.restore()
-        text(cr, 'MWX 7', 50, 33, 5.4 * k, col('#5b6c82'), align='center', spacing=1.2 * k)
+        self.t(cr, 'MWX 7', 50, 33, 5.4 * k, col('#5b6c82'), align='center', spacing=1.2 * k)
         minutes = t.tm_min + t.tm_sec / 60
         hours = (t.tm_hour % 12) + minutes / 60
         self.hand(cr, hours * 30, 56, 29, 26, 3.6)
@@ -354,8 +362,6 @@ DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 
 
 class Calendar(Gadget):
-    HEIGHT = 112
-
     def __init__(self):
         super().__init__()
         self.key = None
@@ -378,8 +384,8 @@ class Calendar(Gadget):
         cr.clip_preserve()
         cr.set_source(lin(0, y, 0, y + ph, [(0, col('#ffffff')), (1, col('#e9eff7'))]))
         cr.fill()
-        cr.rectangle(x, y, pw, 20)
-        cr.set_source(lin(0, y, 0, y + 20, [(0, col('#e0553d')), (1, col('#b32a17'))]))
+        cr.rectangle(x, y, pw, 34)
+        cr.set_source(lin(0, y, 0, y + 34, [(0, col('#e0553d')), (1, col('#b32a17'))]))
         cr.fill()
         cr.move_to(x, y + 0.5)
         cr.line_to(x + pw, y + 0.5)
@@ -391,10 +397,10 @@ class Calendar(Gadget):
         cr.set_source_rgba(*col('#001440', 0.45))
         cr.stroke()
         cx = x + pw / 2
-        text(cr, f'{MONTHS[t.tm_mon - 1]} {t.tm_year}', cx, y + 14, 11, col('#ffffff'), Pango.Weight.SEMIBOLD, 'center')
-        text(cr, str(t.tm_mday), cx, y + 60, 42, col('#1b2a3e'), Pango.Weight.LIGHT, 'center')
+        self.t(cr, f'{MONTHS[t.tm_mon - 1]} {t.tm_year}', cx, y + 23, 16, col('#ffffff'), Pango.Weight.SEMIBOLD, 'center')
+        self.t(cr, str(t.tm_mday), cx, y + 117, 84, col('#1b2a3e'), Pango.Weight.LIGHT, 'center')
         # time.struct_time counts Monday as 0; the concept's list starts on Sunday.
-        text(cr, DAYS[(t.tm_wday + 1) % 7], cx, y + 80, 11, col('#5b6c82'), align='center')
+        self.t(cr, DAYS[(t.tm_wday + 1) % 7], cx, y + 151, 17, col('#5b6c82'), align='center')
 
 
 A0, A1 = -125.0, 125.0
@@ -402,8 +408,6 @@ A0, A1 = -125.0, 125.0
 
 class Meter(Gadget):
     """CPU and RAM as two dials. The needles ease to a new value over 0.6 s: the only animation on the desktop."""
-    HEIGHT = 106
-
     def __init__(self):
         super().__init__()
         self.value = [0.0, 0.0]
@@ -441,15 +445,17 @@ class Meter(Gadget):
         return GLib.SOURCE_CONTINUE
 
     def paint(self, cr, w, h):
-        k = (w - 14) / 2 / 60
+        # Two dials side by side under a small title: each 78 wide, scaled up from the 60-unit dial drawing.
+        k = 78 / 60
+        self.t(cr, 'SYSTEM', w / 2, 27, 11, col('#8fb2dc'), Pango.Weight.SEMIBOLD, 'center', spacing=1.4)
         for i, label in enumerate(('CPU', 'RAM')):
+            x0 = 14 + i * 92
             cr.save()
-            cr.translate(6 + i * (60 * k + 2), 8)
+            cr.translate(x0, 40)
             cr.scale(k, k)
-            self.dial(cr, label, self.value[i], k)
+            self.dial(cr, label, self.value[i], k * self.k)
             cr.restore()
-            text(cr, f'{round(self.target[i])}%', 6 + i * (60 * k + 2) + 30 * k, 8 + 60 * k + 10, 11, col('#d7e9ff'),
-                 align='center')
+            self.t(cr, f'{round(self.target[i])}%', x0 + 39, 150, 22, col('#d7e9ff'), Pango.Weight.LIGHT, 'center')
 
     @staticmethod
     def dial(cr, label, pct, k):
@@ -558,8 +564,6 @@ def describe(code):
 
 
 class Weather(Gadget):
-    HEIGHT = 108
-
     def __init__(self, city, lat, lon):
         super().__init__()
         self.city, self.lat, self.lon = city, lat, lon
@@ -606,17 +610,18 @@ class Weather(Gadget):
 
     def paint(self, cr, w, h):
         kind = describe(self.code)[1] if self.code is not None else 'cloud'
+        # Icon and temperature on top, city and condition below, the update note last.
         cr.save()
-        cr.translate(12, 10)
-        cr.scale(62 / 64, 62 / 64)
+        cr.translate(14, 12)
+        cr.scale(1.35, 1.35)
         self.icon(cr, kind)
         cr.restore()
-        text(cr, f'{self.temp}°' if self.temp is not None else '–°', w - 12, 43, 30, col('#eaf3ff'),
-             Pango.Weight.LIGHT, 'right')
-        text(cr, self.city, 12, 72, 13, col('#eaf3ff'), Pango.Weight.SEMIBOLD)
-        text(cr, describe(self.code)[0] if self.code is not None else '–', 12, 87, 11.5, col('#cfe3fb'))
+        self.t(cr, f'{self.temp}°' if self.temp is not None else '–°', w - 16, 76, 46, col('#eaf3ff'),
+               Pango.Weight.LIGHT, 'right')
+        self.t(cr, self.city, 16, 123, 20 if len(self.city) <= 12 else 15, col('#eaf3ff'), Pango.Weight.SEMIBOLD)
+        self.t(cr, describe(self.code)[0] if self.code is not None else '–', 16, 146, 15, col('#cfe3fb'))
         note = ('Updated ' + self.stamp) if self.online else (('Offline · ' + self.stamp) if self.stamp else 'Offline')
-        text(cr, note.upper(), 12, 100, 9.5, col('#8fb2dc'), spacing=0.4)
+        self.t(cr, note.upper(), 16, 168, 10.5, col('#8fb2dc'), spacing=0.4)
 
     @staticmethod
     def sun(cr, cx, cy, s):
@@ -781,16 +786,17 @@ class Desktop(Gtk.Application):
 
         self.root = Gtk.Overlay()
         self.fixed = Gtk.Fixed()
-        # The live wallpaper is the overlay's base: icons and gadgets sit on top of it. Hidden (so the swaybg picture
-        # shows through the transparent surface) unless a live wallpaper is chosen.
+        # The live wallpaper is not drawn here: this surface only covers the area between bar and dock. It gets its own
+        # full-screen surface on the background layer (see set_live); this one stays transparent over it.
         self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
-        self.live_pic.set_visible(False)
         self.live_media = None
+        self.live_win = None
         self.live_name = ''
         self.live_paused = False
         self.live_timer = 0
+        self.live_soft = None
         self.gallery = None
-        self.root.set_child(self.live_pic)
+        self.root.set_child(Gtk.Box(hexpand=True, vexpand=True))
         self.root.add_overlay(self.fixed)
         self.icons = []
         self.put_fixed_icons()
@@ -895,63 +901,76 @@ class Desktop(Gtk.Application):
             item.set_visible(on)
         self.icons_on = on
 
-    def widget_span(self, g):
-        """Rows a widget covers: its height plus the gap, in grid rows (so neighbours keep a consistent gap)."""
-        return -(-(g.HEIGHT + GADGET_GAP) // WGRID)
+    def widget_side(self):
+        """Side of a widget: the two-by-two cell block, squared off to its shorter side (cells are a few px wider than tall)."""
+        return 2 * min(self.cell_w, self.cell_h)
+
+    def widget_x(self, c):
+        """Left edge of a widget in column c (0 = rightmost 2x2 block), centred in its block when the cells aren't square."""
+        return self.width - GADGET_RIGHT - (c + 2) * self.cell_w + (2 * self.cell_w - self.widget_side()) // 2
 
     def widget_want(self, name):
-        """The cell (column from the right edge, row from the top) a widget asks for: where the person left it (kept as
-        distance from the right edge, so it stays put when the screen size changes), else the next slot in the column."""
+        """The (column from the right edge, row from the top) a widget asks for. Saved positions are the distance from the
+        right edge to its left edge and the top y; older versions saved them on a 160px / 16px grid, so they are rounded
+        to the nearest 2x2 block here. Without one, the next free block in the right-hand column."""
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
         pos = at.get(name)
         if isinstance(pos, list) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
-            return (round((pos[0] - GADGET_RIGHT - GADGET_W) / (GADGET_W + GADGET_GAP)), round((pos[1] - GADGET_TOP) / WGRID))
+            return max(0, round((pos[0] - GADGET_RIGHT) / self.cell_w) - 2), max(0, round((pos[1] - ORIGIN) / self.cell_h))
         row = 0
-        for n, g in self.gadgets:
+        for n, _g in self.gadgets:
             if n == name:
                 break
             if self.gadget_shown(n):
-                row += self.widget_span(g)
+                row += 2
         return 0, row
 
     def widget_cells(self, first=None, want=None):
-        """Snap every shown widget to the grid with no overlap. `first` (with its wanted cell `want`) is placed before the
-        rest, so a dropped widget gets its spot and the others keep theirs; a taken spot moves to the nearest free one."""
-        cols = max(1, (self.width - GADGET_RIGHT - GADGET_W) // (GADGET_W + GADGET_GAP) + 1)
-        rows = max(1, (getattr(self, 'height', 600) - GADGET_TOP) // WGRID)
+        """Snap every shown widget to the icon grid with no overlap. `first` (with its wanted cell `want`) is placed before
+        the rest, so a dropped widget gets its spot and the others keep theirs; a taken spot moves to the nearest free one."""
+        cols = max(1, (self.width - GADGET_RIGHT) // self.cell_w - 1)
+        rows = max(1, (getattr(self, 'height', 600) - ORIGIN) // self.cell_h - 1)
         taken, out = set(), {}
-        order = [(n, g) for n, g in self.gadgets if self.gadget_shown(n)]
-        order.sort(key=lambda t: t[0] != first)
-        for n, g in order:
-            span = min(self.widget_span(g), rows)
+        order = [n for n, _g in self.gadgets if self.gadget_shown(n)]
+        order.sort(key=lambda n: n != first)
+        for n in order:
             c0, r0 = want if n == first and want else self.widget_want(n)
-            c0, r0 = max(0, min(cols - 1, c0)), max(0, min(rows - span, r0))
+            c0, r0 = max(0, min(cols - 1, c0)), max(0, min(rows - 1, r0))
             best = None
             for c in range(cols):
-                for r in range(rows - span + 1):
-                    if any((c, r + k) in taken for k in range(span)):
+                for r in range(rows):
+                    if any((c + i, r + j) in taken for i in (0, 1) for j in (0, 1)):
                         continue
-                    d = ((c - c0) * (GADGET_W + GADGET_GAP)) ** 2 + ((r - r0) * WGRID) ** 2
+                    d = (c - c0) ** 2 + (r - r0) ** 2
                     if best is None or d < best[0]:
                         best = (d, c, r)
             c, r = (best[1], best[2]) if best else (c0, r0)
-            taken.update((c, r + k) for k in range(span))
+            taken.update((c + i, r + j) for i in (0, 1) for j in (0, 1))
             out[n] = (c, r)
         return out
 
     def place_gadgets(self):
         if not getattr(self, 'width', 0):
             return
+        side = self.widget_side()
+        at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
+        norm = dict(at)
         for name, (c, r) in self.widget_cells().items():
             g = dict(self.gadgets)[name]
-            self.fixed.move(g, self.width - GADGET_RIGHT - GADGET_W - c * (GADGET_W + GADGET_GAP), GADGET_TOP + r * WGRID)
+            g.set_side(side)
+            self.fixed.move(g, self.widget_x(c), ORIGIN + r * self.cell_h)
+            norm[name] = [GADGET_RIGHT + (c + 2) * self.cell_w, ORIGIN + r * self.cell_h]
+        if norm != at:  # normalize what an older version (or another screen size) saved, once
+            self.cfg['gadgets_at'] = norm
+            save_json(CONFIG, self.cfg)
 
     def gadget_drop(self, name, g, x, y):
-        want = (round((self.width - GADGET_RIGHT - GADGET_W - x) / (GADGET_W + GADGET_GAP)), round((y - GADGET_TOP) / WGRID))
+        want = (round((self.width - GADGET_RIGHT - x + (2 * self.cell_w - self.widget_side()) // 2) / self.cell_w) - 2,
+                round((y - ORIGIN) / self.cell_h))
         c, r = self.widget_cells(name, want)[name]
         at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
         # Still the distance from the right edge to the widget's left edge, as older versions saved it.
-        at[name] = [GADGET_RIGHT + GADGET_W + c * (GADGET_W + GADGET_GAP), GADGET_TOP + r * WGRID]
+        at[name] = [GADGET_RIGHT + (c + 2) * self.cell_w, ORIGIN + r * self.cell_h]
         self.cfg['gadgets_at'] = at
         save_json(CONFIG, self.cfg)
         self.place_gadgets()
@@ -1400,8 +1419,33 @@ class Desktop(Gtk.Application):
         win.present()
 
     # -- live wallpaper
+    @staticmethod
+    def software_gl():
+        """True when OpenGL is drawn by the CPU (llvmpipe/softpipe): a looping video then costs far too much."""
+        try:
+            import ctypes
+            import ctypes.util
+            ctx = Gdk.Display.get_default().create_gl_context()
+            ctx.realize()
+            ctx.make_current()
+            lib = ctypes.CDLL(ctypes.util.find_library('GLESv2') or ctypes.util.find_library('GL') or 'libGL.so.1')
+            lib.glGetString.restype = ctypes.c_char_p
+            name = (lib.glGetString(0x1F01) or b'').decode(errors='replace').lower()  # GL_RENDERER
+            Gdk.GLContext.clear_current()
+        except Exception:
+            return False
+        return any(w in name for w in ('llvmpipe', 'softpipe', 'software'))
+
+    def stop_swaybg(self):
+        """swaybg is a background-layer surface too; two of them on one layer have no defined order, so it stops while
+        the video plays (and set_live('') starts it again). Returns True while the video is still wanted."""
+        if self.live_win:
+            subprocess.run(['pkill', '-u', str(os.getuid()), '-x', 'swaybg'])
+        return False
+
     def set_live(self, name):
-        """Play LIVE/<name>.mp4 looped and muted under the icons; '' (or a missing file) goes back to the still picture."""
+        """Play LIVE/<name>.mp4 looped and muted on a full-screen background layer surface of its own; '' (or a missing
+        file, or software rendering) goes back to the still wallpaper."""
         path = os.path.join(LIVE, os.path.basename(name) + '.mp4') if name else ''
         if self.live_timer:
             GLib.source_remove(self.live_timer)
@@ -1411,27 +1455,56 @@ class Desktop(Gtk.Application):
             self.live_pic.set_paintable(None)
             self.live_media = None
         self.live_name = name
-        if not (name and os.path.isfile(path)):
-            self.live_pic.set_visible(False)
+        was_live = self.live_win is not None
+        if name and os.path.isfile(path) and self.live_soft is None:
+            self.live_soft = self.software_gl()
+        if not (name and os.path.isfile(path)) or self.live_soft:
+            if self.live_win:
+                self.live_win.destroy()
+                self.live_win = None
+            if was_live:  # bring the still wallpaper back
+                subprocess.Popen(['/usr/share/mwx7/bin/mwx7-wallpaper'], start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
+        if not self.live_win:
+            self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
+            w = Gtk.Window(application=self)
+            w.add_css_class('live-layer')
+            Layer.init_for_window(w)
+            Layer.set_layer(w, Layer.Layer.BACKGROUND)
+            Layer.set_namespace(w, 'mwx7-live')
+            for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+                Layer.set_anchor(w, e, True)
+            Layer.set_exclusive_zone(w, -1)  # -1: ignore the bar's and dock's strips, cover the whole output
+            Layer.set_keyboard_mode(w, Layer.KeyboardMode.NONE)
+            w.set_child(self.live_pic)
+            self.live_win = w
+            w.present()
         media = Gtk.MediaFile.new_for_filename(path)
         media.set_loop(True)
         media.set_muted(True)
         self.live_media = media
         self.live_pic.set_paintable(media)
-        self.live_pic.set_visible(True)
         self.live_paused = False
         media.play()
+        # swaybg may still be starting at login: stop it now and again shortly after.
+        for secs in (0, 2, 6):
+            GLib.timeout_add_seconds(secs, self.stop_swaybg) if secs else self.stop_swaybg()
         # A video nobody can see is wasted power: look every 2 s for a covering window or the lock screen.
         self.live_timer = GLib.timeout_add_seconds(2, self.live_check)
 
     def live_check(self):
+        area = getattr(self, 'width', 0) * getattr(self, 'height', 0)
         def work():
             locked = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaylock'], capture_output=True).returncode == 0
             views = wayfire_views()
+
+            def big(v):  # a window over ~80% of the desktop area hides the video as well as a maximized one does
+                g = v.get('geometry') if isinstance(v.get('geometry'), dict) else {}
+                return area > 0 and g.get('width', 0) * g.get('height', 0) >= 0.8 * area
             covered = locked or any(
                 isinstance(v, dict) and v.get('mapped', True) and not v.get('minimized') and v.get('role', 'toplevel') == 'toplevel'
-                and (v.get('fullscreen') or v.get('maximized') or v.get('tiled-edges') == 15) for v in (views or []))
+                and (v.get('fullscreen') or v.get('maximized') or v.get('tiled-edges') == 15 or big(v)) for v in (views or []))
             GLib.idle_add(self.live_apply, covered)
         threading.Thread(target=work, daemon=True).start()
         return True
