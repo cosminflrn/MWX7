@@ -4,6 +4,11 @@
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mwx7"
 [ -e "$CONF/nightlight" ] || exit 0
 pkill -u "$(id -u)" -x wlsunset 2>/dev/null
+# Custom hours: the flag file's first line is "custom HH:MM HH:MM" (evening start, morning end); empty = follow the sun.
+read -r KIND START END < "$CONF/nightlight" 2>/dev/null
+case "$KIND $START $END" in
+  custom\ [0-2][0-9]:[0-5][0-9]\ [0-2][0-9]:[0-5][0-9]) exec wlsunset -s "$START" -S "$END" -t 3800 -T 6500 ;;
+esac
 eval "$(python3 - "$CONF/desktop.json" <<'PY'
 import json, sys
 try:
