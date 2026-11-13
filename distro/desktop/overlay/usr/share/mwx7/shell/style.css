@@ -164,10 +164,20 @@ popover.calflyout > contents {
 .cal-head { padding: 14px 18px 10px; border-bottom: 1px solid #dbe5f0; background: linear-gradient(to bottom, #ffffff, #f3f7fc); }
 .cal-time { font-size: 36px; font-weight: 300; color: #1e3f66; }
 .cal-date { font-size: 13px; color: #2a6fc1; }
-calendar.cal-month { margin: 8px 12px; border: none; background: none; color: #1a1a1a; }
-calendar.cal-month > grid > label.day-number:selected { background: linear-gradient(to bottom, #d9ecfd, #b9dbfb); box-shadow: inset 0 0 0 1px #7eb4ea; color: #0b2440; border-radius: 3px; }
-calendar.cal-month > grid > label.day-number.other-month { color: #b5bdc8; }
-.cal-foot { padding: 6px 10px; border-top: 1px solid #dbe5f0; background: #f3f7fc; }
+.cal-nav { padding: 8px 12px 0; }
+button.cal-title { background: none; border: none; box-shadow: none; padding: 2px 6px; min-height: 0; font-size: 14px; color: #1e3f66; }
+button.cal-title label { font-weight: 600; }
+button.cal-title:hover { background: #eaf4ff; border-radius: 3px; }
+button.cal-arrow { background: none; border: none; box-shadow: none; padding: 2px 6px; min-height: 0; min-width: 0; color: #2a6fc1; border-radius: 3px; }
+button.cal-arrow:hover { background: #d9ecfd; box-shadow: inset 0 0 0 1px #9cc8ef; }
+grid.cal-grid { margin: 6px 12px 8px; }
+label.cal-dow { font-size: 11px; color: #5b7396; padding: 3px 0; }
+label.cal-day { min-width: 34px; min-height: 26px; font-size: 13px; color: #1a1a1a; border: 1px solid transparent; border-radius: 3px; }
+label.cal-day.other { color: #aeb8c6; }
+label.cal-day.today {
+  background: linear-gradient(to bottom, #d9ecfd, #a9d1f8); border-color: #5a9ee0; color: #0b2440; font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
 button.cal-link { background: none; border: none; box-shadow: none; color: #2a6fc1; padding: 2px 6px; min-height: 0; }
 button.cal-link:hover { text-decoration: underline; }
 
@@ -234,6 +244,13 @@ button.peek-item { padding: 6px 8px 8px; }
 .peek-pic { border-radius: 3px; }
 
 /* "All Programs" / "Back" at the foot of the Start menu's program list, as in Windows 7. */
+list.sm-list row.sm-grouprow, list.sm-list row.sm-grouprow:hover { background: none; box-shadow: none; padding: 6px 8px 2px; }
+.sm-group { font-size: 12px; font-weight: 600; color: #1e3f66; }
+.sm-group-line { min-height: 1px; background: #c5d5e8; }
+.sm-sub { font-size: 11px; color: #6a7a90; }
+list.sm-list row:selected .sm-sub { color: #3d5a80; }
+.sm-calc { font-size: 18px; font-weight: 300; color: #0b2440; }
+.sm-empty { padding: 10px 8px; color: #5b6b80; }
 list.sm-list row.sm-allprogs { margin-top: 4px; border-top: 1px solid #d8e0ea; border-radius: 0 0 3px 3px; font-weight: 600; color: #1e3f66; }
 .menu-sep { min-height: 1px; margin: 4px 8px; background: #d8e0ea; }
 window.winmenu-layer { background: transparent; }
