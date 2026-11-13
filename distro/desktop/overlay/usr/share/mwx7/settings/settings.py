@@ -1597,6 +1597,7 @@ class Settings(Gtk.Application):
                     if not ok:
                         msg.set_label(err or 'It did not work. Nothing was changed.')
                         cancel.set_sensitive(True)
+                        go.set_sensitive(True)  # try again
                         bar.set_visible(False)
                     return False
                 GLib.idle_add(done)
