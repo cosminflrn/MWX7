@@ -132,15 +132,29 @@ def section(text):
 
 
 def note(text):
-    l = Gtk.Label(label=text, xalign=0, wrap=True)
+    l = Gtk.Label(label=text, xalign=0, wrap=True, max_width_chars=85)
     l.add_css_class('note')
     return l
 
 
-def page():
+def page(title=None, sub=None):
+    """A page: its title (the same words as the sidebar entry) and one short line under it."""
     b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     b.add_css_class('page')
+    if title:
+        b.append(heading(title))
+    if sub:
+        b.append(note(sub))
     return b
+
+
+def field(label, widget, width=20):
+    """A label and its control on one row; the labels share a width so the controls line up down the page."""
+    r = Gtk.Box(spacing=12)
+    r.append(Gtk.Label(label=label, xalign=0, width_chars=width, css_classes=['key']))
+    widget.set_halign(Gtk.Align.START)
+    r.append(widget)
+    return r
 
 
 def thumb(path, w, h):
@@ -183,17 +197,17 @@ class Settings(Gtk.Application):
         self.stack.set_hexpand(True)
         pages = [
             ('wallpapers', 'Wallpapers', 'image', self.page_wallpapers),
-            ('account', 'User account', 'user', self.page_account),
             ('wincolor', 'Window Color', 'paint', self.page_wincolor),
             ('desktop', 'Desktop', 'desktop', self.page_desktop),
             ('dock', 'Dock', 'computer', self.page_dock),
             ('display', 'Display', 'computer', self.page_display),
+            ('sound', 'Sound', 'audio', self.page_sound),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
-            ('datetime', 'Date & time', 'about', self.page_datetime),
-            ('sound', 'Sound', 'audio', self.page_sound),
             ('bluetooth', 'Bluetooth', 'bluetooth', self.page_bluetooth),
             ('printers', 'Printers', 'printer', self.page_printers),
+            ('account', 'User account', 'user', self.page_account),
+            ('datetime', 'Date & time', 'about', self.page_datetime),
             ('updates', 'Updates', 'updates', self.page_updates),
             ('backup', 'Backup', 'backup', self.page_backup),
             ('about', 'About', 'about', self.page_about),
@@ -355,9 +369,7 @@ class Settings(Gtk.Application):
         return p
 
     def page_wallpapers(self):
-        p = page()
-        p.append(heading('Choose your desktop background'))
-        p.append(note('Click a picture to use it as your desktop background.'))
+        p = page('Wallpapers', 'Click a picture to use it as your desktop background.')
         flow = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
                            row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
         flow.add_css_class('walls')
@@ -377,11 +389,10 @@ class Settings(Gtk.Application):
         # Live wallpapers: a looped, muted video the desktop layer plays behind the icons. Off unless one is clicked.
         live = [f[:-4] for f in sorted(os.listdir(LIVE)) if f.endswith('.mp4')] if os.path.isdir(LIVE) else []
         if live:
-            p.append(heading('Live wallpapers'))
+            p.append(section('Live wallpapers'))
             soft = self.acceleration().startswith('Off')  # the desktop will not play a video drawn by the CPU
-            if soft:
-                p.append(note('Needs 3D acceleration (off on this PC)'))
-            p.append(note('A moving background. It pauses while a window covers the desktop. Click it again to turn it off.'))
+            p.append(note('A moving background. Click it again to turn it off.' +
+                          (' Needs 3D acceleration, which is off on this PC.' if soft else '')))
             lf = Gtk.FlowBox(max_children_per_line=4, selection_mode=Gtk.SelectionMode.SINGLE, column_spacing=10,
                              row_spacing=10, homogeneous=True, valign=Gtk.Align.START)
             lf.add_css_class('walls')
@@ -433,9 +444,8 @@ class Settings(Gtk.Application):
         os.replace(tmp, path)
 
     def page_wincolor(self):
-        p = page()
-        p.append(heading('Change the color of your window borders, Start menu and taskbar'))
-        p.append(note('The tint of the glass on window frames, the status bar and the dock.'))
+        p = page('Window Color', 'The tint of the glass on window frames, the status bar and the dock.')
+        p.append(section('Color'))
         flow = Gtk.FlowBox(max_children_per_line=8, min_children_per_line=8, selection_mode=Gtk.SelectionMode.NONE,
                            column_spacing=6, row_spacing=6, halign=Gtk.Align.START)
         cur, intensity = glass_now()
@@ -456,11 +466,10 @@ class Settings(Gtk.Application):
             self.swatches.append((hexc, b))
             flow.append(b)
         p.append(flow)
-        row = Gtk.Box(spacing=10)
-        row.append(Gtk.Label(label='Color intensity', css_classes=['key']))
         self.intensity = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
         self.intensity.set_value(intensity)
-        self.intensity.set_size_request(260, -1)
+        self.intensity.set_size_request(320, -1)
+        self.intensity.set_halign(Gtk.Align.START)
         self.intensity.set_draw_value(False)
         # Applied when the slider is let go (and after a short pause while dragging), not on every pixel of travel.
         self.intensity_timer = 0
@@ -473,8 +482,9 @@ class Settings(Gtk.Application):
                                                                   self.sync_personalize())
                                                     and False)
         self.intensity.connect('value-changed', moved)
-        row.append(self.intensity)
-        p.append(row)
+        p.append(section('Intensity'))
+        p.append(self.intensity)
+        p.append(note('Left is clear glass, right is a strong tint.'))
         return p
 
     @staticmethod
@@ -519,8 +529,7 @@ class Settings(Gtk.Application):
 
     # ---- Display ----------------------------------------------------------------------------------------------------
     def page_display(self):
-        p = page()
-        p.append(heading('Display'))
+        p = page('Display', 'Screen size, text size and night light.')
         try:
             outputs = json.loads(run(['wlr-randr', '--json']) or '[]')
         except ValueError:
@@ -530,11 +539,12 @@ class Settings(Gtk.Application):
             return p
         for o in outputs:
             name = o.get('name', '?')
-            p.append(section(f"{o.get('make') or ''} {o.get('model') or ''} ({name})".strip()))
+            p.append(section((f"{o.get('make') or ''} {o.get('model') or ''}".strip() + f' ({name})').strip()))
             modes = []
             cur = None
             for m in o.get('modes', []):
-                label = f"{m['width']} × {m['height']} at {round(m['refresh'])} Hz" + (' (recommended)' if m.get('preferred') else '')
+                label = f"{m['width']} × {m['height']}" + (f" at {round(m['refresh'])} Hz" if m.get('refresh', 0) >= 1 else '') + (
+                    ' (recommended)' if m.get('preferred') else '')
                 value = f"{m['width']}x{m['height']}@{int(round(m['refresh'] * 1000))}"
                 if (label, value) not in modes:
                     modes.append((label, value))
@@ -548,10 +558,7 @@ class Settings(Gtk.Application):
                 dd.set_selected(next((i for i, m in enumerate(modes) if m[1] == cur), 0))
             dd.connect('notify::selected', lambda d, _p, n=name, ms=modes: ini_set(f'output:{n}', 'mode',
                                                                                ms[d.get_selected()][1]))
-            r = Gtk.Box(spacing=10)
-            r.append(Gtk.Label(label='Resolution', xalign=0, width_chars=14))
-            r.append(dd)
-            p.append(r)
+            p.append(field('Resolution', dd))
             scales = ['100%', '125%', '150%', '175%', '200%']
             sd = Gtk.DropDown.new_from_strings(scales)
             try:
@@ -560,10 +567,7 @@ class Settings(Gtk.Application):
                 pass
             sd.connect('notify::selected', lambda d, _p, n=name: ini_set(
                 f'output:{n}', 'scale', str(int(scales[d.get_selected()][:-1]) / 100)))
-            r2 = Gtk.Box(spacing=10)
-            r2.append(Gtk.Label(label='Size of text and apps', xalign=0, width_chars=14, wrap=True))
-            r2.append(sd)
-            p.append(r2)
+            p.append(field('Size of text and apps', sd))
             # A monitor with tiny text out of the box gets a hint (Wayfire starts every screen at 100%).
             mm_w = int(o.get('physical_size', {}).get('width') or 0)
             cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
@@ -572,7 +576,7 @@ class Settings(Gtk.Application):
         # Night light: warmer colours from sunset to sunrise, where the weather widget's city is.
         p.append(section('Night light'))
         flag = os.path.join(CONF_DIR, 'nightlight')
-        night = Gtk.CheckButton(label='Warmer colours from sunset to sunrise')
+        night = Gtk.CheckButton(label='Warmer colors from sunset to sunrise')
         night.set_active(os.path.exists(flag))
 
         def toggled(c):
@@ -587,7 +591,7 @@ class Settings(Gtk.Application):
                 run(['pkill', '-u', str(os.getuid()), '-x', 'wlsunset'])
         night.connect('toggled', toggled)
         p.append(night)
-        p.append(note('The times follow the city chosen for the weather widget (Settings \u2192 Desktop).'))
+        p.append(note('Sunset and sunrise follow the city set on the Desktop page.'))
         self.graphics_driver(p)
         return p
 
@@ -643,11 +647,10 @@ class Settings(Gtk.Application):
             return ''
 
     def page_bluetooth(self):
-        p = page()
-        p.append(heading('Bluetooth'))
-        top = Gtk.Box(spacing=10)
+        p = page('Bluetooth', 'Connect headphones, speakers, a keyboard or a mouse.')
+        top = Gtk.Box(spacing=12)
         power = Gtk.Switch(valign=Gtk.Align.CENTER)
-        top.append(Gtk.Label(label='Bluetooth', xalign=0, width_chars=14))
+        top.append(Gtk.Label(label='Use Bluetooth', xalign=0, width_chars=20, css_classes=['key']))
         top.append(power)
         scan = Gtk.Button(label='Search for devices')
         top.append(scan)
@@ -770,17 +773,15 @@ class Settings(Gtk.Application):
     PRINTER_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z')
 
     def page_printers(self):
-        p = page()
-        p.append(heading('Printers'))
+        p = page('Printers', 'Printers on your network, and USB printers, are found automatically.')
         status = note('')
         lst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         found = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        find = Gtk.Button(label='Add a printer')
+        find = Gtk.Button(label='Look for printers')
         find.set_halign(Gtk.Align.START)
-        for w in (lst, status, find, found):
+        p.append(section('Your printers'))
+        for w in (lst, status, section('Add a printer'), find, found):
             p.append(w)
-        p.append(note('Printers on your network and USB printers that support driverless printing (IPP Everywhere) are found '
-                      'automatically.'))
 
         def clear(box):
             while box.get_first_child():
@@ -866,10 +867,8 @@ class Settings(Gtk.Application):
 
     # ---- Keyboard ---------------------------------------------------------------------------------------------------
     def page_keyboard(self):
-        p = page()
-        p.append(heading('Keyboard'))
+        p = page('Keyboard', 'Which keys you type with, and how fast they repeat.')
         p.append(section('Layout'))
-        p.append(note('Switch between layouts with Windows key + Space.'))
         choices = [('English (US), then Romanian', 'us,ro', ',std'), ('Romanian, then English (US)', 'ro,us', 'std,'),
                    ('English (US) only', 'us', ''), ('Romanian only', 'ro', 'std')]
         cur = ini_get('input', 'xkb_layout', 'us,ro')
@@ -881,26 +880,33 @@ class Settings(Gtk.Application):
             ini_set('input', 'xkb_layout', layout)
             ini_set('input', 'xkb_variant', variant)
         dd.connect('notify::selected', on_sel)
+        dd.set_halign(Gtk.Align.START)
         p.append(dd)
+        p.append(note('Switch between layouts with Windows key + Space.'))
         p.append(section('Repeat'))
         delay = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 150, 800, 10)
         delay.set_value(float(ini_get('input', 'kb_repeat_delay', '400') or 400))
         delay.connect('value-changed', lambda s: ini_set('input', 'kb_repeat_delay', str(int(s.get_value()))))
-        p.append(Gtk.Label(label='Delay before repeating', xalign=0))
-        p.append(delay)
+        delay.set_size_request(320, -1)
+        delay.set_draw_value(False)
+        p.append(field('Delay before repeating', delay))
+        p.append(note('Left is a short delay, right is a long one.'))
         return p
 
     # ---- Mouse ------------------------------------------------------------------------------------------------------
     def page_mouse(self):
-        p = page()
-        p.append(heading('Mouse'))
+        p = page('Mouse', 'Pointer speed, scrolling and buttons.')
         p.append(section('Pointer speed'))
         sp = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, -1.0, 1.0, 0.05)
         sp.set_value(float(ini_get('input', 'mouse_cursor_speed', '0') or 0))
         sp.add_mark(0, Gtk.PositionType.BOTTOM, 'Default')
         sp.connect('value-changed', lambda s: ini_set('input', 'mouse_cursor_speed', f'{s.get_value():.2f}'))
+        sp.set_size_request(320, -1)
+        sp.set_draw_value(False)
+        sp.set_halign(Gtk.Align.START)
         p.append(sp)
-        nat = Gtk.CheckButton(label='Natural scrolling (content follows your fingers, like a phone)')
+        p.append(section('Scrolling and buttons'))
+        nat = Gtk.CheckButton(label='Natural scrolling (content moves with your hand, like on a phone)')
         nat.set_active(ini_get('input', 'mouse_natural_scroll', 'false') == 'true')
         nat.connect('toggled', lambda c: ini_set('input', 'mouse_natural_scroll', 'true' if c.get_active() else 'false'))
         p.append(nat)
@@ -912,9 +918,8 @@ class Settings(Gtk.Application):
 
     # ---- Desktop (icons and widgets; the desktop layer watches its settings file) ---------------------------------------
     def page_desktop(self):
-        p = page()
-        p.append(heading('Desktop icons and widgets'))
-        p.append(note('What the desktop shows. Right-click the desktop for the same choices.'))
+        p = page('Desktop', 'What the desktop shows. Right-click the desktop for the same choices.')
+        p.append(section('On the desktop'))
         path = os.path.join(CONF_DIR, 'desktop.json')
 
         def load():
@@ -935,17 +940,14 @@ class Settings(Gtk.Application):
         icons.set_active(cfg.get('icons', True) is not False)
         icons.connect('toggled', lambda c: save(icons=c.get_active()))
         p.append(icons)
-        gadgets = Gtk.CheckButton(label='Show widgets (clock, calendar, CPU and memory, weather)')
+        gadgets = Gtk.CheckButton(label='Show widgets (clock, calendar, computer load, weather)')
         gadgets.set_active(cfg.get('gadgets', True) is not False)
         gadgets.connect('toggled', lambda c: save(gadgets=c.get_active()))
         p.append(gadgets)
         p.append(section('Weather'))
-        row = Gtk.Box(spacing=8)
-        row.append(Gtk.Label(label='City', css_classes=['key']))
         city = Gtk.Entry(text=str(cfg.get('city') or 'Bucharest'), width_chars=24)
-        row.append(city)
+        row = field('City', city)
         status = note('')
-        row.append(status)
 
         def set_city(*_):
             name = city.get_text().strip()
@@ -973,12 +975,13 @@ class Settings(Gtk.Application):
             threading.Thread(target=work, daemon=True).start()
         city.connect('activate', set_city)
         p.append(row)
+        p.append(note('Type a city and press Enter.'))
+        p.append(status)
         return p
 
     # ---- Sound (PipeWire, through wpctl) --------------------------------------------------------------------------------
     def page_sound(self):
-        p = page()
-        p.append(heading('Sound'))
+        p = page('Sound', 'Volume, where sound plays, and MWX 7\u2019s own sounds.')
         p.append(section('Volume'))
         out = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@']).split()
         try:
@@ -988,9 +991,10 @@ class Settings(Gtk.Application):
         vol = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
         vol.set_value(level)
         vol.set_size_request(320, -1)
-        vol.set_halign(Gtk.Align.START)
+        vol.set_draw_value(False)
         vol.connect('value-changed', lambda s: run(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@',
                                                     f'{s.get_value() / 100:.2f}']))
+        vol.set_halign(Gtk.Align.START)
         p.append(vol)
         mute = Gtk.CheckButton(label='Mute')
         mute.set_active('[MUTED]' in out)
@@ -1015,11 +1019,10 @@ class Settings(Gtk.Application):
         if len(sinks) > 1:
             p.append(section('Play sound through'))
             dd = Gtk.DropDown.new_from_strings([n for _i, n in sinks])
-            dd.set_halign(Gtk.Align.START)
             if cur is not None:
                 dd.set_selected(cur)
             dd.connect('notify::selected', lambda d, _p: run(['wpctl', 'set-default', sinks[d.get_selected()][0]]))
-            p.append(dd)
+            p.append(field('Output', dd))
         elif not sinks:
             p.append(note('No sound output was found.'))
         # MWX 7's own sounds: the startup and log-off chimes and the notification sound.
@@ -1070,10 +1073,9 @@ class Settings(Gtk.Application):
         return c
 
     def page_dock(self):
-        p = page()
-        p.append(heading('Change how the dock behaves'))
-        p.append(note('Icons grow under the pointer when magnification is on.'))
-        p.append(self.shell_check('Magnification', 'dock_magnify'))
+        p = page('Dock', 'The row of app icons at the bottom of the screen.')
+        p.append(section('Magnification'))
+        p.append(self.shell_check('Icons grow under the pointer', 'dock_magnify'))
         p.append(section('Icon size'))
         row = Gtk.Box(spacing=0, halign=Gtk.Align.START)
         row.add_css_class('linked')
@@ -1090,11 +1092,10 @@ class Settings(Gtk.Application):
         return p
 
     def page_datetime(self):
-        p = page()
-        p.append(heading('Date & time'))
-        p.append(section('Clock in the menu bar'))
+        p = page('Date & time', 'The clock in the status bar, and your time zone.')
+        p.append(section('Clock'))
         p.append(self.shell_check('Use 24-hour clock', 'clock24'))
-        p.append(self.shell_check('Show seconds', 'clock_seconds', default=False))
+        p.append(self.shell_check('Show seconds (uses a little more power)', 'clock_seconds', default=False))
         p.append(section('Time zone'))
         zones = [z for z in run(['timedatectl', 'list-timezones']).split() if '/' in z]
         cur = run(['timedatectl', 'show', '-p', 'Timezone', '--value']).strip() or 'Europe/Bucharest'
@@ -1114,9 +1115,9 @@ class Settings(Gtk.Application):
             status.set_label('Time zone set. The clock updates within a few seconds.' if r.returncode == 0
                              else 'Could not change the time zone: ' + (r.stderr.strip() or 'not allowed'))
         dd.connect('notify::selected', on_zone)
+        dd.set_halign(Gtk.Align.START)
         p.append(dd)
         p.append(status)
-        p.append(note('Seconds make the status bar redraw every second, which costs a little speed in virtual machines.'))
         return p
 
     # ---- Account ----------------------------------------------------------------------------------------------------
@@ -1147,8 +1148,7 @@ class Settings(Gtk.Application):
         threading.Thread(target=work, daemon=True).start()
 
     def page_account(self):
-        p = page()
-        p.append(heading('Account'))
+        p = page('User account', 'Your name, picture and password.')
         me = pwd.getpwuid(os.getuid())
         head = Gtk.Box(spacing=14)
         own = f'/var/lib/AccountsService/icons/{USER}'
@@ -1158,14 +1158,14 @@ class Settings(Gtk.Application):
         name = Gtk.Label(label=(me.pw_gecos or '').split(',')[0] or USER, xalign=0)
         name.add_css_class('section')
         v.append(name)
-        v.append(note(f'Signs in as “{USER}” · Administrator'))
+        v.append(note(f'Signs in as “{USER}” (administrator)'))
         head.append(v)
         p.append(head)
         status = note('')
         status.add_css_class('status')
 
         p.append(section('Picture'))
-        flow = Gtk.FlowBox(max_children_per_line=10, min_children_per_line=5, selection_mode=Gtk.SelectionMode.NONE,
+        flow = Gtk.FlowBox(max_children_per_line=8, min_children_per_line=4, selection_mode=Gtk.SelectionMode.NONE,
                            column_spacing=6, row_spacing=6)
         for f in sorted(os.listdir('/usr/share/mwx7/avatars')):
             path = os.path.join('/usr/share/mwx7/avatars', f)
@@ -1255,17 +1255,15 @@ class Settings(Gtk.Application):
 
     # ---- Updates ----------------------------------------------------------------------------------------------------
     def page_updates(self):
-        p = page()
-        p.append(heading('Updates'))
+        p = page('Updates')
         try:
             version = open('/usr/share/mwx7/version').read().strip()
         except OSError:
             version = '?'
         current = note(f'You have MWX 7 {version}.')
         p.append(current)
-        p.append(note('Updates bring MWX 7’s newest changes, plus Debian’s and Google Chrome’s fixes. Security fixes '
-                      'install by themselves; everything else waits for you: an icon in the status bar says when '
-                      'updates are ready, and Shut Down and Restart offer to install them first.'))
+        p.append(note('Security fixes install by themselves. Other updates wait for you: an icon in the status bar '
+                      'tells you when they are ready.'))
         status = Gtk.Label(xalign=0, wrap=True)
         status.add_css_class('status')
         detail = note('')
@@ -1387,7 +1385,7 @@ class Settings(Gtk.Application):
             # it the version MWX 7 starts from from now on.
             p.append(section('Previous version'))
             p.append(note('This PC is running the version from before the last update. Keep it to start from it from now '
-                          'on; the updated version that did not start is deleted. Otherwise the next update tries again.'))
+                          'on, or leave it and the next update tries again.'))
             keep_msg = note('')
             keep = Gtk.Button(label='Keep the previous version', halign=Gtk.Align.START)
 
@@ -1405,8 +1403,8 @@ class Settings(Gtk.Application):
 
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Repair or reset'))
-            p.append(note('Repair fixes this install and keeps everything. Reset to factory deletes everything and installs '
-                          'MWX 7 fresh. Repair also runs from the boot menu: hold Esc while the PC starts.'))
+            p.append(note('Repair fixes MWX 7 and keeps your files. Reset to factory deletes everything and starts fresh. '
+                          'Repair is also in the boot menu: hold Esc while the PC starts.'))
             row = Gtk.Box(spacing=8)
             repair = Gtk.Button(label='Repair MWX 7…')
             repair.connect('clicked', lambda *_: self.confirm_reset(True))
@@ -1419,11 +1417,7 @@ class Settings(Gtk.Application):
         return p
 
     def page_backup(self):
-        p = page()
-        p.append(heading('Backup'))
-        p.append(note('Copies everything in /home (every account’s files and settings) to an external drive. A drive '
-                      'formatted as btrfs keeps read-only snapshots and only sends what changed; any other drive gets a '
-                      'plain copy in a MWX7-Backup folder, one per date.'))
+        p = page('Backup', 'Copies the files and settings of every account to an external drive.')
         drives, state = [], {}
         row = Gtk.Box(spacing=8)
         model = Gtk.StringList()
@@ -1444,9 +1438,8 @@ class Settings(Gtk.Application):
         sched = Gtk.DropDown(model=Gtk.StringList.new(['Off', 'Every day', 'Every week']), halign=Gtk.Align.START)
         for w in (buttons, status, detail, section('Automatic backup')):
             p.append(w)
-        p.append(sched)
-        p.append(note('The drive has to be connected when the time comes; if it is not, the backup happens the next time '
-                      'it is (after the PC starts).'))
+        p.append(field('Back up', sched))
+        p.append(note('If the drive is not connected at the time, the backup runs the next time it is.'))
         busy = {'on': False}
         loading = {'on': False}
 
@@ -1646,8 +1639,7 @@ class Settings(Gtk.Application):
 
     # ---- About ------------------------------------------------------------------------------------------------------
     def page_about(self):
-        p = page()
-        p.append(heading('About'))
+        p = page('About')
         logo = Gtk.Image.new_from_file(os.path.join(ICONS, 'orb.png'))
         logo.set_pixel_size(96)
         logo.set_halign(Gtk.Align.START)
