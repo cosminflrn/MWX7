@@ -88,6 +88,7 @@ class Paint:
         self.color1, self.color2 = rgba('#000000'), rgba('#ffffff')
         self.zoom = 1.0
         self.path, self.dirty = None, False
+        self.print_settings = self.page_setup = None
         self.drag = None
         self.sel = None          # (x, y, w, h) on the canvas
         self.clip = None         # a cairo surface: the copied selection
@@ -119,6 +120,7 @@ class Paint:
             ('File', [('New', 'new', lambda: self.guard(self.new), '<Control>n'),
                       ('Open…', 'open', lambda: self.guard(self.open), '<Control>o'),
                       ('Save', 'save', self.save, '<Control>s'), ('Save As…', 'saveas', self.save_as, '<Control><Shift>s'),
+                      None, ('Print…', 'print', self.print_canvas, '<Control>p'),
                       None, ('Exit', 'exit', win.close, None)]),
             ('Edit', [('Undo', 'undo', self.undo, '<Control>z'), ('Redo', 'redo', self.redo, '<Control>y'), None,
                       ('Cut', 'cut', self.cut, '<Control>x'), ('Copy', 'copy', self.copy, '<Control>c'),
@@ -1032,6 +1034,53 @@ class Paint:
             self.snapshot()
             self.floating = (self.cut_out(self.sel, True), self.sel[0], self.sel[1])
             self.touched()
+
+    def print_canvas(self, export=None):
+        self.put_down()
+        name = os.path.basename(self.path) if self.path else 'Untitled'
+        return self.print_image(self.surface, name, export, shrink_only=True)
+
+    # ---- print ----------------------------------------------------------------------------------------------------
+    def print_image(self, surf, name, export=None, shrink_only=False):
+        """File > Print: GTK's own dialog (printers, page range, preview). One page, the picture centred and scaled to fit
+        inside the margins; the page turns to landscape for a wide picture (the dialog can still change it). `export` prints
+        to that PDF without a dialog (used by the tests)."""
+        iw, ih = surf.get_width(), surf.get_height()
+        op = Gtk.PrintOperation(job_name=name, n_pages=1, embed_page_setup=True, allow_async=export is None)
+        op.set_unit(Gtk.Unit.POINTS)
+        ps = self.page_setup.copy() if self.page_setup else Gtk.PageSetup()
+        ps.set_orientation(Gtk.PageOrientation.LANDSCAPE if iw > ih else Gtk.PageOrientation.PORTRAIT)
+        op.set_default_page_setup(ps)
+        if self.print_settings:
+            op.set_print_settings(self.print_settings)
+        if export:
+            op.set_export_filename(export)
+
+        def draw(_op, ctx, _n):
+            cr = ctx.get_cairo_context()
+            w, h = ctx.get_width(), ctx.get_height()
+            s = min(w / iw, h / ih)
+            if shrink_only:
+                s = min(s, 72 / 96)  # a pixel is 1/96 inch on screen: print at that size unless it will not fit
+            cr.translate((w - iw * s) / 2, (h - ih * s) / 2)
+            cr.scale(s, s)
+            cr.set_source_rgb(1, 1, 1)
+            cr.paint()
+            cr.set_source_surface(surf, 0, 0)
+            cr.get_source().set_filter(cairo.FILTER_BEST)
+            cr.paint()
+
+        def finished(_op, result):
+            if result == Gtk.PrintOperationResult.APPLY:
+                self.print_settings = _op.get_print_settings()
+            self.page_setup = _op.get_default_page_setup()
+        op.connect('draw-page', draw)
+        op.connect('done', finished)
+        try:
+            op.run(Gtk.PrintOperationAction.EXPORT if export else Gtk.PrintOperationAction.PRINT_DIALOG, self.win)
+        except GLib.Error as e:
+            Gtk.AlertDialog(message='Could not print', detail=e.message).show(self.win)
+        return op
 
     def put_down(self):
         """Settles whatever is still loose: a text box becomes pixels, a moved or pasted selection is dropped in place."""
