@@ -560,9 +560,16 @@ def reinstall(keep):
     top, iso = STATE + '/top', STATE + '/iso'
     for d in (top, iso):
         os.makedirs(d, exist_ok=True)
+    # The person only asks for Repair or Reset: a recovery copy that is missing or incomplete is completed first.
+    try:
+        st = json.load(open('/var/lib/mwx7/recovery.json'))
+    except (OSError, ValueError):
+        st = None
+    if not st or st.get('missing'):
+        recovery_prepare()
     with Recovery(root) as rec:
         if not os.path.exists(rec + '/manifest.json'):
-            raise RuntimeError('The recovery copy is not ready yet (Settings -> Updates prepares it).')
+            raise RuntimeError('MWX 7 could not be downloaded for this. Connect to the internet and try again.')
         sh('mount', '-o', 'subvolid=5', root, top)
         new, swapped = top + '/@new', False
         try:
