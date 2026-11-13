@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && playwright test"
+    "test": "bash scripts/distro-check.sh && npm run build && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
