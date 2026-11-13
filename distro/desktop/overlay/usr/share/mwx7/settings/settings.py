@@ -189,6 +189,8 @@ class Settings(Gtk.Application):
             ('mouse', 'Mouse', 'settings', self.page_mouse),
             ('datetime', 'Date & time', 'about', self.page_datetime),
             ('sound', 'Sound', 'audio', self.page_sound),
+            ('bluetooth', 'Bluetooth', 'settings', self.page_bluetooth),
+            ('printers', 'Printers', 'drive', self.page_printers),
             ('updates', 'Updates', 'drive', self.page_updates),
             ('about', 'About', 'about', self.page_about),
         ]
@@ -524,6 +526,273 @@ class Settings(Gtk.Application):
         night.connect('toggled', toggled)
         p.append(night)
         p.append(note('The times follow the city chosen for the weather gadget (Settings \u2192 Desktop).'))
+        self.graphics_driver(p)
+        return p
+
+    def graphics_driver(self, p):
+        """Only on a PC with an NVIDIA graphics card: its driver is not in MWX 7 by default (it is not free software)."""
+        if not re.search(r'(VGA|3D|Display).*NVIDIA', run(['lspci'])):
+            return
+        p.append(section('Graphics driver'))
+        have = 'install ok installed' in run(['dpkg-query', '-W', '-f=${Status}', 'nvidia-driver'])
+        status = Gtk.Label(xalign=0, wrap=True)
+        status.add_css_class('note')
+        btn = Gtk.Button(label='Remove the NVIDIA driver' if have else 'Use the NVIDIA driver')
+        btn.set_halign(Gtk.Align.START)
+        status.set_label('The NVIDIA driver is installed.' if have else
+                         'This PC has an NVIDIA graphics card. The driver that comes with MWX 7 works, but NVIDIA\u2019s own '
+                         'driver is faster in games and 3D apps. It comes from Debian (non-free) and needs the internet.')
+
+        def go(_b):
+            install = not have
+            btn.set_sensitive(False)
+            status.set_label('Installing the NVIDIA driver\u2026 this takes a few minutes.' if install else
+                             'Removing the NVIDIA driver\u2026')
+
+            def done(ok, err):
+                if ok:
+                    status.set_label('Done. Restart the PC to finish; Remove brings the old driver back.' if install else
+                                     'Removed. Restart the PC to go back to the standard driver.')
+                else:
+                    status.set_label(f'That did not work: {err}')
+                    btn.set_sensitive(True)
+            self.admin(['nvidia', 'install' if install else 'remove'], done, timeout=1800)
+        btn.connect('clicked', go)
+        p.append(status)
+        p.append(btn)
+        p.append(note('A restart is required after installing or removing it.'))
+
+    # ---- Bluetooth --------------------------------------------------------------------------------------------------
+    BT_MAC = re.compile(r'[0-9A-F]{2}(:[0-9A-F]{2}){5}\Z')
+
+    @staticmethod
+    def btctl(args, timeout=20):
+        try:
+            r = subprocess.run(['bluetoothctl'] + args, capture_output=True, text=True, timeout=timeout)
+            return r.stdout + r.stderr
+        except (OSError, subprocess.TimeoutExpired):
+            return ''
+
+    def page_bluetooth(self):
+        p = page()
+        p.append(heading('Bluetooth'))
+        top = Gtk.Box(spacing=10)
+        power = Gtk.Switch(valign=Gtk.Align.CENTER)
+        top.append(Gtk.Label(label='Bluetooth', xalign=0, width_chars=14))
+        top.append(power)
+        scan = Gtk.Button(label='Search for devices')
+        top.append(scan)
+        spin = Gtk.Spinner()
+        top.append(spin)
+        p.append(top)
+        status = note('')
+        p.append(status)
+        lst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        p.append(lst)
+        state = {'busy': False, 'gen': 0}
+
+        def clear():
+            while lst.get_first_child():
+                lst.remove(lst.get_first_child())
+
+        def read():
+            """Off the UI thread: the adapter, then every known device with its paired/connected flags."""
+            show = self.btctl(['show'])
+            if 'No default controller' in show or not show.strip() or 'Powered:' not in show:
+                return None
+            devs = []
+            for line in self.btctl(['devices']).splitlines():
+                m = re.match(r'Device ([0-9A-F:]{17}) (.*)', line)
+                if m:
+                    info = self.btctl(['info', m.group(1)])
+                    flag = lambda k: f'{k}: yes' in info
+                    devs.append((m.group(1), m.group(2), flag('Paired'), flag('Connected')))
+            return 'Powered: yes' in show, devs
+
+        def row(mac, name, paired, connected):
+            r = Gtk.Box(spacing=8)
+            lab = Gtk.Label(label=name if name.replace('-', ':') != mac else f'Unnamed device ({mac})', xalign=0, hexpand=True)
+            r.append(lab)
+            if connected:
+                r.append(Gtk.Label(label='Connected'))
+            actions = ([('Disconnect' if connected else 'Connect', ['disconnect' if connected else 'connect']),
+                        ('Remove', ['remove'])] if paired else [('Pair', ['pair', 'trust', 'connect'])])
+            for label, cmds in actions:
+                b = Gtk.Button(label=label)
+                b.connect('clicked', lambda _b, c=cmds, m=mac, lb=label: act(m, c, lb))
+                r.append(b)
+            return r
+
+        def show(res):
+            clear()
+            power.set_sensitive(res is not None)
+            scan.set_sensitive(bool(res and res[0]))
+            if res is None:
+                status.set_label('No Bluetooth adapter was found on this PC.')
+                return
+            on, devs = res
+            state['gen'] += 1
+            power.handler_block_by_func(on_power)
+            power.set_active(on)
+            power.handler_unblock_by_func(on_power)
+            if not on:
+                status.set_label('Bluetooth is off.')
+                return
+            status.set_label('')
+            for title, want in (('My devices', True), ('Nearby devices', False)):
+                group = [d for d in devs if d[2] == want]
+                if group:
+                    lst.append(section(title))
+                    for d in group:
+                        lst.append(row(*d))
+            if not devs:
+                lst.append(note('No devices yet. Put your device in pairing mode and choose Search for devices.'))
+
+        def refresh(extra=None):
+            def work():
+                if extra:
+                    extra()
+                res = read()
+                GLib.idle_add(lambda: (show(res), spin.stop(), setbusy(False)) and False)
+            setbusy(True)
+            threading.Thread(target=work, daemon=True).start()
+
+        def setbusy(b):
+            state['busy'] = b
+            if b:
+                spin.start()
+
+        def on_power(sw, _p):
+            if state['busy']:
+                return
+            on = sw.get_active()
+            refresh(lambda: (run(['rfkill', 'unblock', 'bluetooth']) if on else None,
+                             self.btctl(['power', 'on' if on else 'off'])))
+
+        def act(mac, cmds, label):
+            if state['busy'] or not self.BT_MAC.match(mac):
+                return
+            status.set_label(f'{label}\u2026')
+
+            def work():
+                out = ''
+                for c in cmds:
+                    out = self.btctl([c, mac], timeout=40)
+                    if c == 'pair' and 'Failed' in out and 'AlreadyExists' not in out:
+                        break  # no point trusting or connecting what did not pair
+                bad = [ln for ln in out.splitlines() if 'Failed' in ln]
+                res = read()
+                GLib.idle_add(lambda: (show(res), status.set_label(f'That did not work: {bad[0]}' if bad else status.get_label()),
+                                       spin.stop(), setbusy(False)) and False)
+            setbusy(True)
+            threading.Thread(target=work, daemon=True).start()
+
+        def do_scan(_b):
+            if state['busy']:
+                return
+            status.set_label('Searching\u2026')
+            refresh(lambda: self.btctl(['--timeout', '8', 'scan', 'on'], timeout=20))
+        power.connect('notify::active', on_power)
+        scan.connect('clicked', do_scan)
+        refresh()
+        return p
+
+    # ---- Printers ---------------------------------------------------------------------------------------------------
+    PRINTER_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z')
+
+    def page_printers(self):
+        p = page()
+        p.append(heading('Printers'))
+        status = note('')
+        lst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        found = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        find = Gtk.Button(label='Add a printer')
+        find.set_halign(Gtk.Align.START)
+        for w in (lst, status, find, found):
+            p.append(w)
+        p.append(note('Printers on your network and USB printers that support driverless printing (IPP Everywhere) are found '
+                      'automatically.'))
+
+        def clear(box):
+            while box.get_first_child():
+                box.remove(box.get_first_child())
+
+        def read():
+            out = run(['lpstat', '-p', '-d'])
+            default = (re.search(r'system default destination: (\S+)', out) or [None, None])[1]
+            names = re.findall(r'^printer (\S+) ', out, re.M)
+            return names, default
+
+        def reload():
+            names, default = read()
+            clear(lst)
+            if not names:
+                lst.append(note('No printers are set up yet.'))
+            for n in names:
+                r = Gtk.Box(spacing=8)
+                r.append(Gtk.Label(label=n + ('  (default)' if n == default else ''), xalign=0, hexpand=True))
+                for label, fn in (('Print test page', lambda _b, n=n: test(n)),
+                                  ('Set as default', lambda _b, n=n: admin(['printer', 'default', n], 'Done.')),
+                                  ('Remove', lambda _b, n=n: admin(['printer', 'remove', n], 'Removed.'))):
+                    if label == 'Set as default' and n == default:
+                        continue
+                    b = Gtk.Button(label=label)
+                    b.connect('clicked', fn)
+                    r.append(b)
+                lst.append(r)
+
+        def admin(args, ok_text):
+            status.set_label('Working\u2026')
+
+            def done(ok, err):
+                status.set_label(ok_text if ok else f'That did not work: {err}')
+                reload()
+            self.admin(args, done, timeout=120)
+
+        def test(name):
+            def work():
+                r = subprocess.run(['lp', '-d', name, '/usr/share/cups/data/testprint'], capture_output=True, text=True)
+                msg = 'Test page sent.' if r.returncode == 0 else f'That did not work: {r.stderr.strip()}'
+                GLib.idle_add(lambda: status.set_label(msg) and False)
+            threading.Thread(target=work, daemon=True).start()
+
+        def discover(_b):
+            find.set_sensitive(False)
+            status.set_label('Looking for printers\u2026')
+            clear(found)
+
+            def work():
+                try:
+                    r = subprocess.run(['pkexec', ADMIN, 'printer', 'discover'], capture_output=True, text=True, timeout=120)
+                    lines = r.stdout.splitlines() if r.returncode == 0 else []
+                except (OSError, subprocess.TimeoutExpired):
+                    lines = []
+                GLib.idle_add(lambda: shown(lines) and False)
+            threading.Thread(target=work, daemon=True).start()
+
+        def shown(lines):
+            find.set_sensitive(True)
+            names, _d = read()
+            n = 0
+            for ln in lines:
+                uri, _t, info = ln.partition('\t')
+                label = re.sub(r'\s+', ' ', info or uri)
+                base = re.sub(r'[^A-Za-z0-9_-]+', '_', label).strip('_')[:40] or 'Printer'
+                base = base if base[0].isalnum() else 'P' + base
+                name, i = base, 2
+                while name in names:
+                    name, i = f'{base[:36]}_{i}', i + 1
+                r = Gtk.Box(spacing=8)
+                r.append(Gtk.Label(label=label, xalign=0, hexpand=True))
+                b = Gtk.Button(label='Add')
+                b.connect('clicked', lambda _b, nm=name, u=uri: admin(['printer', 'add', nm, u], 'Printer added.'))
+                r.append(b)
+                found.append(r)
+                n += 1
+            status.set_label('' if n else 'No new printers were found. Check that the printer is on and connected.')
+
+        find.connect('clicked', discover)
+        reload()
         return p
 
     # ---- Keyboard ---------------------------------------------------------------------------------------------------
@@ -797,11 +1066,11 @@ class Settings(Gtk.Application):
             return False
         return '[initial_session]' in text and f'user = "{USER}"' in text.split('[initial_session]', 1)[1]
 
-    def admin(self, args, done, stdin=None):
+    def admin(self, args, done, stdin=None, timeout=300):
         """Runs mwx7-admin through pkexec (MWX 7 asks for the password if the account has one) off the UI thread."""
         def work():
             try:
-                r = subprocess.run(['pkexec', ADMIN] + args, input=stdin, capture_output=True, text=True, timeout=300)
+                r = subprocess.run(['pkexec', ADMIN] + args, input=stdin, capture_output=True, text=True, timeout=timeout)
                 ok, err = r.returncode == 0, (r.stderr.strip().splitlines() or [''])[-1]
             except (OSError, subprocess.TimeoutExpired) as e:
                 ok, err = False, str(e)
