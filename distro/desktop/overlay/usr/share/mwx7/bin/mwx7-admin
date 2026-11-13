@@ -132,15 +132,39 @@ def enable_non_free():
             os.replace(path + '.tmp', path)
 
 
+NVIDIA_CONF = '/etc/modprobe.d/mwx7-nvidia.conf'
+
+
+def secure_boot_on():
+    r = subprocess.run(['mokutil', '--sb-state'], capture_output=True, text=True)
+    return 'enabled' in r.stdout.lower()
+
+
 def nvidia(install):
     env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
     if install:
         enable_non_free()
         subprocess.run(['apt-get', 'update'], check=True, env=env)
-        subprocess.run(['apt-get', 'install', '-y', 'nvidia-driver', 'firmware-misc-nonfree'], check=True, env=env)
+        # The kernel module is built on this PC (DKMS), which needs the headers of the installed kernel; the headers
+        # metapackage follows linux-image-amd64, so they always match it.
+        subprocess.run(['apt-get', 'install', '-y', 'linux-headers-amd64', 'dkms', 'nvidia-driver', 'firmware-misc-nonfree'],
+                       check=True, env=env)
+        # Wayfire needs the driver's kernel modesetting (and its framebuffer) to get a screen at all.
+        with open(NVIDIA_CONF, 'w') as f:
+            f.write('# MWX 7: Wayland needs kernel modesetting with the NVIDIA driver.\noptions nvidia-drm modeset=1 fbdev=1\n')
+        subprocess.run(['update-initramfs', '-u'], check=True, env=env)
+        if secure_boot_on() and os.path.exists('/var/lib/dkms/mok.pub'):
+            # Unsigned kernel modules are refused with Secure Boot on, so the driver would never load. Queue DKMS's signing
+            # key for enrollment: at the next start a blue screen (MOK manager) asks for this one-time password. Enrolling
+            # needs the person at the screen, which is exactly the point of it. Failure is not fatal: Settings explains.
+            subprocess.run(['mokutil', '--import', '/var/lib/dkms/mok.pub'], input='mwx7mwx7\nmwx7mwx7\n', text=True,
+                           capture_output=True)
     else:
         # Only the driver goes: the firmware package is harmless and other hardware may use it.
         subprocess.run(['apt-get', 'remove', '--purge', '-y', 'nvidia-driver'], check=True, env=env)
+        if os.path.exists(NVIDIA_CONF):
+            os.unlink(NVIDIA_CONF)
+            subprocess.run(['update-initramfs', '-u'], check=False, env=env)
 
 
 def reset(keep):

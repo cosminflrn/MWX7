@@ -601,6 +601,7 @@ class Settings(Gtk.Application):
         status.add_css_class('note')
         btn = Gtk.Button(label='Remove the NVIDIA driver' if have else 'Use the NVIDIA driver')
         btn.set_halign(Gtk.Align.START)
+        sb = 'enabled' in run(['mokutil', '--sb-state']).lower()
         status.set_label('The NVIDIA driver is installed.' if have else
                          'This PC has an NVIDIA graphics card. The driver that comes with MWX 7 works, but NVIDIA\u2019s own '
                          'driver is faster in games and 3D apps. It comes from Debian (non-free) and needs the internet.')
@@ -613,8 +614,14 @@ class Settings(Gtk.Application):
 
             def done(ok, err):
                 if ok:
-                    status.set_label('Done. Restart the PC to finish; Remove brings the old driver back.' if install else
-                                     'Removed. Restart the PC to go back to the standard driver.')
+                    msg = ('Done. Restart the PC to finish; Remove brings the old driver back.' if install else
+                           'Removed. Restart the PC to go back to the standard driver.')
+                    if install and sb:
+                        # Secure Boot refuses unsigned drivers: the signing key is queued, and a blue screen appears at the
+                        # restart. Without answering it the screen keeps working, on the standard driver.
+                        msg += (' Secure Boot is on: at the restart a blue screen asks about a key. Choose Enroll MOK, '
+                                'Continue, Yes, and type the password mwx7mwx7. Or switch Secure Boot off in the BIOS.')
+                    status.set_label(msg)
                 else:
                     status.set_label(f'That did not work: {err}')
                     btn.set_sensitive(True)

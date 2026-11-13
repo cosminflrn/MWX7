@@ -76,6 +76,12 @@ def live_disk():
         return None
 
 
+def is_installer_stick(parts):
+    """Second line of defence for the live disk: the MWX 7 ISO's own volume, when findmnt could not say where it runs from
+    (a stick copied to RAM, a different boot loader). Wiping the stick we are running from would be fatal."""
+    return any((p.get('fstype') == 'iso9660' or (p.get('label') or '') in ('MWX7_LIVE', 'MWX7_EFI')) for p in parts)
+
+
 def kind_of(part):
     fs, ptype = part.get('fstype') or '', (part.get('parttype') or '').lower()
     label = (part.get('label') or part.get('partlabel') or '')
@@ -135,7 +141,7 @@ def survey():
         disk = {'path': d['path'], 'name': d['name'], 'model': (d.get('model') or '').strip(), 'size': int(d['size']),
                 'tran': d.get('tran'), 'removable': bool(d.get('rm')), 'pttype': d.get('pttype'), 'parts': parts,
                 'empty': empty, 'free': sectors * ss if not empty else int(d['size']),
-                'live': d['name'] == skip, 'big_enough': int(d['size']) >= MIN_SIZE, 'has_mwx7': has_mwx7}
+                'live': d['name'] == skip or is_installer_stick(parts), 'big_enough': int(d['size']) >= MIN_SIZE, 'has_mwx7': has_mwx7}
         disk['can_free'] = (not empty and not disk['live'] and disk['free'] >= MIN_SIZE and free_mode_ok(disk))
         disks.append(disk)
     print(json.dumps({'firmware': 'uefi' if uefi() else 'bios', 'min_size': MIN_SIZE, 'disks': disks}))
@@ -159,6 +165,14 @@ def partitions_of(disk):
 
 def settle():
     subprocess.run(['udevadm', 'settle', '--timeout=15'])
+
+
+def release(disk):
+    """Nothing of the chosen disk may be in use while it is partitioned: file managers and the live system sometimes mount
+    or swap on a partition they found (a Windows volume, a Linux swap)."""
+    for p in partitions_of(disk):
+        subprocess.run(['swapoff', p], capture_output=True)
+        subprocess.run(['umount', '-R', p], capture_output=True)
 
 
 def partition(mode, disk):
@@ -252,6 +266,7 @@ def copy(mode, disk):
     if info['live'] or not info['big_enough'] or (mode == 'free' and not info['can_free']):
         raise SystemExit('That disk cannot be used.')
     unmount_all()
+    release(disk)
     say('STEP', 'Preparing the disk')
     say('PROGRESS', 1)
     root, esp, own_esp = partition(mode, disk)
@@ -306,8 +321,15 @@ def copy(mode, disk):
     say('STEP', 'Installing the boot menu')
     if uefi():
         extra = ['--force-extra-removable'] if own_esp else []  # never replace another system's fallback loader
-        chroot('grub-install', '--target=x86_64-efi', '--efi-directory=/boot/efi', '--bootloader-id=MWX7',
-               '--uefi-secure-boot', *extra)
+        cmd = ['grub-install', '--target=x86_64-efi', '--efi-directory=/boot/efi', '--bootloader-id=MWX7', '--uefi-secure-boot']
+        try:
+            chroot(*cmd, *extra)
+        except RuntimeError:
+            if not own_esp:
+                raise
+            # Some firmware refuses new boot entries (efibootmgr fails). On our own EFI partition the removable-media path
+            # (EFI/BOOT/BOOTX64.EFI, which every UEFI PC tries) still boots; the PC just has no named entry.
+            chroot(*cmd, '--force-extra-removable', '--no-nvram')
         # Debian's signed GRUB (the one Secure Boot accepts) reads its first config from /EFI/debian, whatever folder it
         # was installed to.
         stub = f'{TARGET}/boot/efi/EFI/MWX7/grub.cfg'
