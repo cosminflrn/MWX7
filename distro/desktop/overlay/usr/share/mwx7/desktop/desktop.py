@@ -750,17 +750,20 @@ class Desktop(Gtk.Application):
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         self.clock, self.cal, self.meter = Clock(), Calendar(), Meter()
         self.weather = Weather(city, lat, lon)
-        self.gadget_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=GADGET_GAP, halign=Gtk.Align.END,
-                                  valign=Gtk.Align.START, margin_top=GADGET_TOP, margin_end=GADGET_RIGHT)
-        for g in (self.clock, self.cal, self.meter, self.weather):
-            self.gadget_col.append(g)
-        self.gadget_col.set_visible(self.gadgets_on)
-        self.fixed.set_visible(self.cfg.get('icons', True) is not False)
+        # Gadgets sit on the same surface as the icons and can be dragged anywhere, as in Windows 7; each keeps its place.
+        self.gadgets = [('clock', self.clock), ('calendar', self.cal), ('meter', self.meter), ('weather', self.weather)]
+        for name, g in self.gadgets:
+            g.set_visible(self.gadgets_on)
+            self.fixed.put(g, 0, 0)
+            drag = Gtk.GestureDrag(button=1)
+            drag.connect('drag-begin', lambda gest, *_a: gest.set_state(Gtk.EventSequenceState.CLAIMED))
+            drag.connect('drag-update', lambda _g, dx, dy, n=name, w=g: self.gadget_drag(n, w, dx, dy))
+            drag.connect('drag-end', lambda _g, dx, dy, n=name, w=g: self.gadget_drop(n, w, dx, dy))
+            g.add_controller(drag)
+        self.show_icons(self.cfg.get('icons', True) is not False)
         # Settings -> Desktop writes the same file: follow it (icons, gadgets, weather city) without a restart.
         self.cfg_mon = Gio.File.new_for_path(CONFIG).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.cfg_mon.connect('changed', lambda *_a: GLib.timeout_add(200, self.reload_config))
-        # halign END / valign START: the column takes only the space of its tiles, the desktop gets the rest.
-        self.root.add_overlay(self.gadget_col)
 
         # For screenshots in automated checks (no pointer there): MWX7_DESKTOP_OPEN=menu.
         if os.environ.get('MWX7_DESKTOP_OPEN') == 'menu':
@@ -776,7 +779,7 @@ class Desktop(Gtk.Application):
         self.fixed.add_controller(band)
         w.set_child(self.root)
         # Rows depend on the output height, which only arrives with the compositor's configure.
-        w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, _w, h: self.relayout(h)))
+        w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, wd, h: self.layout(wd, h)))
         return w
 
     def num(self, key, default):
@@ -809,6 +812,55 @@ class Desktop(Gtk.Application):
         self.set_sizes()
         self.rebuild_icons()
 
+    def layout(self, width, height):
+        # Called on every layout: move things only when the size really changed, or moving them asks for another
+        # layout, forever.
+        self.relayout(height)
+        if width != getattr(self, 'width', 0):
+            self.width = width
+            self.place_gadgets()
+
+    def show_icons(self, on):
+        for item in self.icons:
+            item.set_visible(on)
+        self.icons_on = on
+
+    def gadget_home(self, name):
+        """Where a gadget is: where the person left it (kept as distance from the right edge, so it stays put when the
+        screen size changes), else in the column at the top right."""
+        at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
+        pos = at.get(name)
+        if isinstance(pos, list) and len(pos) == 2:
+            return max(0, self.width - pos[0]), max(0, pos[1])
+        y = GADGET_TOP
+        for n, g in self.gadgets:
+            if n == name:
+                break
+            y += g.HEIGHT + GADGET_GAP
+        return self.width - GADGET_RIGHT - GADGET_W, y
+
+    def place_gadgets(self):
+        if not getattr(self, 'width', 0):
+            return
+        for name, g in self.gadgets:
+            self.fixed.move(g, *self.gadget_home(name))
+
+    def gadget_drag(self, name, g, dx, dy):
+        x, y = self.gadget_home(name)
+        self.fixed.move(g, x + dx, y + dy)
+
+    def gadget_drop(self, name, g, dx, dy):
+        if abs(dx) < 3 and abs(dy) < 3:
+            return
+        x, y = self.gadget_home(name)
+        x = max(0, min(self.width - GADGET_W, x + dx))
+        y = max(0, min(getattr(self, 'height', 600) - g.HEIGHT, y + dy))
+        at = self.cfg.get('gadgets_at') if isinstance(self.cfg.get('gadgets_at'), dict) else {}
+        at[name] = [int(self.width - x), int(y)]
+        self.cfg['gadgets_at'] = at
+        save_json(CONFIG, self.cfg)
+        self.place_gadgets()
+
     def relayout(self, height, force=False):
         self.height = height
         rows = max(1, (height - ORIGIN) // self.cell_h)
@@ -838,6 +890,7 @@ class Desktop(Gtk.Application):
     # -- moving icons by dragging them, as on Windows: they snap to the grid and keep their place
     def draggable(self, item, key):
         item.key = key
+        item.set_visible(getattr(self, 'icons_on', True))
         item.drag.connect('drag-update', lambda _g, dx, dy, it=item: self.icon_drag(it, dx, dy))
         item.drag.connect('drag-end', lambda _g, dx, dy, it=item: self.icon_drop(it, dx, dy))
 
@@ -1073,11 +1126,12 @@ class Desktop(Gtk.Application):
         if relook:
             self.set_sizes()
             self.rebuild_icons()
-        self.fixed.set_visible(cfg.get('icons', True) is not False)
+        self.show_icons(cfg.get('icons', True) is not False)
         on = cfg.get('gadgets', True) is not False
         if on != self.gadgets_on:
             self.gadgets_on = on
-            self.gadget_col.set_visible(on)
+            for _n, g in self.gadgets:
+                g.set_visible(on)
             self.start_timers() if on else self.stop_timers()
         lat, lon = self.num('lat', 44.43), self.num('lon', 26.10)
         if (lat, lon) != (self.weather.lat, self.weather.lon):
@@ -1092,7 +1146,8 @@ class Desktop(Gtk.Application):
         self.gadgets_on = not self.gadgets_on
         self.cfg['gadgets'] = self.gadgets_on
         save_json(CONFIG, self.cfg)
-        self.gadget_col.set_visible(self.gadgets_on)
+        for _n, g in self.gadgets:
+            g.set_visible(self.gadgets_on)
         if self.gadgets_on:
             self.start_timers()
         else:
