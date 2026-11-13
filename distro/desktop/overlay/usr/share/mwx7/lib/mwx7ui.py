@@ -87,7 +87,11 @@ class App(Gtk.Application):
         sheet.load_from_path('/usr/share/mwx7/settings/settings.css')
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), sheet, Gtk.STYLE_PROVIDER_PRIORITY_USER)
         css(MENU_CSS + (self.extra_css or ''), 1)
-        css(tint_css(), 2)
+        tint = css(tint_css(), 2)
+        # Follow Settings -> Window Color while open, as the frames around other apps do.
+        self.tint_mon = Gio.File.new_for_path(base.WF_INI).monitor_file(Gio.FileMonitorFlags.NONE, None)
+        self.tint_mon.connect('changed', lambda *_a: GLib.timeout_add(
+            200, lambda: tint.load_from_data(tint_css().encode()) and False))
         w = self.win = Gtk.ApplicationWindow(application=self, title=self.title)
         w.set_default_size(*self.size)
         w.set_resizable(self.resizable)

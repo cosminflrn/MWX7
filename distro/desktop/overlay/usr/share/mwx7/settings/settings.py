@@ -276,9 +276,10 @@ class Settings(Gtk.Application):
         return bar
 
     # ---- Themes, Wallpapers, Window Color (the web Settings' three Personalization pages) ----------------------------
-    # Only themes whose wallpaper ships in the package are offered: the web's Aurora and Dusk are drawn gradients, not
-    # pictures, so there is nothing for swaybg to show.
-    THEMES = [('MWX 7', 'meadow.jpg', '#1e64dc', 0), ('Sierra', 'sierra.jpg', '#5f6b78', 45)]
+    # The web's four themes. Aurora and Dusk are drawn live on the web; here they are stills rendered from the concept's
+    # own drawing code.
+    THEMES = [('MWX 7', 'meadow.jpg', '#1e64dc', 0), ('Aurora', 'aurora.jpg', '#1b3f9e', 60),
+              ('Sierra', 'sierra.jpg', '#5f6b78', 45), ('Dusk', 'dusk.jpg', '#7d4cc4', 55)]
 
     @staticmethod
     def tile(preview, name, strip=None):
