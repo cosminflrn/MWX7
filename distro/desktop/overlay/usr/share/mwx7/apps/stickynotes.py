@@ -159,4 +159,11 @@ class Notes(Gtk.Application):
 
 
 if __name__ == '__main__':
+    if '--if-any' in sys.argv:
+        try:
+            if not json.load(open(STORE)):
+                sys.exit(0)
+        except (OSError, ValueError):
+            sys.exit(0)
+        sys.argv.remove('--if-any')
     Notes().run(sys.argv)

@@ -8,11 +8,12 @@ import mwx7ui  # noqa: E402
 from mwx7ui import Gtk  # noqa: E402
 
 WHATS_NEW = [
-    'Full Screen merges a window’s title bar into the top bar',
-    'App menu in the top bar: Minimize, Full Screen, Close',
-    'Native Snipping Tool, Notepad, Calculator and About',
-    'Search near the top of the screen, as you type',
-    'Updates from Settings, Repair and Reset to factory',
+    'Smoother: the status bar no longer keeps a processor core busy',
+    'Real apps: My Computer, Notepad, Paint, Photos, Media Player, Calculator, Task Manager, Sticky Notes, Snipping Tool',
+    'Aero Peek with window thumbnails, Aero Shake, Full Screen into the top bar',
+    'Start menu with your most-used programs, jump lists in the dock',
+    'Drag icons and gadgets anywhere; Aurora and Dusk themes; Night light',
+    'Startup and log-off sounds; network and volume flyouts',
 ]
 CSS = """
 window.mwx7-about > box { background: radial-gradient(circle at 50% 0%, #e8f2ff, #ffffff 60%); }
