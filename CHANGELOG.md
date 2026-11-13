@@ -2,6 +2,15 @@
 
 Derived from the git history. Newest first.
 
+## v1.16.0
+- **Keyboard**: press Super to open Start; Alt+Tab switcher, Super+Tab overview, Super+D desktop, Super+E My Computer,
+  Print for the Snipping Tool; every flyout works with the keyboard, with an Aero focus ring
+- **Settings**: Power (screen off, sleep, power button, lid), Storage (what uses space, Free up space), Security
+  (firewall, automatic updates, Secure Boot, encryption), Default apps, accounts (change password, add or remove
+  accounts)
+- **Print** from Notepad, Photos and Paint
+- Fixes: lock screen picture centred, the update icon in the bar is flat like the others
+
 ## v1.15.0
 - **New lock screen**: big clock and date, password field on any key, Sleep / Restart / Shut down
 - **Smarter updates**: downloaded quietly in the background (not on metered connections), "What's new" before
