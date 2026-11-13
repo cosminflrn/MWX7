@@ -521,7 +521,7 @@ class StartMenu(Gtk.Popover):
             self.set_mode('freq')
         self.search.set_text('')
         self.listbox.invalidate_filter()
-        GLib.idle_add(self.search.grab_focus)
+        GLib.idle_add(lambda: self.search.grab_focus() and False)  # grab_focus returns True: once only
 
 
 class Shell(Gtk.Application):
@@ -696,7 +696,7 @@ class Shell(Gtk.Application):
         right.append(self.vol_btn)
         self.vol_updating = False
         GLib.timeout_add_seconds(2, self.poll_status)
-        GLib.idle_add(self.poll_status)
+        GLib.idle_add(lambda: self.poll_status() and False)  # once now; an idle source returning True spins forever
         # Search (the Start menu's search box) and all windows side by side, as in the web concept's menu bar.
         find = Gtk.Button()
         find.add_css_class('flat-ico')
