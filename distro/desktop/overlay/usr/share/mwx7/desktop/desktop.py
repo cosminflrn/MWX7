@@ -678,7 +678,7 @@ class DesktopIcon(Gtk.Box):
         # Right-click selects too, then bubbles up to the desktop's menu.
         r = Gtk.GestureClick()
         r.set_button(3)
-        r.connect('pressed', lambda *_a: on_select(self))
+        r.connect('pressed', lambda *_a: (setattr(self, 'right_at', GLib.get_monotonic_time()), on_select(self)))
         self.add_controller(r)
 
     def pressed(self, gest, _x, _y):
@@ -1001,6 +1001,43 @@ class Desktop(Gtk.Application):
         launch(['swaybg', '-i', nxt, '-m', 'fill'])
         GLib.timeout_add(700, lambda: [subprocess.run(['kill', p]) for p in old] and False)
 
+    def trash(self, path):
+        try:
+            Gio.File.new_for_path(path).trash(None)
+        except GLib.Error:
+            pass
+
+    def rename(self, path):
+        """A small box with the name selected (without its extension), as Windows renames on the desktop."""
+        w = Gtk.Window(title='Rename', resizable=False)
+        box = Gtk.Box(spacing=8, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        e = Gtk.Entry(text=os.path.basename(path), width_chars=30)
+        ok = Gtk.Button(label='Rename')
+        ok.add_css_class('suggested-action')
+        box.append(e)
+        box.append(ok)
+        w.set_child(box)
+
+        def go(*_a):
+            name = e.get_text().strip()
+            w.close()
+            if name and '/' not in name and name != os.path.basename(path):
+                dest = os.path.join(os.path.dirname(path), name)
+                if not os.path.exists(dest):
+                    try:
+                        os.rename(path, dest)
+                        pos = self.cfg.get('positions')
+                        if isinstance(pos, dict) and ('file:' + os.path.basename(path)) in pos:
+                            pos['file:' + name] = pos.pop('file:' + os.path.basename(path))
+                            save_json(CONFIG, self.cfg)
+                    except OSError:
+                        pass
+        ok.connect('clicked', go)
+        e.connect('activate', go)
+        w.present()
+        stem = os.path.splitext(os.path.basename(path))[0] if os.path.isfile(path) else os.path.basename(path)
+        GLib.idle_add(lambda: (e.grab_focus(), e.select_region(0, len(stem)), False)[2])
+
     def new_item(self, folder):
         path = unique(desktop_dir(), 'New folder' if folder else 'New Text Document.txt')
         try:
@@ -1061,6 +1098,9 @@ class Desktop(Gtk.Application):
 
     def menu(self, x, y):
         """The web concept's desktop menu: glass card, 16 px icons, the same items in the same order."""
+        it = self.selected
+        on_file = it is not None and str(getattr(it, 'key', '')).startswith('file:') and \
+            GLib.get_monotonic_time() - getattr(it, 'right_at', 0) < 800_000
         pop = Gtk.Popover()
         pop.add_css_class('desk-menu')
         pop.set_parent(self.root)
@@ -1116,6 +1156,17 @@ class Desktop(Gtk.Application):
             inner.set_child(col)
             b.connect('clicked', lambda *_a: inner.popup())
             box.append(b)
+        if on_file:
+            # A file or folder on the desktop: its own menu, as in Explorer.
+            path = os.path.join(desktop_dir(), it.key[5:])
+            row('Open', 'open', lambda: Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), None))
+            sep()
+            row('Rename', 'rename', lambda: self.rename(path))
+            row('Move to Trash', 'delete', lambda: self.trash(path))
+            pop.set_child(box)
+            pop.connect('closed', lambda p: GLib.idle_add(p.unparent))
+            pop.popup()
+            return
         sub('View', [('large', 'Large icons'), ('medium', 'Medium icons'), ('small', 'Small icons')],
             self.cfg.get('icon_size', 'medium'), 'icon_size')
         sub('Sort by', [('name', 'Name'), ('date', 'Date modified'), ('type', 'Item type')],
