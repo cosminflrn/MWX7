@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """At sign-in: without 3D acceleration (VMware with "Accelerate 3D graphics" off, llvmpipe) the processor draws every
 frame, and the Aero blur behind each window is what makes moving windows lag. Then the glass stays, unblurred; the
-blur comes back by itself on the first sign-in with acceleration."""
+blur comes back by itself on the first sign-in with acceleration. VMware counts as no acceleration here."""
 import json
 import os
 import sys
@@ -10,7 +10,14 @@ sys.path.insert(0, '/usr/share/mwx7/settings')
 import settings as base  # noqa: E402
 
 STATE = os.path.join(base.CONF_DIR, 'perf.json')
-soft = base.Settings.acceleration().startswith('Off')
+def vmware():
+    """VMware's virtual GPU (vmwgfx) passes GL through to the host slowly: the Aero blur, redrawn behind every window
+    and the bar on each frame, is what made MWX 7 lag there even with 3D acceleration on (13 Nov 2026)."""
+    import glob
+    return any(os.path.basename(os.path.realpath(d)) == 'vmwgfx' for d in glob.glob('/sys/class/drm/card*/device/driver'))
+
+
+soft = base.Settings.acceleration().startswith('Off') or vmware()
 try:
     saved = json.load(open(STATE))
 except (OSError, ValueError):
