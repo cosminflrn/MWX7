@@ -118,7 +118,7 @@ class Notepad:
         return True
 
     def find_dialog(self, replace):
-        d = Gtk.Window(title='Replace' if replace else 'Find', transient_for=self.win, resizable=False)
+        d = mwx7ui.dialog(self.win, 'Replace' if replace else 'Find', 'search')
         grid = Gtk.Grid(row_spacing=8, column_spacing=8, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
         what = Gtk.Entry(width_chars=26)
         sel = self.buf.get_selection_bounds()

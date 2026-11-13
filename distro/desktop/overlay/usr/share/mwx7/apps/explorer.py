@@ -646,7 +646,7 @@ class Explorer:
         self.fill()
 
     def ask(self, title, initial, done):
-        d = Gtk.Window(title=title, transient_for=self.win, modal=True, resizable=False)
+        d = mwx7ui.dialog(self.win, title, '16/rename')
         box = Gtk.Box(spacing=8, margin_top=14, margin_bottom=14, margin_start=14, margin_end=14)
         e = Gtk.Entry(text=initial, width_chars=32)
         ok = Gtk.Button(label='OK')
@@ -769,9 +769,40 @@ class Explorer:
                     except OSError:
                         pass
         when = lambda t: datetime.datetime.fromtimestamp(t).strftime('%d %B %Y, %H:%M')  # noqa: E731
-        kind = 'File folder' if os.path.isdir(p) else Gio.content_type_get_description(Gio.content_type_guess(p, None)[0])
-        self.alert(os.path.basename(p) or p, f'Type: {kind}\nLocation: {os.path.dirname(p)}\nSize: {human(size)}\n'
-                                               f'Modified: {when(st.st_mtime)}\nCreated: {when(st.st_ctime)}')
+        is_dir = os.path.isdir(p)
+        kind = 'File folder' if is_dir else Gio.content_type_get_description(Gio.content_type_guess(p, None)[0])
+        # Windows 7's Properties window: the item on top, then type and place, size, dates.
+        w = mwx7ui.dialog(self.win, f'{os.path.basename(p) or p} Properties', '16/properties')
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=16, margin_bottom=14,
+                      margin_start=18, margin_end=18)
+        head = Gtk.Box(spacing=14)
+        head.append(self.icon_for(p, is_dir, 48))
+        head.append(Gtk.Label(label=os.path.basename(p) or p, xalign=0, wrap=True, max_width_chars=34))
+        col.append(head)
+
+        def block(rows):
+            col.append(Gtk.Separator())
+            g = Gtk.Grid(column_spacing=18, row_spacing=6)
+            for i, (k, v) in enumerate(rows):
+                g.attach(Gtk.Label(label=k + ':', xalign=0, css_classes=['ex-meta']), 0, i, 1, 1)
+                g.attach(Gtk.Label(label=v, xalign=0, selectable=True, wrap=True, max_width_chars=40), 1, i, 1, 1)
+            col.append(g)
+        block([('Type', kind), ('Location', os.path.dirname(p) or '/')])
+        size_rows = [('Size', f'{human(size)} ({size:,} bytes)')]
+        if is_dir:
+            files = dirs = 0
+            for _r, ds, fs in os.walk(p):
+                files += len(fs)
+                dirs += len(ds)
+            size_rows.append(('Contains', f'{files:,} Files, {dirs:,} Folders'))
+        block(size_rows)
+        block([('Created', when(st.st_ctime)), ('Modified', when(st.st_mtime)), ('Accessed', when(st.st_atime))])
+        ok = Gtk.Button(label='OK', halign=Gtk.Align.END, margin_top=4)
+        ok.connect('clicked', lambda *_: w.close())
+        col.append(ok)
+        w.set_child(col)
+        w.present()
+        ok.grab_focus()  # not the first selectable value, which GTK would show selected
 
     def alert(self, msg, detail=''):
         Gtk.AlertDialog(message=msg, detail=detail).show(self.win)
