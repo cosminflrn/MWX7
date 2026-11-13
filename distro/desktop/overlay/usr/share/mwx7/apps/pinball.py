@@ -3,7 +3,12 @@ import json
 import math
 import os
 import random
+import shutil
+import struct
+import subprocess
 import sys
+import time
+import wave
 
 import cairo
 
@@ -100,6 +105,136 @@ def build_world():
     return segs, targets, plunger, sensors, [Flipper('L', FLIP_PX), Flipper('R', MIRROR - FLIP_PX)]
 
 
+SFX_DIR = os.path.join(GLib.get_user_cache_dir(), 'mwx7', 'pinball')
+SFX_RATE = 22050
+
+
+def _render(parts, total):
+    """Mixes the web version's building blocks (thump / noise burst / metal ring) into a list of floats."""
+    n = int(SFX_RATE * total)
+    out = [0.0] * n
+    rnd = random.Random(7)
+    for kind, a in parts:
+        t0 = int(a.get('delay', 0) * SFX_RATE)
+        dur, vol = a['dur'], a['vol']
+        m = min(n - t0, int((dur + 0.02) * SFX_RATE))
+        if m <= 0:
+            continue
+        tau = dur / 6.9  # exponential decay to -60 dB over `dur`, like exponentialRampToValueAtTime(0.0001)
+        if kind == 'thump':
+            ph = 0.0
+            for i in range(m):
+                t = i / SFX_RATE
+                f = a['f0'] * (max(20, a['f1']) / a['f0']) ** min(1.0, t / (dur * 0.8))
+                ph += 2 * math.pi * f / SFX_RATE
+                out[t0 + i] += vol * math.exp(-t / tau) * math.sin(ph)
+        elif kind == 'ring':
+            for mul, v in ((1, 1), (2.76, 0.5), (5.4, 0.25)):
+                tt = dur / mul ** 0.5 / 6.9
+                w = 2 * math.pi * a['f'] * mul / SFX_RATE
+                for i in range(m):
+                    out[t0 + i] += vol * v * math.exp(-i / SFX_RATE / tt) * math.sin(w * i)
+        else:  # burst: white noise through an RBJ biquad whose cutoff may sweep
+            typ, q, f0, f1 = a['type'], a['q'], a['f0'], a['f1']
+            x1 = x2 = y1 = y2 = 0.0
+            for i in range(m):
+                if i % 32 == 0:
+                    f = min(SFX_RATE * 0.45, f0 * (max(30, f1) / f0) ** (i / SFX_RATE / dur) if f1 != f0 else f0)
+                    w0 = 2 * math.pi * f / SFX_RATE
+                    al, cw = math.sin(w0) / (2 * q), math.cos(w0)
+                    if typ == 'highpass':
+                        b0, b1, b2 = (1 + cw) / 2, -(1 + cw), (1 + cw) / 2
+                    elif typ == 'lowpass':
+                        b0, b1, b2 = (1 - cw) / 2, 1 - cw, (1 - cw) / 2
+                    else:
+                        b0, b1, b2 = al, 0.0, -al
+                    a0, a1, a2 = 1 + al, -2 * cw, 1 - al
+                x0 = rnd.random() * 2 - 1
+                y0 = (b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0
+                x2, x1, y2, y1 = x1, x0, y1, y0
+                out[t0 + i] += vol * math.exp(-i / SFX_RATE / tau) * y0
+    return out
+
+
+def _thump(f0, f1, dur, vol, delay=0):
+    return ('thump', dict(f0=f0, f1=f1, dur=dur, vol=vol, delay=delay))
+
+
+def _burst(f, q, dur, vol, typ='bandpass', delay=0, f_end=None):
+    return ('burst', dict(f0=f, f1=f_end or f, q=q, dur=dur, vol=vol, type=typ, delay=delay))
+
+
+def _ring(f, dur, vol, delay=0):
+    return ('ring', dict(f=f, dur=dur, vol=vol, delay=delay))
+
+
+# name -> (minimum gap in ms, length in s, parts); the same recipes as src/apps/pinball/audio.ts.
+SFX = {
+    'bumper': (40, 0.2, [_thump(146, 48, 0.11, 0.7), _burst(2200, 0.9, 0.035, 0.5), _burst(900, 1.4, 0.06, 0.3),
+                         _ring(1540, 0.09, 0.05)]),
+    'sling': (50, 0.15, [_thump(110, 55, 0.08, 0.55), _burst(3200, 0.8, 0.022, 0.6, 'highpass'), _burst(1400, 1.2, 0.05, 0.25)]),
+    'flipper': (35, 0.12, [_burst(4200, 0.7, 0.012, 0.6, 'highpass'), _thump(130, 52, 0.06, 0.6),
+                           _burst(700, 1.1, 0.03, 0.22, 'bandpass', 0.014)]),
+    'wall': (70, 0.1, [_burst(1600, 1.0, 0.03, 0.2), _thump(200, 100, 0.04, 0.12)]),
+    'target': (40, 0.2, [_burst(3800, 1.0, 0.014, 0.5, 'highpass'), _thump(220, 100, 0.05, 0.3), _ring(1850, 0.12, 0.05)]),
+    'rollover': (40, 0.08, [_burst(2400, 2, 0.018, 0.22), _thump(420, 260, 0.025, 0.1)]),
+    'launch': (100, 0.7, [_thump(95, 32, 0.2, 0.65), _burst(2500, 0.8, 0.015, 0.5, 'highpass'),
+                          _burst(1200, 0.7, 0.5, 0.14, 'lowpass', 0.03, 200)]),
+    'charge': (90, 0.06, [_burst(1700, 2.2, 0.012, 0.16), _thump(110, 70, 0.025, 0.08)]),
+    'drain': (300, 0.8, [_burst(1400, 0.6, 0.6, 0.25, 'lowpass', 0, 120), _thump(80, 30, 0.35, 0.55, 0.08)]),
+    'save': (300, 0.6, [_ring(660, 0.35, 0.05), _ring(990, 0.4, 0.045, 0.1)]),
+    'mission': (300, 0.7, [_ring(523, 0.45, 0.05), _ring(659, 0.45, 0.05, 0.09), _ring(784, 0.45, 0.05, 0.18),
+                           _thump(100, 45, 0.18, 0.3)]),
+    'wormhole': (200, 0.6, [_burst(300, 2.5, 0.55, 0.28, 'bandpass', 0, 2600), _thump(50, 110, 0.5, 0.3)]),
+    'over': (500, 1.4, [_thump(90, 34, 0.5, 0.6), _thump(70, 28, 0.7, 0.5, 0.35), _burst(900, 0.7, 0.9, 0.12, 'lowpass', 0.35, 100)]),
+}
+
+
+class Sfx:
+    """Pinball sounds: short WAVs rendered once into ~/.cache/mwx7/pinball, played by pw-play / paplay without blocking."""
+
+    def __init__(self):
+        self.player = shutil.which('pw-play') or shutil.which('paplay')
+        self.last = {}
+        self.ready = False
+
+    def prepare(self):
+        # Rendering takes a moment in pure Python, so it runs lazily on an idle callback instead of delaying the window.
+        try:
+            os.makedirs(SFX_DIR, exist_ok=True)
+            for name, (_gap, total, parts) in SFX.items():
+                path = os.path.join(SFX_DIR, name + '.wav')
+                if os.path.exists(path):
+                    continue
+                pcm = _render(parts, total)
+                with wave.open(path + '.tmp', 'wb') as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(SFX_RATE)
+                    w.writeframes(b''.join(struct.pack('<h', int(max(-1, min(1, v)) * 32767 * 0.8)) for v in pcm))
+                os.replace(path + '.tmp', path)
+            self.ready = True
+        except OSError:
+            pass
+        return False
+
+    def play(self, name):
+        if not self.ready or not self.player:
+            return
+        if os.path.exists(os.path.join(GLib.get_user_config_dir(), 'mwx7', 'sounds-off')):  # Settings -> Sound
+            return
+        gap = SFX[name][0]
+        now = time.monotonic() * 1000
+        if now - self.last.get(name, -1e9) < gap:
+            return
+        self.last[name] = now
+        try:
+            subprocess.Popen([self.player, os.path.join(SFX_DIR, name + '.wav')], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            pass
+
+
 class Pinball:
     def build(self, app, win):
         win.add_css_class('mwx7-pinball')
@@ -112,6 +247,8 @@ class Pinball:
         except (OSError, ValueError, TypeError, AttributeError):
             pass
         self.clock = self.last_kick = 0.0
+        self.sfx = Sfx()
+        GLib.idle_add(self.sfx.prepare)
         self.chain = 0
         self.new_game(first=True)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -200,6 +337,7 @@ class Pinball:
     def set_flipper(self, i, down):
         f = self.flippers[i]
         if down and not f.pressed:
+            self.sfx.play('flipper')
             l = self.lanes  # flipper buttons rotate the rollover lights, like a real table
             self.lanes = [l[1], l[2], l[0]] if i == 0 else [l[2], l[0], l[1]]
         f.pressed = down and not self.paused
@@ -216,6 +354,7 @@ class Pinball:
         elif self.charging:
             self.charging = False
             if at:
+                self.sfx.play('launch')
                 self.vy, self.vx = -(430 + 1170 * self.pull), 0.0
                 if self.phase == 'ready':
                     self.phase = 'play'
@@ -303,12 +442,15 @@ class Pinball:
                             if out < 560:
                                 self.vx += (560 - out) * self.nx
                                 self.vy += (560 - out) * self.ny
+                        self.sfx.play('sling')
                         self.add(10)
                         self.flash[f's{s.idx}'] = 1
                         self.burst((s.ax + s.bx) / 2, (s.ay + s.by) / 2, CYAN, 7, 200)
                 elif s.kind == 'target':
                     if hit > 20:
                         self.hit_target(s)
+                elif hit > 140:
+                    self.sfx.play('wall')
             for i, (cx, cy) in enumerate(BUMPERS):
                 hit = self.resolve(cx, cy, BUMPER_R, 0.9)
                 if hit > 60:
@@ -316,6 +458,7 @@ class Pinball:
                     if out < 470:
                         self.vx += (470 - out) * self.nx
                         self.vy += (470 - out) * self.ny
+                    self.sfx.play('bumper')
                     self.add(100)
                     self.bonus += 100
                     self.flash[f'b{i}'] = 1
@@ -330,6 +473,7 @@ class Pinball:
         if not t.on:
             return
         t.on = False
+        self.sfx.play('target')
         self.add(500)
         self.bonus += 500
         self.flash[f't{t.idx}'] = 1
@@ -351,6 +495,7 @@ class Pinball:
             return
         before = self.rank()
         self.missions_done += 1
+        self.sfx.play('mission')
         self.mission_prog = 0
         self.add(5000 * self.missions_done)
         self.bonus += 2500
@@ -362,6 +507,7 @@ class Pinball:
 
     def on_sensor(self, sid):
         if sid.startswith('lane'):
+            self.sfx.play('rollover')
             i = int(sid[4:])
             self.flash[sid] = 1
             if self.lanes[i]:
@@ -403,6 +549,7 @@ class Pinball:
         elif sid == 'saucer':
             if self.held or math.hypot(self.vx, self.vy) > 950:
                 return
+            self.sfx.play('wormhole')
             self.held, self.bx, self.by, self.vx, self.vy, self.saucer_t = True, SAUCER[0], SAUCER[1], 0.0, 0.0, 0.9
             self.add(1500)
             self.bonus += 1000
@@ -415,6 +562,7 @@ class Pinball:
         self.clock += dt
         if self.charging and self.at_plunger():
             self.pull = min(1.0, self.pull + dt / 1.1)
+            self.sfx.play('charge')
             self.plunger.ay = self.plunger.by = PLUNGER_REST_Y + PLUNGER_TRAVEL * self.pull
         elif not self.charging and self.plunger.ay > PLUNGER_REST_Y:
             self.plunger.ay = self.plunger.by = max(PLUNGER_REST_Y, self.plunger.ay - 2600 * dt)
@@ -477,9 +625,11 @@ class Pinball:
         self.active = False
         if self.save_t > 0 or self.phase == 'ready':
             self.save_t = 0
+            self.sfx.play('save')
             self.say('BALL SAVED', 'Shoot again', ICE)
             self.serve_delay = 0.8
             return
+        self.sfx.play('over' if self.ball_no >= 3 else 'drain')
         self.add(self.bonus * self.mult)
         self.say('END OF BALL', f'Bonus {self.bonus:,} x{self.mult}', AMBER, 2.4)
         self.bonus, self.mult, self.in_lit, self.last_orb = 0, 1, [False, False], None

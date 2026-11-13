@@ -192,10 +192,10 @@ class Settings(Gtk.Application):
             ('mouse', 'Mouse', 'settings', self.page_mouse),
             ('datetime', 'Date & time', 'about', self.page_datetime),
             ('sound', 'Sound', 'audio', self.page_sound),
-            ('bluetooth', 'Bluetooth', 'settings', self.page_bluetooth),
-            ('printers', 'Printers', 'drive', self.page_printers),
-            ('updates', 'Updates', 'drive', self.page_updates),
-            ('backup', 'Backup', 'drive', self.page_backup),
+            ('bluetooth', 'Bluetooth', 'bluetooth', self.page_bluetooth),
+            ('printers', 'Printers', 'printer', self.page_printers),
+            ('updates', 'Updates', 'updates', self.page_updates),
+            ('backup', 'Backup', 'backup', self.page_backup),
             ('about', 'About', 'about', self.page_about),
         ]
         for pid, label, icon, build in pages:
