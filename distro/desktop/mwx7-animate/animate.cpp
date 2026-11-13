@@ -278,6 +278,10 @@ class wayfire_animation : public wf::plugin_interface_t, private wf::per_output_
 
     wf::option_wrapper_t<wf::animation_description_t> startup_duration{"animate/startup_duration"};
 
+    // Settings -> Display -> Animations: full | reduced | off. Read on every use, so a change applies live.
+    wf::option_wrapper_t<std::string> level{"mwx7-animate/level"};
+    static constexpr int REDUCED_MAX_MS = 120;
+
     wf::view_matcher_t animation_enabled_for{"animate/enabled_for"};
     wf::view_matcher_t fade_enabled_for{"animate/fade_enabled_for"};
     wf::view_matcher_t zoom_enabled_for{"animate/zoom_enabled_for"};
@@ -370,6 +374,25 @@ class wayfire_animation : public wf::plugin_interface_t, private wf::per_output_
     view_animation_t get_animation_for_view(
         wf::option_wrapper_t<std::string>& anim_type, wayfire_view view)
     {
+        /* Reduced: only a short fade (no zoom, no genie); a slow virtual GPU redraws the whole screen per frame. */
+        if ((std::string)level == "off")
+        {
+            return {"none", wf::animation_description_t{0, {}, ""}};
+        }
+
+        if ((std::string)level == "reduced")
+        {
+            if (!animation_enabled_for.matches(view) && !fade_enabled_for.matches(view) &&
+                !zoom_enabled_for.matches(view) && !fire_enabled_for.matches(view))
+            {
+                return {"none", wf::animation_description_t{0, {}, ""}};
+            }
+
+            wf::animation_description_t d = fade_duration;
+            d.length_ms = std::min(d.length_ms, REDUCED_MAX_MS);
+            return {"fade", d};
+        }
+
         /* Determine the animation for the given view.
          * Note that the matcher plugin might not have been loaded, so
          * we need to have a fallback algorithm */
@@ -492,6 +515,12 @@ class wayfire_animation : public wf::plugin_interface_t, private wf::per_output_
     wf::signal::connection_t<wf::view_minimize_request_signal> on_minimize_request =
         [=] (wf::view_minimize_request_signal *ev)
     {
+        // The genie is the costliest effect: only at the Full level (core still minimizes, just instantly).
+        if ((std::string)level != "full")
+        {
+            return;
+        }
+
         if (ev->state)
         {
             set_animation<genie_animation>(ev->view, ANIMATION_TYPE_MINIMIZE, default_duration, "minimize");
@@ -507,7 +536,10 @@ class wayfire_animation : public wf::plugin_interface_t, private wf::per_output_
     wf::signal::connection_t<wf::output_start_rendering_signal> on_render_start =
         [=] (wf::output_start_rendering_signal *ev)
     {
-        new wf_system_fade(ev->output, startup_duration);
+        if ((std::string)level != "off")
+        {
+            new wf_system_fade(ev->output, startup_duration);
+        }
     };
 };
 

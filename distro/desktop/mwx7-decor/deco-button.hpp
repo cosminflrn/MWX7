@@ -2,6 +2,7 @@
 
 #include <string>
 #include <wayfire/util.hpp>
+#include <wayfire/option-wrapper.hpp>
 #include <wayfire/opengl.hpp>
 #include <wayfire/render-manager.hpp>
 #include <wayfire/util/duration.hpp>
@@ -93,6 +94,11 @@ class button_t
     bool is_active = true;
     /* The shade of button background to use. */
     wf::animation::simple_animation_t hover{wf::create_option(100)};
+    /* Settings -> Display -> Animations; anything but "full" means no hover fade at all. */
+    wf::option_wrapper_t<std::string> anim_level{"mwx7-animate/level"};
+    double instant_hover = 0.0;
+    bool fading() const;
+    double hover_value() const;
 
     std::function<void()> damage_callback;
     wf::wl_idle_call idle_damage;

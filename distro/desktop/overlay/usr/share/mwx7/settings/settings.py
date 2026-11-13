@@ -576,6 +576,7 @@ class Settings(Gtk.Application):
             cur_w = next((m['width'] for m in o.get('modes', []) if m.get('current')), 0)
             if mm_w and cur_w and cur_w / (mm_w / 25.4) > 140 and float(o.get('scale', 1)) < 1.25:
                 p.append(note('This screen has small pixels; 150% or 200% may be easier to read.'))
+        self.animations_section(p)
         # Night light: warmer colours from sunset to sunrise, where the weather widget's city is.
         p.append(section('Night light'))
         flag = os.path.join(CONF_DIR, 'nightlight')
@@ -597,6 +598,30 @@ class Settings(Gtk.Application):
         p.append(note('Sunset and sunrise follow the city set on the Desktop page.'))
         self.graphics_driver(p)
         return p
+
+    ANIM_LEVELS = [('full', 'Full (fades, zoom, genie, hover glow)'), ('reduced', 'Reduced (short fades only)'), ('off', 'Off')]
+
+    def animations_section(self, p):
+        """Window animations are redrawn every frame; a slow virtual GPU (VMware) lags with them. The plugins read the
+        level live. A level chosen here is remembered so mwx7-perf never overrides it at the next sign-in."""
+        p.append(section('Animations'))
+        cur = ini_get('mwx7-animate', 'level', 'full')
+        dd = Gtk.DropDown.new_from_strings([l for _k, l in self.ANIM_LEVELS])
+        dd.set_selected(next((i for i, (k, _l) in enumerate(self.ANIM_LEVELS) if k == cur), 0))
+
+        def chosen(d, _p):
+            level = self.ANIM_LEVELS[d.get_selected()][0]
+            os.makedirs(CONF_DIR, exist_ok=True)
+            with open(os.path.join(CONF_DIR, 'animations.json'), 'w') as f:
+                json.dump({'level': level}, f)
+            try:
+                os.unlink(os.path.join(CONF_DIR, 'perf-animations.json'))
+            except OSError:
+                pass
+            ini_set('mwx7-animate', 'level', level)
+        dd.connect('notify::selected', chosen)
+        p.append(field('Window animations', dd))
+        p.append(note('Reduced or Off helps in a virtual machine or on an older graphics card.'))
 
     def graphics_driver(self, p):
         """Only on a PC with an NVIDIA graphics card: its driver is not in MWX 7 by default (it is not free software)."""
