@@ -240,3 +240,15 @@ window.winmenu-layer { background: transparent; }
 /* The window menu card (right-click on a title bar): the same glass card as the bar's menus. */
 .winmenu-card { min-width: 170px; padding: 4px; border-radius: 6px; border: 1px solid rgba(20, 50, 90, 0.35);
   background: rgba(250, 252, 255, 0.97); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28); }
+
+/* Volume flyout, Windows 7 style. */
+.vol-title { font-weight: 600; color: #1e3f66; }
+.vol-level { color: #33475f; font-feature-settings: "tnum"; }
+scale.vol-scale trough { min-width: 6px; border-radius: 3px; background: #d5dde8; border: 1px solid #a9b9cf; }
+scale.vol-scale highlight { border-radius: 3px; background: linear-gradient(to right, #6fb0f5, #2f7fe0); }
+scale.vol-scale slider { min-width: 18px; min-height: 10px; border-radius: 3px; border: 1px solid #5f7fa8;
+  background: linear-gradient(to bottom, #ffffff, #dfe8f3); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+togglebutton.vol-mute, button.vol-mute { min-width: 34px; min-height: 30px; padding: 0; border-radius: 4px; }
+togglebutton.vol-mute:checked image { color: #c0392b; }
+button.vol-link { background: none; border: none; box-shadow: none; color: #1a5fb4; padding: 2px 6px; }
+button.vol-link:hover label { text-decoration: underline; }
