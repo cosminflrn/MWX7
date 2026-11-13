@@ -24,11 +24,13 @@ keep_previous() {
     sed -i 's#subvol=/@,#subvol=/@previous,#' "$m/@previous/etc/fstab"
   fi
   umount "$m"
+  kept=1
 }
 
 # Our config files win over a package's new defaults (and nothing stops to ask).
 do_install() {
   mkdir -p "$STATE"
+  kept=
   keep_previous
   before=$(mktemp)
   after=$(mktemp)
@@ -45,6 +47,8 @@ do_install() {
   apt-get clean
   # The boot menu gets the previous version's entry (and the current kernel).
   update-grub >/dev/null 2>&1 || true
+  # The next starts are counted: two that do not reach the logon screen and GRUB boots the previous version instead.
+  [ -z "$kept" ] || /usr/share/mwx7/bin/mwx7-bootcount arm || true
 }
 
 case "$1" in

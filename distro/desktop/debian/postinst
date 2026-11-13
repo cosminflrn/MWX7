@@ -48,6 +48,8 @@ if [ -d /opt/google/chrome ]; then
 fi
 rm -f /etc/apt/sources.list.d/google-chrome.sources  # Chrome adds a second copy of its repo line on first run
 
+systemctl enable mwx7-boot-ok.service >/dev/null 2>&1 || true  # resets the start counter (safe boot)
+
 # Boot menu: MWX 7's entry names, checked so a mistake can never leave the system without a boot menu. An installed
 # system gets the menu rebuilt now; the ISO build and the first-start setup build theirs themselves.
 /usr/share/mwx7/bin/mwx7-grub-names

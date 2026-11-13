@@ -27,6 +27,8 @@ WALL_FILE = os.path.join(CONF_DIR, 'wallpaper')
 WALLPAPERS = '/usr/share/mwx7/wallpapers'
 ADMIN = '/usr/share/mwx7/bin/mwx7-admin'
 UPDATE = '/usr/share/mwx7/bin/mwx7-update'
+BACKUP = '/usr/share/mwx7/bin/mwx7-backup'
+BACKUP_STATE = '/var/lib/mwx7/backup.json'
 GREETD = '/etc/greetd/config.toml'
 USER = pwd.getpwuid(os.getuid()).pw_name
 
@@ -192,6 +194,7 @@ class Settings(Gtk.Application):
             ('bluetooth', 'Bluetooth', 'settings', self.page_bluetooth),
             ('printers', 'Printers', 'drive', self.page_printers),
             ('updates', 'Updates', 'drive', self.page_updates),
+            ('backup', 'Backup', 'drive', self.page_backup),
             ('about', 'About', 'about', self.page_about),
         ]
         for pid, label, icon, build in pages:
@@ -1314,6 +1317,27 @@ class Settings(Gtk.Application):
         check.connect('clicked', on_check)
         install.connect('clicked', on_install)
 
+        if os.path.exists('/etc/mwx7/installed') and run(['findmnt', '-no', 'SOURCE', '/']).strip().endswith('[/@previous]'):
+            # The boot menu fell back to the version before the last update (or it was chosen there): keeping it makes
+            # it the version MWX 7 starts from from now on.
+            p.append(section('Previous version'))
+            p.append(note('This PC is running the version from before the last update. Keep it to start from it from now '
+                          'on; the updated version that did not start is deleted. Otherwise the next update tries again.'))
+            keep_msg = note('')
+            keep = Gtk.Button(label='Keep the previous version', halign=Gtk.Align.START)
+
+            def keep_done(ok, err):
+                keep.set_sensitive(not ok)
+                keep_msg.set_label('Done. MWX 7 starts from this version after a restart.' if ok else (err or 'Not allowed.'))
+
+            def on_keep(*_):
+                keep.set_sensitive(False)
+                keep_msg.set_label('Keeping the previous version…')
+                self.admin(['keep-previous'], keep_done, timeout=600)
+            keep.connect('clicked', on_keep)
+            p.append(keep)
+            p.append(keep_msg)
+
         if os.path.exists('/etc/mwx7/installed'):
             p.append(section('Repair or reset'))
             p.append(note('Repair fixes this install and keeps everything. Reset to factory deletes everything and installs '
@@ -1327,6 +1351,136 @@ class Settings(Gtk.Application):
             row.append(repair)
             row.append(factory)
             p.append(row)
+        return p
+
+    def page_backup(self):
+        p = page()
+        p.append(heading('Backup'))
+        p.append(note('Copies everything in /home (every account’s files and settings) to an external drive. A drive '
+                      'formatted as btrfs keeps read-only snapshots and only sends what changed; any other drive gets a '
+                      'plain copy in a MWX7-Backup folder, one per date.'))
+        drives, state = [], {}
+        row = Gtk.Box(spacing=8)
+        model = Gtk.StringList()
+        choose = Gtk.DropDown(model=model, hexpand=True)
+        refresh = Gtk.Button(label='Refresh')
+        row.append(choose)
+        row.append(refresh)
+        p.append(section('Backup drive'))
+        p.append(row)
+        status = Gtk.Label(xalign=0, wrap=True)
+        status.add_css_class('status')
+        detail = note('')
+        buttons = Gtk.Box(spacing=8)
+        now = Gtk.Button(label='Back up now')
+        restore = Gtk.Button(label='Restore files…')
+        buttons.append(now)
+        buttons.append(restore)
+        sched = Gtk.DropDown(model=Gtk.StringList.new(['Off', 'Every day', 'Every week']), halign=Gtk.Align.START)
+        for w in (buttons, status, detail, section('Automatic backup')):
+            p.append(w)
+        p.append(sched)
+        p.append(note('The drive has to be connected when the time comes; if it is not, the backup happens the next time '
+                      'it is (after the PC starts).'))
+        busy = {'on': False}
+        loading = {'on': False}
+
+        def current():
+            i = choose.get_selected()
+            return drives[i] if drives and i < len(drives) else None
+
+        def show_status():
+            try:
+                st = json.load(open(BACKUP_STATE))
+            except (OSError, ValueError):
+                st = {}
+            state.clear()
+            state.update(st)
+            if busy['on']:
+                return
+            if st.get('last'):
+                when = st['last'].replace('T', ' ')
+                status.set_label(f"Last backup: {when}, to {st.get('drive_name') or 'the drive'}.")
+            else:
+                status.set_label('No backup yet.')
+            fail = st.get('ok') is False and st.get('message')
+            detail.set_label(f"The last try ({st.get('last_try', '').replace('T', ' ')}) failed: {st['message']}" if fail else '')
+
+        def load(*_):
+            loading['on'] = True
+            drives.clear()
+            for line in run([BACKUP, 'drives']).splitlines():
+                f = line.split('\t')
+                if len(f) >= 4:
+                    drives.append({'uuid': f[0], 'dev': f[1], 'label': f[4] if len(f) > 4 and f[4] else f[1]})
+            model.splice(0, model.get_n_items(), [f"{d['label']}  ({d['dev']})" for d in drives] or ['No external drive found'])
+            show_status()
+            want = next((i for i, d in enumerate(drives) if d['uuid'] == state.get('drive')), 0)
+            choose.set_selected(want)
+            sched.set_selected({'daily': 1, 'weekly': 2}.get(state.get('schedule'), 0))
+            ok = bool(drives) and not busy['on']
+            now.set_sensitive(ok)
+            restore.set_sensitive(ok)
+            sched.set_sensitive(ok or state.get('schedule') in ('daily', 'weekly'))
+            loading['on'] = False
+
+        def done(ok, err):
+            busy['on'] = False
+            load()
+            if not ok:
+                detail.set_label(err or 'The backup did not finish.')
+            return False
+
+        def on_now(*_):
+            d = current()
+            if not d:
+                return
+            busy['on'] = True
+            now.set_sensitive(False)
+            restore.set_sensitive(False)
+            status.set_label(f"Backing up to {d['label']}… this can take a while. Please keep the drive connected.")
+            detail.set_label('')
+            self.admin(['backup', 'run', d['uuid']], done, timeout=6 * 3600)
+
+        def on_sched(*_):
+            d = current()
+            mode = ('off', 'daily', 'weekly')[sched.get_selected()]
+            if loading['on'] or mode == state.get('schedule', 'off'):
+                return
+            if mode != 'off' and not d:
+                return
+            detail.set_label('')
+            self.admin(['backup', 'schedule', mode] + ([d['uuid']] if mode != 'off' else []),
+                       lambda ok, err: (load(), None if ok else detail.set_label(err or 'Not allowed.')) and False)
+
+        def on_restore(*_):
+            d = current()
+            if not d:
+                return
+            detail.set_label('')
+
+            def work():
+                # The desktop's own mount (no password): the drive opens like any removable drive.
+                mp = run(['findmnt', '-no', 'TARGET', '-S', d['dev']]).strip().split('\n')[0]
+                if not mp:
+                    subprocess.run(['udisksctl', 'mount', '-b', d['dev'], '--no-user-interaction'], capture_output=True)
+                    mp = run(['findmnt', '-no', 'TARGET', '-S', d['dev']]).strip().split('\n')[0]
+                GLib.idle_add(opened, mp)
+            threading.Thread(target=work, daemon=True).start()
+
+        def opened(mp):
+            folder = os.path.join(mp, 'MWX7-Backup') if mp else ''
+            if folder and os.path.isdir(folder):
+                subprocess.Popen(['python3', '/usr/share/mwx7/apps/explorer.py', folder])
+            else:
+                detail.set_label('There is no backup on this drive yet.' if mp else 'The drive could not be opened.')
+            return False
+
+        refresh.connect('clicked', load)
+        now.connect('clicked', on_now)
+        restore.connect('clicked', on_restore)
+        sched.connect('notify::selected', on_sched)
+        load()
         return p
 
     def confirm_reset(self, keep_all):

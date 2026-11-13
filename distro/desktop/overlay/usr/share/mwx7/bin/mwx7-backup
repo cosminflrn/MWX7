@@ -1,0 +1,244 @@
+#!/usr/bin/python3
+"""Settings -> Backup, as root: copies everybody's /home to an external drive. Run through mwx7-admin (which Settings calls
+with pkexec) or by the backup timer's service; never takes anything from the caller but the drive's filesystem UUID.
+  mwx7-backup run UUID          back up now. A btrfs drive receives a read-only snapshot of @home (btrfs send/receive,
+                                incremental after the first time); any other drive gets rsync -aHAX into
+                                MWX7-Backup/<date> (exFAT/NTFS/FAT: without owners and permissions, which they can't hold)
+  mwx7-backup schedule off|daily|weekly [UUID]   the systemd timer that runs "run" by itself (the drive must be plugged in)
+  mwx7-backup drives            the drives that can be used, one per line: UUID, device, size, file system, name
+The result is in /var/lib/mwx7/backup.json, which Settings reads.
+"""
+import datetime
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+
+STATE = '/var/lib/mwx7/backup.json'
+LOCK = '/run/mwx7-backup.lock'
+MNT = '/run/mwx7-backup'
+FOLDER = 'MWX7-Backup'
+UUID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9-]{2,39}\Z')
+POSIX_FS = ('btrfs', 'ext2', 'ext3', 'ext4', 'xfs')
+OTHER_FS = ('exfat', 'ntfs', 'ntfs3', 'vfat')
+UNIT = '/etc/systemd/system/mwx7-backup'
+
+
+def out(*cmd, **kw):
+    return subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL, **kw)
+
+
+def system_disks():
+    """Every disk that holds a mounted part of this system: never a backup target (and never offered)."""
+    disks = set()
+    for mp in ('/', '/home', '/boot', '/boot/efi', '/var/log', '/var/cache'):
+        src = out('findmnt', '-no', 'SOURCE', mp).stdout.strip().split('[')[0]
+        if src.startswith('/dev/'):
+            pk = out('lsblk', '-no', 'PKNAME', src).stdout.split()
+            disks.update(pk or [os.path.basename(src)])
+    return disks
+
+
+def candidates():
+    """Partitions (or whole unpartitioned disks) with a usable file system that are not part of this system."""
+    info = json.loads(out('lsblk', '-J', '-b', '-o', 'NAME,PATH,TYPE,FSTYPE,UUID,LABEL,SIZE,RM,HOTPLUG,PKNAME,RO').stdout or '{}')
+    system = system_disks()
+    found = []
+
+    def walk(node, top):
+        top = top or node['name']
+        if node.get('type') in ('part', 'disk') and node.get('fstype') in POSIX_FS + OTHER_FS and node.get('uuid') \
+                and not node.get('ro') and top not in system and node['name'] not in system:
+            found.append(node)
+        for c in node.get('children') or []:
+            walk(c, top)
+    for d in info.get('blockdevices', []):
+        walk(d, None)
+    return found
+
+
+def find(uuid):
+    for n in candidates():
+        if n['uuid'] == uuid:
+            return n
+    return None
+
+
+def write_state(**kw):
+    try:
+        old = json.load(open(STATE))
+    except (OSError, ValueError):
+        old = {}
+    old.update(kw)
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE + '.tmp', 'w') as f:
+        json.dump(old, f)
+    os.chmod(STATE + '.tmp', 0o644)
+    os.replace(STATE + '.tmp', STATE)
+
+
+def mounted(dev, opts):
+    """(mount point, whether we mounted it). Uses the desktop's own mount when the drive is already open there."""
+    t = out('findmnt', '-no', 'TARGET', '-S', dev).stdout.split('\n')[0].strip()
+    if t:
+        return t, False
+    os.makedirs(MNT + '/drive', exist_ok=True)
+    r = out('mount', '-o', opts, dev, MNT + '/drive')
+    if r.returncode != 0:
+        raise RuntimeError('The drive could not be opened: ' + r.stderr.strip()[-200:])
+    return MNT + '/drive', True
+
+
+def backup(uuid):
+    node = find(uuid)
+    if not node:
+        raise RuntimeError('The backup drive is not connected.')
+    dev, fs = node['path'], node['fstype']
+    label = node.get('label') or dev
+    mp, ours = mounted(dev, 'nosuid,nodev,noexec')
+    try:
+        dest = os.path.join(mp, FOLDER)
+        os.makedirs(dest, exist_ok=True)
+        stamp = datetime.datetime.now().strftime('%Y-%m-%d_%H%M')
+        home_src = out('findmnt', '-no', 'SOURCE', '/home').stdout.strip()
+        if fs == 'btrfs' and home_src.endswith('[/@home]'):
+            method = btrfs_backup(home_src.split('[')[0], dest, stamp, uuid)
+        else:
+            method = rsync_backup(dest, stamp, fs)
+        out('sync')
+    finally:
+        if ours:
+            subprocess.run(['umount', mp], capture_output=True)
+    return label, method, stamp
+
+
+def btrfs_backup(root, dest, stamp, uuid):
+    """A read-only snapshot of @home sent to the drive. The last snapshot stays on this PC (as a parent) so the next
+    backup only sends what changed; if that goes wrong the next one is a full copy again."""
+    top = MNT + '/top'
+    os.makedirs(top, exist_ok=True)
+    if out('mount', '-o', 'subvolid=5', root, top).returncode != 0:
+        raise RuntimeError('The disk could not be opened for the backup.')
+    try:
+        try:
+            st = json.load(open(STATE))
+        except (OSError, ValueError):
+            st = {}
+        parent = st.get('parent') if st.get('parent_drive') == uuid else None
+        if parent and not (os.path.isdir(f'{top}/{parent}') and os.path.isdir(f'{dest}/{parent}')):
+            parent = None
+        name = f'home-{stamp}'
+        r = out('btrfs', '-q', 'subvolume', 'snapshot', '-r', f'{top}/@home', f'{top}/{name}')
+        if r.returncode != 0:
+            raise RuntimeError('The snapshot failed: ' + r.stderr.strip()[-200:])
+        try:
+            if not send(top, name, dest, parent):
+                if parent:  # incremental failed: start over with a full copy
+                    if os.path.isdir(f'{dest}/{name}'):
+                        out('btrfs', '-q', 'subvolume', 'delete', f'{dest}/{name}')
+                    parent = None
+                    ok = send(top, name, dest, None)
+                else:
+                    ok = False
+                if not ok:
+                    raise RuntimeError('Copying to the drive failed.')
+        except BaseException:
+            subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{name}'], capture_output=True)
+            if os.path.isdir(f'{dest}/{name}'):
+                subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{dest}/{name}'], capture_output=True)
+            raise
+        if st.get('parent') and os.path.isdir(f"{top}/{st['parent']}"):
+            subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f"{top}/{st['parent']}"], capture_output=True)
+        write_state(parent=name, parent_drive=uuid)
+        return 'btrfs'
+    finally:
+        subprocess.run(['umount', top], capture_output=True)
+
+
+def send(top, name, dest, parent):
+    cmd = ['btrfs', 'send', '-q'] + (['-p', f'{top}/{parent}'] if parent else []) + [f'{top}/{name}']
+    s = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    r = subprocess.Popen(['btrfs', 'receive', '-q', dest], stdin=s.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    s.stdout.close()
+    return r.wait() == 0 and s.wait() == 0
+
+
+def rsync_backup(dest, stamp, fs):
+    target = f'{dest}/{stamp}'
+    os.makedirs(target, exist_ok=True)
+    # Compared with the newest earlier copy: unchanged files are hard-linked (POSIX drives) so each date is complete
+    # but only the changes take room.
+    olds = sorted(d for d in os.listdir(dest) if re.fullmatch(r'\d{4}-\d\d-\d\d_\d{4}', d) and d != stamp)
+    posix = fs in POSIX_FS
+    cmd = ['rsync', '-aHAX' if posix else '-rt', '--delete', '--exclude=.cache/', '--exclude=.local/share/Trash/']
+    if not posix:
+        cmd += ['--modify-window=2', '--no-perms', '--no-owner', '--no-group']
+    elif olds:
+        cmd.append(f'--link-dest={dest}/{olds[-1]}')
+    r = subprocess.run(cmd + ['/home/', target + '/'], stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if r.returncode not in (0, 24):  # 24: a file vanished while it was copied
+        raise RuntimeError('Copying to the drive failed: ' + r.stderr.strip()[-200:])
+    for d in olds[:-1] if posix else olds:  # keep this one and the one before it
+        subprocess.run(['rm', '-rf', '--one-file-system', f'{dest}/{d}'])
+    return 'rsync'
+
+
+def schedule(mode, uuid):
+    if mode == 'off':
+        subprocess.run(['systemctl', 'disable', '--now', 'mwx7-backup.timer'], capture_output=True)
+        for ext in ('.timer', '.service'):
+            if os.path.exists(UNIT + ext):
+                os.unlink(UNIT + ext)
+        subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+        write_state(schedule='off')
+        return
+    if not (uuid and find(uuid)):
+        raise RuntimeError('Choose a connected drive first.')
+    with open(UNIT + '.service', 'w') as f:
+        f.write('[Unit]\nDescription=MWX 7: back up to the external drive\nConditionPathExists=/etc/mwx7/installed\n\n'
+                '[Service]\nType=oneshot\nNice=19\nIOSchedulingClass=idle\n'
+                f'ExecStart=/usr/share/mwx7/bin/mwx7-backup run {uuid}\n')
+    with open(UNIT + '.timer', 'w') as f:
+        f.write(f'[Unit]\nDescription=MWX 7: scheduled backup\n\n[Timer]\nOnCalendar={mode}\nPersistent=true\n'
+                'RandomizedDelaySec=30min\n\n[Install]\nWantedBy=timers.target\n')
+    subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+    r = subprocess.run(['systemctl', 'enable', '--now', 'mwx7-backup.timer'], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError('The schedule could not be set: ' + r.stderr.strip()[-200:])
+    write_state(schedule=mode, drive=uuid)
+
+
+def main():
+    cmd = sys.argv[1:]
+    if os.geteuid() != 0 and cmd != ['drives']:  # listing the drives needs no rights (Settings reads it directly)
+        sys.exit('run as root')
+    try:
+        if cmd[:1] == ['drives'] and len(cmd) == 1:
+            for n in candidates():
+                size = f"{int(n['size']) / 1e9:.0f} GB" if n.get('size') else ''
+                print('\t'.join([n['uuid'], n['path'], size, n['fstype'], (n.get('label') or '').replace('\t', ' ')]))
+        elif cmd[:1] == ['run'] and len(cmd) == 2 and UUID_RE.match(cmd[1]):
+            lock = open(LOCK, 'w')
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                sys.exit('A backup is already running.')
+            when = datetime.datetime.now().isoformat(timespec='minutes')
+            try:
+                label, method, stamp = backup(cmd[1])
+            except (RuntimeError, OSError) as e:
+                write_state(last_try=when, ok=False, message=str(e) or type(e).__name__)
+                sys.exit(str(e))
+            write_state(last=when, last_try=when, ok=True, message='', drive=cmd[1], drive_name=label, method=method, folder=FOLDER)
+        elif cmd[:1] == ['schedule'] and len(cmd) in (2, 3) and cmd[1] in ('off', 'daily', 'weekly') and \
+                (len(cmd) == 2 or UUID_RE.match(cmd[2])):
+            schedule(cmd[1], cmd[2] if len(cmd) == 3 else None)
+        else:
+            sys.exit(__doc__)
+    except RuntimeError as e:
+        sys.exit(str(e))
+
+
+main()
