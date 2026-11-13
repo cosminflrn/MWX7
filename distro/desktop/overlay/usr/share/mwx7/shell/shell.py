@@ -324,6 +324,7 @@ SETTINGS_PAGES = [
     ('bluetooth', 'Bluetooth', 'wireless headphones speakers devices pair'),
     ('printers', 'Printers', 'print printing scanner test page'),
     ('account', 'User account', 'name password picture avatar login profile'),
+    ('defaults', 'Default apps', 'default program browser mail email music video photos editor files file manager open with'),
     ('datetime', 'Date & time', 'clock time zone 24-hour seconds date calendar'),
     ('updates', 'Updates', 'update upgrade software install version'),
     ('backup', 'Backup', 'restore files copy save'),
