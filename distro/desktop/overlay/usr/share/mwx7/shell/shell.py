@@ -1977,7 +1977,9 @@ class Shell(Gtk.Application):
         Shell.dock_px = DOCK_SIZES.get(c.get('dock_size'), 48)
         Shell.magnify = c.get('dock_magnify', True) is not False
         self.clock24 = c.get('clock24', True) is not False
-        self.clock_seconds = c.get('clock_seconds', True) is not False
+        # Off unless chosen: a ticking bar repaints the glass (and the blur under it) every second, which was a large
+        # part of Wayfire's idle CPU in VMs (13 Nov 2026).
+        self.clock_seconds = c.get('clock_seconds', False) is True
 
     def conf_changed(self):
         self.read_conf()
