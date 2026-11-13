@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sends a command to the MWX 7 shell: clipboard | start | search (used by the Wayfire key bindings).
+fifo="${XDG_RUNTIME_DIR:-/tmp}/mwx7-shell"
+case "$1" in clipboard|start|search) ;; *) echo "usage: mwx7-shellctl clipboard|start|search" >&2; exit 2 ;; esac
+[ -p "$fifo" ] || exit 1
+# Non-blocking write: the FIFO has no reader while the shell is down, and a key binding must not hang.
+timeout 1 sh -c 'printf "%s\n" "$1" > "$2"' sh "$1" "$fifo"

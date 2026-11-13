@@ -513,6 +513,7 @@ class Shell(Gtk.Application):
         self.conf_monitor = Gio.File.new_for_path(SHELL_CONF).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.conf_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, self.conf_changed))
         self.listen_winmenu()
+        self.listen_commands()
         self.bar = self.build_bar()
         self.dock = self.build_dock()
         self.bar.present()
@@ -1328,6 +1329,141 @@ class Shell(Gtk.Application):
                 except OSError:
                     time.sleep(1)
         threading.Thread(target=work, daemon=True).start()
+
+    # ---- shell commands: Wayfire key bindings reach the shell through mwx7-shellctl ---------------------------------
+    def listen_commands(self):
+        """Lines such as "clipboard", "start" or "search" on $XDG_RUNTIME_DIR/mwx7-shell (written by mwx7-shellctl,
+        which the Wayfire [command] bindings run): the shell is a layer-shell client, so it cannot grab keys itself."""
+        path = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-shell')
+        try:
+            if os.path.exists(path) and not os.path.isfile(path):
+                os.remove(path)
+            os.mkfifo(path, 0o600)
+        except OSError:
+            return
+        commands = {'clipboard': self.show_clipboard, 'start': self.show_start, 'search': self.open_search}
+
+        def work():
+            while True:
+                try:
+                    with open(path) as f:
+                        for line in f:
+                            fn = commands.get(line.strip())
+                            if fn:
+                                GLib.idle_add(lambda fn=fn: fn() and False)
+                except OSError:
+                    time.sleep(1)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_start(self):
+        """The Start menu from the keyboard. The dock only takes keyboard focus on a click, and without focus GTK
+        closes a popover at once, so it holds it exclusively while the menu is open."""
+        if not getattr(self, 'start_button', None):
+            return
+        if self.start_menu.is_visible():
+            self.start_menu.popdown()
+            return
+        Layer.set_keyboard_mode(self.dock, Layer.KeyboardMode.EXCLUSIVE)
+        if not getattr(self, 'start_restore', None):
+            self.start_restore = self.start_menu.connect(
+                'closed', lambda *_: Layer.set_keyboard_mode(self.dock, Layer.KeyboardMode.ON_DEMAND))
+        self.start_button.popup()
+
+    def show_clipboard(self):
+        """Clipboard history as its own full-screen layer (the bar's popover has no keyboard focus when opened from a
+        key binding): Up/Down choose, Enter copies the item back, Delete drops it, Escape or a click outside closes."""
+        if getattr(self, 'clip_win', None):
+            self.clip_win.destroy()
+            return
+        w = Gtk.Window(title='MWX 7')
+        self.clip_win = w
+        Layer.init_for_window(w)
+        Layer.set_layer(w, Layer.Layer.OVERLAY)
+        Layer.set_namespace(w, 'mwx7-clipboard')
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(w, e, True)
+        Layer.set_exclusive_zone(w, -1)
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.EXCLUSIVE)
+        w.add_css_class('winmenu-layer')
+        w.connect('destroy', lambda *_: setattr(self, 'clip_win', None))
+        spot = Gtk.Box(hexpand=True, vexpand=True)
+        w.set_child(spot)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.END, valign=Gtk.Align.START,
+                       margin_top=34, margin_end=10)
+        card.add_css_class('winmenu-card')
+        card.set_size_request(320, -1)
+        head = Gtk.Label(label='Clipboard history', xalign=0)
+        head.add_css_class('menu-head')
+        card.append(head)
+        lst = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE, activate_on_single_click=True)
+        lst.add_css_class('sp-results')
+
+        def fill():
+            while (child := lst.get_row_at_index(0)) is not None:
+                lst.remove(child)
+            for kind, data in self.clip_items:
+                r = Gtk.ListBoxRow()
+                r.item = (kind, data)
+                row = Gtk.Box(spacing=8)
+                row.add_css_class('sp-row')
+                if kind == 'i':
+                    thumb = self.clip_thumb(data)
+                    row.append(thumb if thumb else Gtk.Image.new_from_icon_name('image-x-generic-symbolic'))
+                    row.append(Gtk.Label(label='Image', xalign=0, hexpand=True))
+                else:
+                    preview = ' '.join(data[:200].split())
+                    row.append(Gtk.Label(label=preview[:80] + ('\u2026' if len(preview) > 80 else ''), xalign=0,
+                                         hexpand=True, ellipsize=3, max_width_chars=36))
+                r.set_child(row)
+                lst.append(r)
+            first = lst.get_row_at_index(0)
+            if first:
+                lst.select_row(first)
+                first.grab_focus()
+        fill()
+        if not self.clip_items:
+            card.append(Gtk.Label(label='Nothing copied yet', xalign=0, margin_start=10, margin_bottom=8))
+        else:
+            scroller = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=360,
+                                          hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroller.set_child(lst)
+            card.append(scroller)
+        spot.append(Gtk.Box(hexpand=True))
+        spot.append(card)
+
+        lst.connect('row-activated', lambda _l, r: (w.destroy(), self.clip_restore(*r.item)))
+
+        def key(_c, keyval, _code, _state):
+            if keyval == Gdk.KEY_Escape:
+                w.destroy()
+                return True
+            if keyval in (Gdk.KEY_Delete, Gdk.KEY_KP_Delete):
+                r = lst.get_selected_row()
+                if r:
+                    idx = r.get_index()
+                    if r.item in self.clip_items:
+                        self.clip_items.remove(r.item)
+                    fill()
+                    nxt = lst.get_row_at_index(min(idx, len(self.clip_items) - 1))
+                    if nxt:
+                        lst.select_row(nxt)
+                        nxt.grab_focus()
+                return True
+            return False
+        kc = Gtk.EventControllerKey()
+        kc.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        kc.connect('key-pressed', key)
+        w.add_controller(kc)
+        outside = Gtk.GestureClick(button=0)
+
+        def pressed(g, _n, px, py):
+            ok, b = card.compute_bounds(spot)
+            if not (ok and b.get_x() <= px <= b.get_x() + b.get_width() and b.get_y() <= py <= b.get_y() + b.get_height()):
+                w.destroy()
+        outside.connect('pressed', pressed)
+        spot.add_controller(outside)
+        w.present()
+        return False
 
     def show_winmenu(self, vid, x, y):
         view = next((v for v in apps_windows(self.views) if v['id'] == vid), None)

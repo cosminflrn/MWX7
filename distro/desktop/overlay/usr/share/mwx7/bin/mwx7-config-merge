@@ -81,7 +81,23 @@ def in_vm():
 def for_this_machine(text, system):
     """Glass is blurred everywhere again (1.9.0.207 left windows unblurred in virtual machines): the system default."""
     full = get(sections(system).get('blur', ''), 'blur_by_default')
-    return put(text, 'blur', 'blur_by_default', full) if full else text
+    text = put(text, 'blur', 'blur_by_default', full) if full else text
+    # Key bindings added in later releases reach copies that are already stamped for this version (a dev build).
+    for key, value in sections(system).get('command', '') and COMMAND_KEYS(system, text):
+        text = put(text, 'command', key, value)
+    return text
+
+
+def COMMAND_KEYS(system, text):
+    """[command] entries of the system defaults for the shell flyouts that the user's copy lacks."""
+    mine = sections(text).get('command', '')
+    out = []
+    for name in ('clipboard', 'search'):
+        for prefix in ('binding_', 'command_'):
+            v = get(sections(system).get('command', ''), prefix + name)
+            if v is not None and get(mine, prefix + name) is None:
+                out.append((prefix + name, v))
+    return out
 
 
 def merged(new, old):
