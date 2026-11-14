@@ -15,8 +15,13 @@ permissions:
 jobs:
   iso:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 180  # build ~30 min + 3 boots + the install test (KVM: ~15 min; the install test's own limit is 40)
     steps:
+      - name: Free disk space (the build tree, ISO and 24 GB test disk need ~25 GB)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost 2>/dev/null || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          df -h /
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # the build number is the commit count
@@ -42,16 +47,37 @@ jobs:
           sudo -E env "PATH=$PATH" ./distro/build-iso.sh > build.log 2>&1 || { tail -50 build.log
             echo "::error::ISO build failed: $(tail -5 build.log | tr '\n' ' ' | tail -c 400)"; exit 1; }
           tail -5 build.log
-      - name: Boot test in QEMU (BIOS, UEFI, Secure Boot; the first-start setup must appear)
+      - name: Free the build tree (disk space for the test VMs)
         run: |
-          sudo chmod 666 /dev/kvm 2>/dev/null || true
+          sudo rm -rf distro/out/live-root distro/out/iso distro/out/deb node_modules
+          df -h /
+      - name: Enable KVM
+        run: |
+          # Hosted runners have /dev/kvm but only root may use it; this rule opens it up for the qemu processes.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || echo "::warning::no /dev/kvm, the boot tests run without acceleration (slow)"
+      - name: Boot tests in QEMU (BIOS, UEFI, Secure Boot, install + first logon screen)
+        run: |
           # Failures are also reported as annotations (readable without the job log).
-          sudo ./distro/smoke-test.sh 600 > smoke.log 2>&1 || { cat smoke.log
+          sudo env INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install > smoke.log 2>&1 || { cat smoke.log
             echo "::error::Boot test failed: $(tr -d '\r' < smoke.log | grep -av '^\s*$' | tail -90 | tr '\n' '|' | tail -c 9000)"
-            for t in bios uefi secureboot; do
-              echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
+            for t in bios uefi secureboot install install-boot; do
+              [ -f distro/out/smoke-$t.log ] && echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
             done; exit 1; }
           cat smoke.log
+      - name: Upload serial logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-serial-logs
+          path: |
+            distro/out/smoke-*.log
+            smoke.log
+            build.log
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
