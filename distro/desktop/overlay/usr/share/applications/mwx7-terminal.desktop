@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Comment=Type commands to your computer
+Exec=foot
+Icon=/usr/share/mwx7/icons/terminal.png
+Categories=System;TerminalEmulator;
+Keywords=terminal;console;shell;command;prompt;cmd;
+StartupWMClass=foot
