@@ -61,7 +61,7 @@ jobs:
       - name: Boot tests in QEMU (BIOS, UEFI, Secure Boot, install + first logon screen)
         run: |
           # Failures are also reported as annotations (readable without the job log).
-          INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install > smoke.log 2>&1 || { cat smoke.log
+          sudo env INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install > smoke.log 2>&1 || { cat smoke.log
             echo "::error::Boot test failed: $(tr -d '\r' < smoke.log | grep -av '^\s*$' | tail -90 | tr '\n' '|' | tail -c 9000)"
             for t in bios uefi secureboot install install-boot; do
               [ -f distro/out/smoke-$t.log ] && echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
