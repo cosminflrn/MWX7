@@ -15,6 +15,16 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 # (Spelled out with the defaults, since naming the variable at all replaces them.)
 export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share"
 export WLR_NO_HARDWARE_CURSORS=1
+# Settings -> Language & region writes date/number formats (LC_TIME=ro_RO.UTF-8 ...) to an environment.d drop-in. The session
+# is not started by systemd's user manager, so read it here; only plain LC_* lines are taken, nothing else is evaluated.
+REGION="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/50-mwx7-region.conf"
+if [ -f "$REGION" ]; then
+  while IFS='=' read -r k v; do
+    case "$k" in LC_TIME|LC_NUMERIC|LC_MONETARY|LC_PAPER|LC_MEASUREMENT)
+      case "$v" in *[!A-Za-z0-9_.@-]*|'') ;; *) export "$k=$v" ;; esac ;;
+    esac
+  done < "$REGION"
+fi
 # GTK 4's default GPU renderer misdraws in VMware/VirtualBox with 3D on; its older GL renderer is reliable there.
 if [ "$(systemd-detect-virt 2>/dev/null)" != none ]; then export GSK_RENDERER=gl; fi
 # Each user gets their own copy of the MWX 7 Wayfire config, which MWX 7 Settings edits; Wayfire reloads it live.
