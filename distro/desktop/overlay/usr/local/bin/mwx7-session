@@ -63,6 +63,11 @@ for drv in /sys/class/drm/card*/device/driver; do
     # same on wlroots): draw the cursor ourselves and use legacy modesetting. Hovering and dragging felt slow here.
     export WLR_NO_HARDWARE_CURSORS=1 WLR_DRM_NO_ATOMIC=1
   fi
+  # NVIDIA's own driver (Settings -> Display -> Use the NVIDIA driver): wlroots needs its GBM backend and GLX vendor
+  # named, and its hardware cursor plane flickers or vanishes with this driver generation, so the cursor is drawn by us.
+  if [ "$(basename "$(readlink -f "$drv")")" = nvidia ]; then
+    export GBM_BACKEND=nvidia-drm __GLX_VENDOR_LIBRARY_NAME=nvidia WLR_NO_HARDWARE_CURSORS=1
+  fi
 done
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
   exec dbus-run-session -- wayfire -c "$CONF/wayfire.ini" > "$LOG" 2>&1
