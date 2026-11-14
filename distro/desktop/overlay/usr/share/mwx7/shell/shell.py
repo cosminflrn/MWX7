@@ -1778,7 +1778,7 @@ class Shell(Gtk.Application):
         opencal.add_css_class('cal-link')
         opencal.set_hexpand(True)
         opencal.set_halign(Gtk.Align.START)
-        opencal.connect('clicked', lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/bin/mwx7-app', 'calendar'])))
+        opencal.connect('clicked', lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/bin/mwx7-app', 'calendarapp'])))
         foot.append(opencal)
         change = Gtk.Button(label='Change date and time settings…')
         change.add_css_class('cal-link')

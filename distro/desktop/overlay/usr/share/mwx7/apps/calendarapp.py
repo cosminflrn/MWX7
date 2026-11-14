@@ -5,8 +5,8 @@ The menus are the top bar's (see mwx7ui.App.menubar), as in the other native app
 import os
 import sys
 
-# This file is named calendar.py: with its own folder first on sys.path, any `import calendar` (the standard module, which
-# GTK's Python parts and others import) would load this app instead. Drop the folder before anything else is imported.
+# Named calendarapp.py so it never shadows the standard calendar module for the apps beside it; and its own folder is
+# dropped from sys.path all the same, as a belt and braces.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or '.') != _HERE]
 
