@@ -68,3 +68,7 @@ window.mwx7-settings button.destructive-action {
 }
 window.mwx7-settings button.destructive-action:hover { background: linear-gradient(to bottom, #ffb2a8, #ea5a4d 50%, #d23b33 51%, #f06d5f); }
 window.mwx7-settings button.destructive-action:disabled { opacity: 0.55; }
+
+/* Display -> Identify: a big number on each screen for a moment. */
+window.identify { background: rgba(10, 30, 70, 0.78); }
+label.identify-num { font-size: 220px; font-weight: 700; color: #ffffff; text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }

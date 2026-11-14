@@ -17,6 +17,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -32,6 +33,8 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7displays as displays  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 WF_INI = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wayfire.ini')
 
@@ -960,6 +963,12 @@ class Shell(Gtk.Application):
         self.tint_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, lambda: self.apply_tint() and False))
         self.conf_monitor = Gio.File.new_for_path(SHELL_CONF).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
         self.conf_monitor.connect('changed', lambda *_a: GLib.timeout_add(150, self.conf_changed))
+        # Screens come and go (a monitor plugged in, switched off, Settings -> Display choosing another main display):
+        # the bar and dock follow the primary one without restarting the shell.
+        self.place_timer = 0
+        self.disp_conf_monitor = Gio.File.new_for_path(displays.CONF).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.disp_conf_monitor.connect('changed', lambda *_a: self.screens_changed())
+        Gdk.Display.get_default().get_monitors().connect('items-changed', lambda *_a: self.screens_changed())
         self.listen_winmenu()
         self.listen_commands()
         self.bar = self.build_bar()
@@ -1008,11 +1017,46 @@ class Shell(Gtk.Application):
              f'linear-gradient(rgba(20,40,70,0.35), rgba(20,40,70,0.35)); }}\n').encode())
         return False
 
+    # ---- screens ----------------------------------------------------------------------------------------------------
+    def primary_monitor(self):
+        """The screen that carries the bar and the dock (None while GTK reports no monitor: the compositor then chooses)."""
+        return displays.pick_primary(displays.monitors(Gdk.Display.get_default()))
+
+    def screens_changed(self):
+        # Plugging a screen in is a burst of events (added, mode, geometry): one move after they settle.
+        if self.place_timer:
+            GLib.source_remove(self.place_timer)
+        self.place_timer = GLib.timeout_add(400, self.place_panels)
+
+    def place_panels(self):
+        """Put the bar and the dock on the primary screen. Re-presenting also brings them back when their screen was
+        unplugged (the compositor closes a layer surface whose output disappears)."""
+        self.place_timer = 0
+        mon = self.primary_monitor()
+        if mon is None:
+            return False
+        for w in (getattr(self, 'bar', None), getattr(self, 'dock', None)):
+            if w is None:
+                continue
+            try:
+                cur = Layer.get_monitor(w)
+                gone = cur is None or displays.connector(cur) != displays.connector(mon) or not w.get_visible() \
+                    or cur not in displays.monitors(Gdk.Display.get_default())
+                if gone:
+                    Layer.set_monitor(w, mon)  # remaps a mapped surface onto the new output
+                    w.present()
+            except Exception as e:  # never let a hotplug event take the shell down
+                print('place_panels:', e, file=sys.stderr)
+        return False
+
     # ---- layer surfaces -------------------------------------------------------------------------------------------
     def layer_window(self, name, edges, height):
         w = Gtk.ApplicationWindow(application=self)
         w.add_css_class(name)
         Layer.init_for_window(w)
+        mon = self.primary_monitor()
+        if mon is not None:
+            Layer.set_monitor(w, mon)
         Layer.set_layer(w, Layer.Layer.TOP)
         Layer.set_namespace(w, 'mwx7-' + name)
         for e in edges:
@@ -2069,6 +2113,13 @@ class Shell(Gtk.Application):
         maxed = bool(view and (view.get('tiled-edges') == 15 or view.get('maximized')))
         w = Gtk.Window(title='MWX 7')
         Layer.init_for_window(w)
+        # x, y are layout coordinates: the menu's layer goes on the screen under the pointer, and the card is placed
+        # relative to that screen's corner.
+        mon = displays.monitor_at(displays.monitors(Gdk.Display.get_default()), x, y)
+        if mon is not None:
+            Layer.set_monitor(w, mon)
+            g = mon.get_geometry()
+            x, y = x - g.x, y - g.y
         Layer.set_layer(w, Layer.Layer.OVERLAY)
         Layer.set_namespace(w, 'mwx7-winmenu')
         for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):

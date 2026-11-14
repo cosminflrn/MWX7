@@ -277,6 +277,9 @@ class Locker:
         for i in range(display.get_n_monitors()):
             self.add_panel(display.get_monitor(i))
         display.connect('monitor-added', lambda _d, m: (self.add_panel(m), self.tick()))
+        # A screen unplugged while locked: drop its panel (the session lock stays on every screen that is left, and a
+        # screen plugged in later gets a panel at once, above).
+        display.connect('monitor-removed', lambda _d, m: self.drop_panel(m))
         self.tick()
 
     def on_locked(self, _lock):
@@ -287,6 +290,14 @@ class Locker:
         ready(False)
         Gtk.main_quit()
         sys.exit(3)
+
+    def drop_panel(self, monitor):
+        for p in [p for p in self.panels if p.monitor is monitor]:
+            self.panels.remove(p)
+            try:
+                p.destroy()
+            except Exception:
+                pass
 
     def add_panel(self, monitor):
         p = Panel(self, monitor)
@@ -381,6 +392,7 @@ class Panel(Gtk.Window):
     def __init__(self, app, monitor):
         super().__init__()
         self.app = app
+        self.monitor = monitor
         self.set_decorated(False)
         self.set_app_paintable(True)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.KEY_PRESS_MASK)
