@@ -5,12 +5,15 @@
 #   bios        legacy BIOS, standard VGA (bochs DRM)
 #   uefi        UEFI, virtio GPU
 #   secureboot  UEFI with Secure Boot enforced (Microsoft keys), virtio GPU
+#   install     UEFI, a blank 24 GB disk: boots the ISO with mwx7.autoinstall=/dev/vda (install.py's test hook: the same
+#               "erase disk" code as the setup, user test/test), waits for MWX7-INSTALL-DONE, then boots the installed
+#               disk alone and waits for MWX7-LOGON-READY (mwx7-logon-marker.service). Slow without KVM (up to an hour).
 # QEMU's VMware SVGA model is not tested: vmwgfx refuses it ("unsupported hypervisor"), and Debian's kernel has no
 # simpledrm fallback, so there is no display by design. Real VMware/VirtualBox and real GPUs all have drivers.
 # Needs: qemu-system-x86, ovmf. Usage: ./distro/smoke-test.sh [timeout-seconds per boot, default 900] [tests...]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-OUT="$HERE/out"; ISO="$OUT/mwx7.iso"; WANT='MWX7-SETUP-READY'
+OUT="${MWX7_OUT:-$HERE/out}"; ISO="$OUT/mwx7.iso"; WANT='MWX7-SETUP-READY'
 LIMIT="${1:-900}"; shift || true
 TESTS=("${@:-bios uefi secureboot}"); read -r -a TESTS <<< "${TESTS[*]}"
 [ -f "$ISO" ] || { echo "No ISO at $ISO (run build-iso.sh first)" >&2; exit 1; }
@@ -62,6 +65,53 @@ PY
   return 1
 }
 
+install_test() {
+  local disk="$OUT/smoke-install.qcow2" t0=$SECONDS
+  local ilog="$OUT/smoke-install.log" blog="$OUT/smoke-install-boot.log" limit="${INSTALL_LIMIT:-3600}" pid t
+  rm -f "$disk" "$ilog" "$blog"; qemu-img create -q -f qcow2 "$disk" 24G
+  # The ISO's kernel and initrd, started directly: that is how the extra kernel option gets in without editing GRUB.
+  local kdir; kdir="$(mktemp -d)"
+  xorriso -osirrox on -indev "$ISO" -extract /live/vmlinuz "$kdir/vmlinuz" -extract /live/initrd.img "$kdir/initrd.img" \
+    >/dev/null 2>&1 || { echo "FAIL install: cannot extract the kernel from the ISO" >&2; return 1; }
+  # shellcheck disable=SC2046
+  qemu-system-x86_64 -machine q35,accel=$ACCEL -cpu $CPU -smp 2 -m "${MWX7_MEM:-3072}" -display none -device virtio-vga $(ovmf plain) \
+    -cdrom "$ISO" -drive if=none,id=d0,file="$disk",format=qcow2 -device virtio-blk-pci,drive=d0 \
+    -kernel "$kdir/vmlinuz" -initrd "$kdir/initrd.img" \
+    -append "boot=live components quiet loglevel=3 console=ttyS0,115200 mwx7.autoinstall=/dev/vda" \
+    -chardev socket,id=s0,path="$OUT/smoke-install.sock",server=on,wait=off,logfile="$ilog" -serial chardev:s0 -no-reboot &
+  pid=$!
+  for ((t = 0; t < limit; t += 10)); do
+    if grep -aq 'MWX7-INSTALL-FAILED' "$ilog" 2>/dev/null; then
+      kill $pid 2>/dev/null; wait $pid 2>/dev/null
+      echo "FAIL install: $(tr -d '\r' < "$ilog" | grep -a 'MWX7-INSTALL-FAILED' | tail -1)" >&2; return 1
+    fi
+    # The hook powers the VM off when the install is done.
+    if ! kill -0 $pid 2>/dev/null; then
+      grep -aq 'MWX7-INSTALL-DONE' "$ilog" && break
+      echo "FAIL install: the VM stopped before MWX7-INSTALL-DONE" >&2; tail -c 3000 "$ilog" >&2; return 1
+    fi
+    sleep 10
+  done
+  if kill -0 $pid 2>/dev/null; then
+    kill $pid; wait $pid 2>/dev/null; echo "FAIL install: no MWX7-INSTALL-DONE within ${limit}s" >&2; tail -c 3000 "$ilog" >&2; return 1
+  fi
+  local t1=$((SECONDS - t0)); echo "install finished after ${t1}s"
+  # shellcheck disable=SC2046
+  qemu-system-x86_64 -machine q35,accel=$ACCEL -cpu $CPU -smp 2 -m "${MWX7_MEM:-3072}" -display none -device virtio-vga $(ovmf plain) \
+    -drive if=none,id=d0,file="$disk",format=qcow2 -device virtio-blk-pci,drive=d0 \
+    -chardev socket,id=s0,path="$OUT/smoke-install.sock",server=on,wait=off,logfile="$blog" -serial chardev:s0 -no-reboot &
+  pid=$!
+  for ((t = 0; t < LIMIT; t += 5)); do
+    if grep -aq 'MWX7-LOGON-READY' "$blog" 2>/dev/null; then
+      kill $pid 2>/dev/null; wait $pid 2>/dev/null; echo "PASS install: installed in ${t1}s, logon screen after ${t}s"; return 0
+    fi
+    kill -0 $pid 2>/dev/null || { echo "FAIL install: the installed system stopped" >&2; tail -c 3000 "$blog" >&2; return 1; }
+    sleep 5
+  done
+  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  echo "FAIL install: no MWX7-LOGON-READY within ${LIMIT}s" >&2; tail -c 3000 "$blog" >&2; return 1
+}
+
 rc=0
 for t in "${TESTS[@]}"; do
   case "$t" in
@@ -71,6 +121,7 @@ for t in "${TESTS[@]}"; do
     # shellcheck disable=SC2046
     secureboot) boot secureboot "q35,smm=on" "-device virtio-vga" -global driver=cfi.pflash01,property=secure,value=on \
       $(ovmf ms) || rc=1 ;;
+    install) install_test || rc=1 ;;
     *) echo "unknown test $t" >&2; rc=1 ;;
   esac
 done
