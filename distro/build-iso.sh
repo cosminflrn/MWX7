@@ -65,10 +65,12 @@ for d in dev/pts dev proc sys; do umount "$ROOT/$d"; done
 cp -L "$ROOT/vmlinuz" "$ISO_DIR/live/vmlinuz"
 cp -L "$ROOT/initrd.img" "$ISO_DIR/live/initrd.img"
 echo "==> squashfs"
+# A dev chroot may still have /proc, /sys or /dev mounted (tests run apps in it): never pack the host's live trees.
+for m in proc sys dev/pts dev; do mountpoint -q "$ROOT/$m" && umount -l "$ROOT/$m"; done
 LEVEL=15; [ $REUSE = 1 ] && LEVEL=3   # 15: nearly the size of 19 at a fraction of the build time; dev: 3
 LEVEL=${SQUASH_LEVEL:-$LEVEL}
 mksquashfs "$ROOT" "$ISO_DIR/live/filesystem.squashfs" -comp zstd -Xcompression-level $LEVEL -noappend -quiet -wildcards \
-  -e boot/initrd.img-* -e boot/vmlinuz-* -e tmp/* -e var/cache/apt/*.bin
+  -e boot/initrd.img-* -e boot/vmlinuz-* -e tmp/* -e var/cache/apt/*.bin -e 'proc/*' -e 'sys/*' -e 'run/*'
 
 # 5. Hybrid ISO: one file that boots on BIOS and UEFI, from optical media or written raw to USB.
 cat > "$ISO_DIR/boot/grub/grub.cfg" <<GRUB
