@@ -14,6 +14,9 @@ plymouth plymouth-themes
 # Apps and system: Files, Terminal, networking, password prompts, admin, firewall, compressed-RAM swap, updates.
 flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome network-manager-openvpn polkitd pkexec lxpolkit sudo nftables ufw systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
+# Device firmware (BIOS/UEFI, SSDs, docks) from the Linux Vendor Firmware Service: Settings -> Updates -> Device firmware uses
+# fwupdmgr. About 7 MB to download / 22 MB installed with its 25 libraries; its own fwupd-refresh timer fetches the metadata daily.
+fwupd
 # Reader (the PDF viewer, apps/reader.py) draws pages with poppler, through GObject introspection.
 gir1.2-poppler-0.18
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
