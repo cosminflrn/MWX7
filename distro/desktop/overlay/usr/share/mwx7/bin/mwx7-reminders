@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+"""Calendar reminders: run once a minute by the user timer mwx7-reminders.timer. Reads ~/.local/share/mwx7/calendar.ics (nothing
+to do, and nothing started, when there is no file) and sends a desktop notification (mako) for every reminder that came due since
+the last run. The time of the last run is kept in $XDG_RUNTIME_DIR, so a reminder fires once; after a suspend or a long gap only
+the last 15 minutes are looked at (an hour-old "meeting in 10 minutes" is noise)."""
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7ics  # noqa: E402
+
+STATE = os.path.join(os.environ.get('XDG_RUNTIME_DIR', '/tmp'), 'mwx7-reminders-last')
+ICON = '/usr/share/mwx7/icons/calendar.png'
+BACK = timedelta(minutes=15)
+
+
+def when_text(o, now):
+    if type(o) is not datetime:
+        return 'Today' if o == now.date() else o.strftime('%A, %B ') + str(o.day)
+    t = o.strftime('%H:%M')
+    return t if o.date() == now.date() else o.strftime('%a %d %b, ') + t
+
+
+def main():
+    now = datetime.now().replace(microsecond=0)
+    try:
+        after = datetime.fromtimestamp(float(open(STATE).read()))
+    except (OSError, ValueError):
+        after = now - timedelta(minutes=1)
+    after = max(after, now - BACK)
+    try:
+        with open(STATE + '.tmp', 'w') as f:
+            f.write(str(now.timestamp()))
+        os.replace(STATE + '.tmp', STATE)
+    except OSError:
+        pass
+    if not os.path.exists(mwx7ics.STORE):
+        return
+    for _t, o, e in mwx7ics.due_reminders(mwx7ics.load(), after, now):
+        body = when_text(o, now) + (' · ' + e.location if e.location else '')
+        subprocess.run(['notify-send', '-a', 'Calendar', '-i', ICON, '-u', 'normal', e.summary or 'Event', body],
+                       check=False, timeout=10)
+
+
+if __name__ == '__main__':
+    main()

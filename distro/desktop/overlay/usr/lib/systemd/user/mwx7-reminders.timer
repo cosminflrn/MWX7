@@ -1,0 +1,10 @@
+[Unit]
+Description=MWX 7: check Calendar reminders every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -37,6 +37,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7displays as displays  # noqa: E402
 import mwx7drives as drives  # noqa: E402
+import mwx7ics as ics  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 WF_INI = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wayfire.ini')
 
@@ -1773,6 +1774,12 @@ class Shell(Gtk.Application):
         col.append(grid)
         foot = Gtk.Box()
         foot.add_css_class('cal-foot')
+        opencal = Gtk.Button(label='Open Calendar')
+        opencal.add_css_class('cal-link')
+        opencal.set_hexpand(True)
+        opencal.set_halign(Gtk.Align.START)
+        opencal.connect('clicked', lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/bin/mwx7-app', 'calendar'])))
+        foot.append(opencal)
         change = Gtk.Button(label='Change date and time settings…')
         change.add_css_class('cal-link')
         change.connect('clicked', lambda *_: (pop.popdown(), self.launch([SETTINGS, '--page', 'datetime'])))
@@ -1780,6 +1787,7 @@ class Shell(Gtk.Application):
         col.append(foot)
         pop.set_child(col)
         view = [0, 0]  # the month shown: year, month
+        events = []  # Calendar's events, read each time the flyout opens (a small file; nothing watches it)
 
         def show_month(y, m):
             view[:] = [y, m]
@@ -1789,8 +1797,11 @@ class Shell(Gtk.Application):
             while len(weeks) < 6:  # always six rows: the flyout keeps one height as the months change
                 last = weeks[-1][-1]
                 weeks.append([last + datetime.timedelta(days=i + 1) for i in range(7)])
-            for i, d in enumerate(d for w in weeks for d in w):
+            shown_days = [d for w in weeks for d in w]
+            marked = ics.days_with_events(events, shown_days[0], shown_days[-1] + datetime.timedelta(days=1)) if events else ()
+            for i, d in enumerate(shown_days):
                 cell = cells[i]
+                (cell.add_css_class if d in marked else cell.remove_css_class)('hasev')
                 cell.set_label(str(d.day))
                 (cell.add_css_class if d.month != m else cell.remove_css_class)('other')
                 is_today = (d.year, d.month, d.day) == (now.tm_year, now.tm_mon, now.tm_mday)
@@ -1817,6 +1828,10 @@ class Shell(Gtk.Application):
         self.cal_refresh = lambda: refresh() if pop.get_visible() else None
 
         def shown(*_):
+            try:
+                events[:] = ics.load()
+            except Exception:  # a calendar file this reader cannot handle must never take the bar down
+                events[:] = []
             refresh()
             today()
         pop.connect('show', shown)

@@ -181,6 +181,10 @@ label.cal-day.today {
   background: linear-gradient(to bottom, #d9ecfd, #a9d1f8); border-color: #5a9ee0; color: #0b2440; font-weight: 600;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
+/* A dot under a day that has an event in Calendar (the .ics in ~/.local/share/mwx7). */
+label.cal-day.hasev { background-image: radial-gradient(circle at 50% 86%, #2a6fc1 0, #2a6fc1 2px, rgba(42, 111, 193, 0) 2.6px); }
+label.cal-day.today.hasev { background-image: radial-gradient(circle at 50% 86%, #2a6fc1 0, #2a6fc1 2px, rgba(42, 111, 193, 0) 2.6px), linear-gradient(to bottom, #d9ecfd, #a9d1f8); }
+label.cal-day.other.hasev { opacity: .8; }
 button.cal-link { background: none; border: none; box-shadow: none; color: #2a6fc1; padding: 2px 6px; min-height: 0; }
 button.cal-link:hover { text-decoration: underline; }
 

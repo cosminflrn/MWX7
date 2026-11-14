@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Comment=Events, reminders and .ics import and export
+Exec=/usr/share/mwx7/bin/mwx7-app calendar %f
+Icon=/usr/share/mwx7/icons/calendar.png
+Categories=Office;Calendar;
+Keywords=calendar;event;appointment;reminder;ics;schedule;
+StartupWMClass=org.mwx7.calendar
+MimeType=text/calendar;
