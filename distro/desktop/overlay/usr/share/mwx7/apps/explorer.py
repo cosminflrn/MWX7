@@ -5,14 +5,20 @@ cut/copy/paste with a progress window and a conflicts dialog, rename, new folder
 Undo (Ctrl+Z), and the usual keys. My Computer itself shows the disk and the person's folders."""
 import datetime
 import hashlib
+import lzma
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
 import urllib.parse
+import zipfile
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
@@ -134,6 +140,8 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 
 def kind_icon(path):
     """MWX 7's own icon for a file, by what it is (the concept's Explorer does the same)."""
+    if path.lower().endswith('.zip'):
+        return 'zipfolder'  # a zip opens like a folder here (Windows 7's “Compressed (zipped) folder”)
     ctype, _u = Gio.content_type_guess(path, None)
     mime = Gio.content_type_get_mime_type(ctype) or ''
     if mime.startswith('image/'):
@@ -343,6 +351,48 @@ def remove_any(p):
     shutil.rmtree(p) if os.path.isdir(p) and not os.path.islink(p) else os.remove(p)
 
 
+# ---- archives: made and unpacked with Python's own zipfile and tarfile ------------------------------------------------
+TAR_EXTS = ('.tar.gz', '.tgz', '.tar.xz', '.txz', '.tar.bz2', '.tbz2', '.tar')
+ARCHIVE_ERRORS = (zipfile.BadZipFile, tarfile.TarError, EOFError, RuntimeError, NotImplementedError, zlib.error,
+                  lzma.LZMAError)  # RuntimeError: zipfile's way of saying “password required”
+
+
+def archive_kind(path):
+    """'zip' or 'tar' for a file Extract All can unpack, else None."""
+    n = path.lower()
+    return 'zip' if n.endswith('.zip') else 'tar' if n.endswith(TAR_EXTS) else None
+
+
+def archive_stem(name):
+    low = name.lower()
+    for ext in ('.zip',) + TAR_EXTS:
+        if low.endswith(ext) and len(name) > len(ext):
+            return name[:-len(ext)]
+    return name
+
+
+def zsplit(loc):
+    """A .zip browsed like a folder is the place \"/path/a.zip!/inner/folder\": returns (zip file, inner folder) or None."""
+    i = loc.lower().find('.zip!/')
+    if i < 0 or not os.path.isfile(loc[:i + 4]):
+        return None
+    return loc[:i + 4], loc[i + 6:].strip('/')
+
+
+def safe_path(root, name):
+    """Where archive member `name` lands under `root`, or None if it would land outside it: absolute paths, drive letters,
+    “..” (zip-slip), or a folder on the way that is a symlink leading out. Never trust names from an archive."""
+    norm = name.replace('\\', '/')
+    parts = [p for p in norm.split('/') if p not in ('', '.')]
+    if not parts or norm.startswith('/') or '..' in parts or re.match(r'[A-Za-z]:', parts[0]) or '\0' in name:
+        return None
+    path = os.path.join(root, *parts)
+    base = os.path.realpath(root)
+    if os.path.commonpath([os.path.realpath(os.path.dirname(path)), base]) != base:
+        return None
+    return path
+
+
 def trashed_name_of(orig):
     """After Gio trashed `orig`: the name it got in the Trash (the newest .trashinfo that points back at it)."""
     info_dir, best = os.path.join(TRASH, 'info'), (0, None)
@@ -363,10 +413,14 @@ class Cancelled(Exception):
 
 class Job:
     """Copy, move, trash or delete in a worker thread, with what a progress window needs (bytes, speed, time left) and a
-    conflicts question that blocks the worker until the person answers. kind: copy | move | trash | delete."""
+    conflicts question that blocks the worker until the person answers. kind: copy | move | trash | delete, and for
+    archives extract (srcs=[archive], dest=folder, members=names to take or None for all) | compress (srcs=items,
+    dest=the .zip to make)."""
 
-    def __init__(self, kind, srcs, dest=None):
-        self.kind, self.srcs, self.dest = kind, list(srcs), dest
+    def __init__(self, kind, srcs, dest=None, members=None):
+        self.kind, self.srcs, self.dest, self.members = kind, list(srcs), dest, members
+        self.then = None                    # called on the main thread when the job finished without error or Cancel
+        self.skipped = 0                    # archive members refused because they would land outside the destination
         self.total = self.done = 0          # bytes for copy/move, items for trash/delete
         self.items_left, self.name = len(self.srcs), ''
         self.cancel = threading.Event()
@@ -386,6 +440,8 @@ class Job:
                 pass
             except (OSError, GLib.Error) as e:
                 self.error = str(e)
+            except ARCHIVE_ERRORS as e:
+                self.error = str(e) or type(e).__name__
             self.finished = True
             GLib.idle_add(on_done, self)
         threading.Thread(target=run, daemon=True).start()
@@ -395,6 +451,10 @@ class Job:
             raise Cancelled()
 
     def run(self):
+        if self.kind == 'extract':
+            return self.extract()
+        if self.kind == 'compress':
+            return self.compress()
         if self.kind in ('copy', 'move'):
             self.total = sum(tree_size(s) for s in self.srcs) or 1
             try:
@@ -424,6 +484,186 @@ class Job:
                 if final:
                     self.results.append((src, final))
             self.items_left -= 1
+
+    # ---- archives ---------------------------------------------------------------------------------------------------
+    def claim(self, name, path, is_dir):
+        """Makes room for an extracted item at `path`: asks about a name that is taken. Returns the path to write, or None
+        to skip it."""
+        if os.path.lexists(path):
+            if is_dir and os.path.isdir(path) and not os.path.islink(path):
+                return path  # folders merge
+            choice = self.conflict('', path)
+            if choice == 'skip':
+                return None
+            if choice == 'keep':
+                return unique_in(os.path.dirname(path), os.path.basename(path))
+            remove_any(path)  # also for a symlink: it is removed, never followed
+        return path
+
+    def extract(self):
+        src = self.srcs[0]
+        self.name = os.path.basename(src)
+        created = not os.path.exists(self.dest)
+        os.makedirs(self.dest, exist_ok=True)
+        try:
+            self.extract_zip(src) if archive_kind(src) == 'zip' else self.extract_tar(src)
+        except BaseException:
+            if created:  # a cancelled or failed extraction leaves no half-filled folder we made ourselves
+                shutil.rmtree(self.dest, ignore_errors=True)
+            raise
+
+    def extract_zip(self, src):
+        with zipfile.ZipFile(src) as zf:
+            infos = [i for i in zf.infolist() if self.members is None or i.filename in self.members]
+            self.total = sum(i.file_size for i in infos) or 1
+            self.items_left = len(infos)
+            for zi in infos:
+                self.check()
+                self.name = os.path.basename(zi.filename.rstrip('/')) or zi.filename
+                mode = zi.external_attr >> 16
+                try:
+                    mtime = time.mktime(zi.date_time + (0, 0, -1))
+                except (OverflowError, ValueError):
+                    mtime = None
+                kind = 'dir' if zi.is_dir() else 'link' if stat.S_ISLNK(mode) else 'file'
+                self.put(zi.filename, kind, mode, mtime, lambda zi=zi: zf.open(zi), zi.file_size)
+                self.items_left -= 1
+
+    def extract_tar(self, src):
+        # Streamed ("r|*"): one pass, whatever the compression; progress is how much of the file has been read.
+        self.total, self.items_left = os.path.getsize(src) or 1, -1
+        with open(src, 'rb') as raw, tarfile.open(fileobj=raw, mode='r|*') as tf:
+            for ti in tf:
+                self.check()
+                self.done = raw.tell()
+                self.name = os.path.basename(ti.name.rstrip('/')) or ti.name
+                kind = ('dir' if ti.isdir() else 'link' if ti.issym() else 'hard' if ti.islnk() else
+                        'file' if ti.isfile() else None)
+                if kind is None:  # devices, fifos: nothing an Explorer should create
+                    self.skipped += 1
+                    continue
+                self.put(ti.name, kind, ti.mode, ti.mtime, lambda ti=ti: tf.extractfile(ti), ti.size,
+                         target=ti.linkname, raw=raw)
+            self.done = self.total
+
+    def put(self, name, kind, mode, mtime, opener, size, target='', raw=None):
+        """Writes one archive member under self.dest, if its name is safe."""
+        if name.strip('/.') == '':
+            return
+        path = safe_path(self.dest, name)
+        if path is None:
+            self.skipped += 1
+            return
+        if kind == 'dir':
+            if self.claim(name, path, True):
+                os.makedirs(path, exist_ok=True)
+            return
+        if kind in ('link', 'hard'):
+            if kind == 'link' and not target:
+                target = opener().read().decode(errors='replace')  # zip: the link's target is its content
+            self.link(name, path, kind, target)
+            if raw is None:
+                self.done += size
+            return
+        path = self.claim(name, path, False)
+        if path is None:
+            if raw is None:
+                self.done += size
+            return
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # O_EXCL | O_NOFOLLOW: the file is new, and never written through a symlink.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, 'wb') as fo, opener() as fi:
+                while chunk := fi.read(CHUNK):
+                    fo.write(chunk)
+                    if raw is None:
+                        self.done += len(chunk)
+                    else:
+                        self.done = raw.tell()
+                    self.check()
+        except BaseException:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            raise
+        os.chmod(path, 0o755 if mode & 0o111 else 0o644)  # no setuid/setgid/sticky from an archive
+        if mtime:
+            try:
+                os.utime(path, (mtime, mtime))
+            except OSError:
+                pass
+
+    def link(self, name, path, kind, target):
+        """Symlinks and hard links are made only when they stay inside the destination folder."""
+        base = os.path.realpath(self.dest)
+        if kind == 'hard':
+            origin = safe_path(self.dest, target)
+            if not origin or not os.path.isfile(origin) or os.path.islink(origin):
+                self.skipped += 1
+                return
+            path = self.claim(name, path, False)
+            if path:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                shutil.copyfile(origin, path)  # a copy, not a second name for the same data
+            return
+        inside = (target and '\0' not in target and not os.path.isabs(target) and os.path.commonpath(
+            [os.path.realpath(os.path.join(os.path.dirname(path), target)), base]) == base)
+        if not inside:
+            self.skipped += 1
+            return
+        path = self.claim(name, path, False)
+        if path:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            os.symlink(target, path)
+
+    def compress(self):
+        """Packs the items into the .zip at self.dest (written as a hidden .part file first, so a Cancel or an error leaves
+        no broken archive behind)."""
+        entries, stack = [], [(s.rstrip('/'), os.path.basename(s.rstrip('/'))) for s in self.srcs]
+        part = os.path.join(os.path.dirname(self.dest), '.' + os.path.basename(self.dest) + '.part')
+        while stack:
+            path, arc = stack.pop(0)
+            self.check()
+            st = os.lstat(path)
+            if stat.S_ISLNK(st.st_mode):
+                entries.append((path, arc, 'link', 0))
+            elif stat.S_ISDIR(st.st_mode):
+                entries.append((path, arc + '/', 'dir', 0))
+                stack[0:0] = [(os.path.join(path, n), arc + '/' + n) for n in sorted(os.listdir(path))]
+            elif stat.S_ISREG(st.st_mode):
+                entries.append((path, arc, 'file', st.st_size))
+        self.total = sum(e[3] for e in entries) or 1
+        self.items_left = len(entries)
+        try:
+            with zipfile.ZipFile(part, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as zf:
+                for path, arc, kind, size in entries:
+                    self.check()
+                    self.name = os.path.basename(arc.rstrip('/'))
+                    zi = zipfile.ZipInfo.from_file(path, arc, strict_timestamps=False)  # pre-1980 dates are clamped
+                    if kind == 'link':
+                        zi.external_attr = (stat.S_IFLNK | 0o777) << 16
+                        zf.writestr(zi, os.readlink(path))
+                    elif kind == 'dir':
+                        zf.writestr(zi, b'')
+                    else:
+                        zi.compress_type = zipfile.ZIP_DEFLATED
+                        with open(path, 'rb') as fi, zf.open(zi, 'w', force_zip64=size > zipfile.ZIP64_LIMIT) as fo:
+                            while chunk := fi.read(CHUNK):
+                                fo.write(chunk)
+                                self.done += len(chunk)
+                                self.check()
+                    self.items_left -= 1
+            if os.path.lexists(self.dest):  # taken while we worked
+                self.dest = unique_in(os.path.dirname(self.dest), os.path.basename(self.dest))
+            os.replace(part, self.dest)
+        except BaseException:
+            try:
+                os.remove(part)
+            except OSError:
+                pass
+            raise
 
     def conflict(self, src, dst):
         if self.apply_all:
@@ -509,6 +749,7 @@ class Explorer:
         self.clip, self.clip_cut = [], False
         self.view = 'icons'
         self.undo_stack = []
+        self.zmeta = {}                     # members of the zip being browsed: path -> (is_dir, mtime, size)
         self.searching, self.search_gen, self.search_cancel = False, 0, threading.Event()
         self.thumbs = ThreadPoolExecutor(max_workers=2)
         self.preview_gen = 0
@@ -716,13 +957,13 @@ class Explorer:
             path = TRASH
             for sub in ('files', 'info'):
                 os.makedirs(os.path.join(TRASH, sub), exist_ok=True)
-        if path != COMPUTER and not is_uri(path) and not os.path.isdir(path):
+        if path != COMPUTER and not is_uri(path) and not os.path.isdir(path) and zsplit(path) is None:
             return
         if remember and path != self.loc:
             self.back.append(self.loc)
             self.fwd.clear()
         self.loc = path
-        if path not in (COMPUTER, TRASH) and not is_uri(path):
+        if path not in (COMPUTER, TRASH) and not is_uri(path) and zsplit(path) is None:
             mwx7ui.remember(path)
         self.stop_search(True, refill=False)
         self.watch()
@@ -767,7 +1008,7 @@ class Explorer:
             self.go(NETWORK)
         elif to_uri(text):
             self.open_net(to_uri(text))
-        elif os.path.isdir(path):
+        elif os.path.isdir(path) or zsplit(path) is not None:
             self.go(os.path.abspath(path))
         elif os.path.isfile(path):
             self.open_item(path)
@@ -781,6 +1022,9 @@ class Explorer:
             return 'Trash'
         if path == NETWORK:
             return 'Network'
+        z = zsplit(path)
+        if z:
+            return os.path.basename(z[1]) or os.path.basename(z[0])
         if is_uri(path):
             u = urllib.parse.urlparse(path)
             return urllib.parse.unquote(u.path.rstrip('/').rpartition('/')[2] or u.hostname or path)
@@ -817,14 +1061,22 @@ class Explorer:
                     acc = os.path.join(acc, part)
                     parts.append(acc)
         elif self.loc != COMPUTER:
+            z = self.zip_loc()
+            where = z[0] if z else self.loc  # a zip is shown as a folder inside the folder it lies in
             home = os.path.expanduser('~')
-            base = home if self.loc.startswith(home) else '/'
+            base = home if where.startswith(home) else '/'
             parts.append(base)
-            rest = os.path.relpath(self.loc, base)
+            rest = os.path.relpath(where, base)
             if rest != '.':
                 acc = base
                 for part in rest.split(os.sep):
                     acc = os.path.join(acc, part)
+                    parts.append(acc)
+            if z:
+                acc = z[0] + '!'
+                parts[-1] = z[0] + '!/'
+                for part in [x for x in z[1].split('/') if x]:
+                    acc += '/' + part
                     parts.append(acc)
         for i, p in enumerate(parts):
             if i:
@@ -838,31 +1090,79 @@ class Explorer:
         """[(path, name, is_dir, icon_widget_factory, meta)] for the current place."""
         if self.loc == COMPUTER or is_uri(self.loc):
             return []
+        z = self.zip_loc()
         folder = os.path.join(TRASH, 'files') if self.loc == TRASH else self.loc
-        try:
-            names = os.listdir(folder)
-        except OSError:
-            return []
-        out = []
-        for n in names:
-            if n.startswith('.') and self.loc != TRASH:
-                continue
-            p = os.path.join(folder, n)
-            out.append((p, n, os.path.isdir(p)))
+        if z:
+            out = self.zip_items(*z)
+        else:
+            try:
+                names = os.listdir(folder)
+            except OSError:
+                return []
+            out = []
+            for n in names:
+                if n.startswith('.') and self.loc != TRASH:
+                    continue
+                p = os.path.join(folder, n)
+                out.append((p, n, os.path.isdir(p)))
         col, desc = getattr(self, 'sort', ('name', False))
 
         def key(t):
             p, n, d = t
-            try:
-                st = os.stat(p)
-            except OSError:
-                st = None
-            v = {'name': n.lower(), 'date': st.st_mtime if st else 0, 'size': (st.st_size if st and not d else -1),
+            st = self.stat_of(p)
+            v = {'name': n.lower(), 'date': st[0] if st else 0, 'size': (st[1] if st and not d else -1),
                  'type': ('' if d else os.path.splitext(n)[1].lower(), n.lower())}[col]
             return v
         out.sort(key=key, reverse=desc)
         out.sort(key=lambda t: not t[2])  # folders first, whatever the order
         return out
+
+    def zip_loc(self):
+        return zsplit(self.loc)
+
+    def zip_items(self, zp, inner):
+        """The members of the zip that sit directly in `inner`, as [(virtual path, name, is_dir)]; self.zmeta keeps what
+        the details view shows (a zip has no files on disk to stat)."""
+        self.zmeta, seen = {}, {}
+        prefix = inner + '/' if inner else ''
+        try:
+            with zipfile.ZipFile(zp) as zf:
+                infos = zf.infolist()
+        except (OSError, *ARCHIVE_ERRORS):
+            return []
+        for zi in infos:
+            if not zi.filename.startswith(prefix) or zi.filename == prefix:
+                continue
+            first, sep, _rest = zi.filename[len(prefix):].partition('/')
+            if not first:
+                continue
+            is_dir = bool(sep) or zi.is_dir()
+            if first not in seen or is_dir:
+                try:
+                    mtime = time.mktime(zi.date_time + (0, 0, -1))
+                except (OverflowError, ValueError):
+                    mtime = 0
+                seen[first] = (is_dir, mtime, 0 if is_dir else zi.file_size)
+        out = []
+        for name, (is_dir, mtime, size) in seen.items():
+            vp = f'{zp}!/{prefix}{name}'
+            self.zmeta[vp] = (is_dir, mtime, size)
+            out.append((vp, name, is_dir))
+        return out
+
+    def stat_of(self, p):
+        """(mtime, size) of an item, from the zip's index for one inside a zip."""
+        m = getattr(self, 'zmeta', {}).get(p) if self.zip_loc() else None
+        if m:
+            return m[1], m[2]
+        try:
+            st = os.stat(p)
+            return st.st_mtime, st.st_size
+        except OSError:
+            return None
+
+    def is_dir_item(self, p):
+        return self.zmeta[p][0] if self.zip_loc() and p in getattr(self, 'zmeta', {}) else os.path.isdir(p)
 
     def icon_for(self, path, is_dir, size):
         if is_dir:
@@ -882,7 +1182,7 @@ class Explorer:
         self.back_btn.set_sensitive(bool(self.back))
         self.fwd_btn.set_sensitive(bool(self.fwd))
         virtual = self.loc == COMPUTER or is_uri(self.loc)
-        in_trash, real = self.loc == TRASH, self.loc not in (COMPUTER, TRASH) and not virtual
+        in_trash, real = self.loc == TRASH, self.loc not in (COMPUTER, TRASH) and not virtual and not self.zip_loc()
         self.newdir_btn.set_visible(real)
         self.map_btn.set_visible(virtual)
         self.empty_btn.set_visible(in_trash)
@@ -951,14 +1251,12 @@ class Explorer:
             n = Gtk.Label(label=name, xalign=0, hexpand=True, ellipsize=3)
             n.add_css_class('ex-name')
             row.append(n)
-            try:
-                st = os.stat(path)
-                when = datetime.datetime.fromtimestamp(st.st_mtime).strftime('%d/%m/%Y %H:%M')
-                size = '' if is_dir else human(st.st_size)
-            except OSError:
-                when = size = ''
-            for i, (text, w) in enumerate(((when, 16), ('File folder' if is_dir else Gio.content_type_get_description(
-                    Gio.content_type_guess(path, None)[0]), 18), (size, 9))):
+            st = self.stat_of(path)
+            when = datetime.datetime.fromtimestamp(st[0]).strftime('%d/%m/%Y %H:%M') if st and st[0] else ''
+            size = '' if is_dir or not st else human(st[1])
+            kind = 'File folder' if is_dir else 'Compressed (zipped) folder' if archive_kind(path) == 'zip' else \
+                Gio.content_type_get_description(Gio.content_type_guess(path, None)[0])
+            for i, (text, w) in enumerate(((when, 16), (kind, 18), (size, 9))):
                 l = Gtk.Label(label=text, xalign=0, width_chars=w, max_width_chars=w, ellipsize=3)
                 l.add_css_class('ex-meta')
                 self.col_groups[i].add_widget(l)
@@ -967,7 +1265,7 @@ class Explorer:
         else:
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
             box.set_size_request(96, -1)
-            if not is_dir and is_media(path):
+            if not is_dir and is_media(path) and not self.zip_loc():
                 # Lazy: the thumbnail is made only once the cell scrolls into view (load_visible).
                 holder = Gtk.Box(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
                 holder.set_size_request(*THUMB_BOX)
@@ -1264,7 +1562,7 @@ class Explorer:
 
     # ---- drag and drop: drag items onto a folder (or a place on the left) to move them there, as in Explorer ----
     def dnd(self, widget, path, is_dir):
-        if self.loc == TRASH:
+        if self.loc == TRASH or self.zip_loc():
             return
         src = Gtk.DragSource(actions=Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
 
@@ -1291,6 +1589,8 @@ class Explorer:
         widget.add_controller(tgt)
 
     def move_into(self, files, dest):
+        if self.zip_loc():
+            return
         files = [src for src in files if os.path.exists(src) and os.path.dirname(src.rstrip('/')) != dest.rstrip('/')
                  and not dest.startswith(src.rstrip('/') + '/') and src != dest]
         if files:
@@ -1310,8 +1610,18 @@ class Explorer:
         if is_uri(path):
             self.open_net(path)
             return
+        z = zsplit(path)
+        if z:  # inside a zip: folders open as folders, a file is unpacked to a temp folder and opened from there
+            if self.zmeta.get(path, (False,))[0]:
+                self.go(path)
+            else:
+                self.open_from_zip(*z, path)
+            return
         if os.path.isdir(path):
             self.go(path)
+            return
+        if archive_kind(path) == 'zip' and zipfile.is_zipfile(path):
+            self.go(path + '!/')
             return
         try:
             Gio.AppInfo.launch_default_for_uri(Gio.File.new_for_path(path).get_uri(), None)
@@ -1323,7 +1633,7 @@ class Explorer:
         self.update_preview(sel)
         if len(sel) == 1:
             p = sel[0]
-            is_dir = os.path.isdir(p)
+            is_dir = self.is_dir_item(p)
             self.detail_icon.set_from_paintable(None)
             img = self.icon_for(p, is_dir, 48)
             if img.get_paintable():
@@ -1331,11 +1641,11 @@ class Explorer:
             elif img.get_gicon():
                 self.detail_icon.set_from_gicon(img.get_gicon())
             self.detail_title.set_label(os.path.basename(p) or p)
-            try:
-                st = os.stat(p)
-                when = datetime.datetime.fromtimestamp(st.st_mtime).strftime('%d %B %Y, %H:%M')
-                self.detail_text.set_label(('File folder' if is_dir else human(st.st_size)) + f'  ·  Modified {when}')
-            except OSError:
+            st = self.stat_of(p)
+            if st:
+                when = datetime.datetime.fromtimestamp(st[0]).strftime('%d %B %Y, %H:%M')
+                self.detail_text.set_label(('File folder' if is_dir else human(st[1])) + f'  ·  Modified {when}')
+            else:
                 self.detail_text.set_label('')
         elif self.searching and not sel:
             n, c = 0, self.flow.get_first_child()
@@ -1345,7 +1655,8 @@ class Explorer:
             self.detail_text.set_label(f'{n} items found  ·  Esc to stop')
         else:
             n = len(sel) if sel else len(self.items()) if self.loc != COMPUTER and not is_uri(self.loc) else 0
-            here = 'computer' if self.loc == COMPUTER or is_uri(self.loc) else 'trash-empty' if self.loc == TRASH else 'folder'
+            here = 'computer' if self.loc == COMPUTER or is_uri(self.loc) else 'trash-empty' if self.loc == TRASH else \
+                'zipfolder' if self.zip_loc() else 'folder'
             self.detail_icon.set_from_file(os.path.join(ICONS, here + '.png'))
             self.detail_title.set_label(f'{n} items selected' if sel else self.title_of(self.loc))
             self.detail_text.set_label('' if sel else (f'{n} items' if self.loc != COMPUTER and not is_uri(self.loc) else ''))
@@ -1356,7 +1667,7 @@ class Explorer:
         self.fill()
 
     def copy(self, cut):
-        if self.loc == COMPUTER or is_uri(self.loc):
+        if self.zip_loc() or self.loc == COMPUTER or is_uri(self.loc):
             return
         self.clip, self.clip_cut = self.selected(), cut
 
@@ -1369,7 +1680,7 @@ class Explorer:
         return os.path.join(folder, cand)
 
     def paste(self):
-        if self.loc in (COMPUTER, TRASH) or is_uri(self.loc) or not self.clip:
+        if self.zip_loc() or self.loc in (COMPUTER, TRASH) or is_uri(self.loc) or not self.clip:
             return
         files = [s for s in self.clip if os.path.exists(s) and not self.loc.startswith(s.rstrip('/') + '/')]
         if self.clip_cut:
@@ -1380,7 +1691,7 @@ class Explorer:
             self.clip = []
 
     def new_folder(self):
-        if self.loc in (COMPUTER, TRASH) or is_uri(self.loc):
+        if self.zip_loc() or self.loc in (COMPUTER, TRASH) or is_uri(self.loc):
             return
         try:
             os.mkdir(self.unique(self.loc, 'New folder'))
@@ -1409,7 +1720,7 @@ class Explorer:
 
     def rename(self):
         sel = self.selected()
-        if len(sel) != 1 or self.loc in (TRASH, COMPUTER) or is_uri(self.loc):
+        if len(sel) != 1 or self.loc in (TRASH, COMPUTER) or is_uri(self.loc) or self.zip_loc():
             return
         src = sel[0]
 
@@ -1430,7 +1741,7 @@ class Explorer:
 
     def delete(self):
         sel = self.selected()
-        if not sel or self.loc == COMPUTER or is_uri(self.loc):
+        if self.zip_loc() or not sel or self.loc == COMPUTER or is_uri(self.loc):
             return
         if self.loc == TRASH:
             msg, detail, btn = 'Delete permanently?', f'{len(sel)} item(s) will be gone for good.', 'Delete'
@@ -1514,7 +1825,7 @@ class Explorer:
 
     def properties(self):
         sel = self.selected() or ([self.loc] if self.loc not in (COMPUTER, TRASH) and not is_uri(self.loc) else [])
-        if len(sel) != 1:
+        if len(sel) != 1 or self.zip_loc():
             return
         p = sel[0]
         try:
@@ -1634,7 +1945,11 @@ class Explorer:
         if self.loc.startswith(GVFS) and self.loc.rstrip('/').count('/') == GVFS.count('/'):
             self.go(NETWORK)
             return
-        self.go(COMPUTER if self.loc in (TRASH, '/') else os.path.dirname(self.loc.rstrip('/')) or '/')
+        z = self.zip_loc()
+        if z and z[1]:
+            self.go(f'{z[0]}!/{z[1].rpartition("/")[0]}')
+            return
+        self.go(COMPUTER if self.loc in (TRASH, '/') else os.path.dirname((z[0] if z else self.loc).rstrip('/')) or '/')
 
     # ---- search: the folder and everything under it, found by a background thread and streamed into the view --------
     def search_changed(self, text):
@@ -1644,7 +1959,7 @@ class Explorer:
             GLib.source_remove(self.search_timer)
             self.search_timer = 0
         text = text.strip()
-        if self.loc == COMPUTER or is_uri(self.loc):  # nothing to search through here
+        if self.loc == COMPUTER or is_uri(self.loc) or self.zip_loc():  # nothing to search through here
             return
         if not text:
             self.stop_search(False)
@@ -1787,8 +2102,8 @@ class Explorer:
         gen = self.preview_gen
         while (c := self.preview_body.get_first_child()) is not None:
             self.preview_body.remove(c)
-        if len(sel) != 1:
-            self.preview_body.append(Gtk.Label(label='Select a file to preview it.' if not sel else f'{len(sel)} items selected',
+        if len(sel) != 1 or self.zip_loc():
+            self.preview_body.append(Gtk.Label(label='Select a file to preview it.' if not sel or self.zip_loc() else f'{len(sel)} items selected',
                                                vexpand=True, css_classes=['ex-meta']))
             return
         p = sel[0]
@@ -1869,13 +2184,15 @@ class Explorer:
         {'open': lambda: [self.open_item(p) for p in self.selected()[:1]], 'cut': lambda: self.copy(True),
          'copy': lambda: self.copy(False), 'rename': self.rename, 'delete': self.delete, 'props': self.properties,
          'paste': self.paste, 'newdir': self.new_folder, 'refresh': self.fill, 'restore': self.restore,
-         'empty': self.empty_trash, 'undo': self.undo}[name]()
+         'empty': self.empty_trash, 'undo': self.undo, 'zip': self.compress_selection, 'extract': self.extract_selected,
+         'extractall': self.extract_here}[name]()
 
     # ---- copy, move, delete with a progress window ----------------------------------------------------------------
     def run_job(self, job):
         state = {'win': None, 'timer': 0, 'speed': 0.0, 'last': (time.monotonic(), 0)}
         job.ask = lambda src, dst, answer: self.conflict_dialog(job, src, dst, answer)
-        verb = {'copy': 'Copying', 'move': 'Moving', 'trash': 'Moving to the Trash', 'delete': 'Deleting'}[job.kind]
+        verb = {'copy': 'Copying', 'move': 'Moving', 'trash': 'Moving to the Trash', 'delete': 'Deleting',
+                'extract': 'Extracting', 'compress': 'Compressing'}[job.kind]
 
         def finished(j):
             if state['timer']:
@@ -1884,10 +2201,15 @@ class Explorer:
                 state['win'].destroy()
             if j.error:
                 self.alert('This could not be finished.', j.error)
+            elif j.skipped:
+                self.alert(f'{j.skipped} items were not extracted.', 'Their names would have put them outside the destination '
+                           'folder, or they are not ordinary files, folders or links.')
             if j.kind in ('move', 'trash') and j.results:
                 self.undo_stack.append((j.kind, j.results))
                 del self.undo_stack[:-30]
             self.fill()
+            if j.then and not j.error and not j.cancel.is_set():
+                j.then(j)
             return False
 
         def tick():
@@ -1904,14 +2226,14 @@ class Explorer:
             w.bar.set_fraction(frac)
             w.title_label.set_label(f'{frac * 100:.0f}% complete' if job.total else 'Working…')
             w.name.set_label(f'Name: {job.name}')
-            by_bytes = job.kind in ('copy', 'move')
+            by_bytes = job.kind in ('copy', 'move', 'extract', 'compress')
             speed = state['speed']
             left = (job.total - job.done) / speed if speed > 0 else None
             w.time.set_label('Time remaining: ' + ('Calculating…' if left is None or now - job.t0 < 1.5 else
                                                   'Less than a second' if left < 1 else
                                                   f'About {left:.0f} seconds' if left < 90 else f'About {left / 60:.0f} minutes'))
             left_bytes = f' ({human(job.total - job.done)})' if by_bytes else ''
-            w.items.set_label(f'Items remaining: {job.items_left}{left_bytes}')
+            w.items.set_label(f'Items remaining: {job.items_left}{left_bytes}' if job.items_left >= 0 else '')
             w.speed.set_label(f'Speed: {human(speed)}/s' if by_bytes and speed else 'Speed:')
             return True
 
@@ -1928,8 +2250,10 @@ class Explorer:
             w.title_label = Gtk.Label(label='', xalign=0, css_classes=['ex-progress-title'])
             col.append(w.title_label)
             frm = f'{verb} {what}'
-            if job.dest:
+            if job.dest and job.kind != 'extract':
                 frm += f' from {self.title_of(os.path.dirname(job.srcs[0].rstrip("/")))} to {self.title_of(job.dest)}'
+            elif job.dest:
+                frm += f' to {job.dest}'
             col.append(Gtk.Label(label=frm, xalign=0, wrap=True, max_width_chars=50, css_classes=['ex-progress-from']))
             w.bar = Gtk.ProgressBar(margin_top=6, margin_bottom=6)
             w.bar.add_css_class('ex-drive-bar')
@@ -1952,7 +2276,7 @@ class Explorer:
 
     def conflict_dialog(self, job, src, dst, answer):
         """Windows 7's 'Copy File' question: Replace / Skip / Keep both, optionally for every other conflict."""
-        w = mwx7ui.dialog(self.win, 'Replace or Skip Files' if job.kind == 'copy' else 'Move File', '16/properties')
+        w = mwx7ui.dialog(self.win, 'Replace or Skip Files' if job.kind in ('copy', 'extract') else 'Move File', '16/properties')
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18,
                       margin_end=18)
         name = os.path.basename(dst)
@@ -1995,6 +2319,102 @@ class Explorer:
         w.set_child(col)
         w.present()
 
+    # ---- compressed folders -------------------------------------------------------------------------------------------
+    def compress_selection(self):
+        """Send to > Compressed (zipped) folder: NAME.zip next to the items, named after the first one, in a worker."""
+        sel = self.selected()
+        if not sel or self.zip_loc() or self.loc in (COMPUTER, TRASH):
+            return
+        first = os.path.basename(sel[0].rstrip('/'))
+        name = first if os.path.isdir(sel[0]) else os.path.splitext(first)[0] or first
+        dest = unique_in(self.loc, name + '.zip')  # "NAME (2).zip" when the name is taken
+        self.run_job(Job('compress', sel, dest))
+
+    def extract_selected(self):
+        sel = self.selected()
+        if len(sel) == 1 and archive_kind(sel[0]) and os.path.isfile(sel[0]):
+            self.extract_dialog(sel[0])
+
+    def extract_here(self):
+        z = self.zip_loc()
+        if z:
+            self.extract_dialog(z[0])
+
+    def extract_dialog(self, archive):
+        """Windows 7's Extract Compressed (Zipped) Folders: where to, and whether to show the files afterwards."""
+        w = mwx7ui.dialog(self.win, 'Extract Compressed (Zipped) Folders', '16/properties')
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18,
+                      margin_end=18)
+        col.set_size_request(460, -1)
+        col.append(Gtk.Label(label='Select a Destination and Extract Files', xalign=0, css_classes=['ex-progress-title']))
+        col.append(Gtk.Label(label='Files will be extracted to this folder:', xalign=0, margin_top=6))
+        row = Gtk.Box(spacing=8)
+        entry = Gtk.Entry(text=os.path.join(os.path.dirname(archive), archive_stem(os.path.basename(archive))), hexpand=True)
+        browse = Gtk.Button(label='Browse…')
+        row.append(entry)
+        row.append(browse)
+        col.append(row)
+        show = Gtk.CheckButton(label='Show extracted files when complete', active=True, margin_top=4)
+        col.append(show)
+        buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=10)
+        ok = Gtk.Button(label='Extract', css_classes=['suggested-action'])
+        cancel = Gtk.Button(label='Cancel')
+        buttons.append(ok)
+        buttons.append(cancel)
+        col.append(buttons)
+
+        def pick(*_):
+            dlg = Gtk.FileDialog(title='Select a destination', modal=True)
+            dlg.set_initial_folder(Gio.File.new_for_path(os.path.dirname(entry.get_text()) or os.path.expanduser('~')))
+
+            def chosen(d, res):
+                try:
+                    entry.set_text(d.select_folder_finish(res).get_path())
+                except GLib.Error:
+                    pass
+            dlg.select_folder(w, None, chosen)
+
+        def go(*_):
+            dest = os.path.abspath(os.path.expanduser(entry.get_text().strip()))
+            if not entry.get_text().strip():
+                return
+            if os.path.exists(dest) and not os.path.isdir(dest):
+                self.alert('That destination is a file, not a folder.', dest)
+                return
+            w.close()
+            job = Job('extract', [archive], dest)
+            if show.get_active():
+                job.then = lambda _j: self.go(dest)
+            self.run_job(job)
+        browse.connect('clicked', pick)
+        ok.connect('clicked', go)
+        entry.connect('activate', go)
+        cancel.connect('clicked', lambda *_: w.close())
+        w.set_child(col)
+        w.present()
+        GLib.idle_add(lambda: (entry.grab_focus(), False)[1])
+
+    def open_from_zip(self, zp, inner, vpath):
+        """A file in a zip is unpacked to a temp folder (with the progress window, so a big one can be cancelled) and
+        opened from there. Temp folders of earlier days are swept away first."""
+        tmp_root = tempfile.gettempdir()
+        for n in os.listdir(tmp_root):
+            d = os.path.join(tmp_root, n)
+            try:
+                if n.startswith('mwx7-zip-') and os.stat(d).st_uid == os.getuid() and time.time() - os.stat(d).st_mtime > 86400:
+                    shutil.rmtree(d, ignore_errors=True)
+            except OSError:
+                pass
+        dest = tempfile.mkdtemp(prefix='mwx7-zip-')
+        job = Job('extract', [zp], dest, members={inner})
+        target = safe_path(dest, inner)
+
+        def launch(_j):
+            if target and os.path.isfile(target):
+                self.open_item(target)
+        job.then = launch
+        self.run_job(job)
+
     def alert(self, msg, detail=''):
         Gtk.AlertDialog(message=msg, detail=detail).show(self.win)
 
@@ -2006,10 +2426,14 @@ class Explorer:
         elif not child:
             self.flow.unselect_all()
         menu = Gio.Menu()
+        z = self.zip_loc()
         if child:
             if self.loc == TRASH:
                 menu.append('Restore', 'win.ctx::restore')
                 menu.append('Delete permanently', 'win.ctx::delete')
+            elif z:  # a zip is read-only here: open things, or take everything out
+                menu.append('Open', 'win.ctx::open')
+                menu.append('Extract All…', 'win.ctx::extractall')
             else:
                 menu.append('Open', 'win.ctx::open')
                 apps = self.apps_for(self.selected()[:1])
@@ -2018,11 +2442,20 @@ class Explorer:
                     for i, a in enumerate(apps):
                         sub.append(a.get_name(), f'win.ctx::with{i}')
                     menu.append_submenu('Open with…', sub)
+                sel = self.selected()
+                if len(sel) == 1 and archive_kind(sel[0]) and os.path.isfile(sel[0]):
+                    menu.append('Extract All…', 'win.ctx::extract')
+                send = Gio.Menu()  # Windows 7's Send to; only the zip so far
+                send.append('Compressed (zipped) folder', 'win.ctx::zip')
+                menu.append_submenu('Send to', send)
                 menu.append('Cut', 'win.ctx::cut')
                 menu.append('Copy', 'win.ctx::copy')
                 menu.append('Rename', 'win.ctx::rename')
                 menu.append('Move to Trash', 'win.ctx::delete')
                 menu.append('Properties', 'win.ctx::props')
+        elif z:
+            menu.append('Extract All…', 'win.ctx::extractall')
+            menu.append('Refresh', 'win.ctx::refresh')
         elif self.loc not in (COMPUTER, TRASH) and not is_uri(self.loc):
             menu.append('Paste', 'win.ctx::paste')
             menu.append('New folder', 'win.ctx::newdir')
