@@ -1,0 +1,8 @@
+#!/bin/sh
+# NVIDIA's driver blacklists the built-in one (nouveau). If NVIDIA's module was refused (Secure Boot on and its key not
+# enrolled at the blue screen), nothing would drive the screen and the desktop could not start: load nouveau by hand
+# (a blacklist only stops automatic loading). With NVIDIA's driver loaded this does nothing.
+[ -d /sys/module/nvidia ] && exit 0
+lspci -n 2>/dev/null | grep -Eq ' 03(00|02): 10de:' || exit 0
+modprobe nouveau && udevadm settle -t 10
+exit 0
