@@ -358,13 +358,13 @@ def apps_windows(views):
 
 # MWX 7's own icons for apps it knows; everything else uses the app's icon from the system theme.
 APP_ICONS = {
-    'google-chrome': 'browser', 'thunar': 'computer', 'org.mwx7.explorer': 'computer', 'foot': 'text', 'org.codeberg.dnkl.foot': 'text',
+    'google-chrome': 'browser', 'thunar': 'computer', 'org.mwx7.explorer': 'computer', 'foot': 'terminal', 'org.codeberg.dnkl.foot': 'terminal', 'mwx7-terminal': 'terminal',
     'chromium': 'browser', 'mwx7-settings': 'settings', 'org.mwx7.snip': 'snip',
 }
 # Friendly names for apps whose package names mean nothing to a person.
 DISPLAY_NAMES = {'thunar': 'Files', 'org.codeberg.dnkl.foot': 'Terminal', 'foot': 'Terminal'}
 # Helpers and duplicates that make no sense as Start menu entries.
-HIDDEN_APPS = ('chromium', 'thunar', 'footclient', 'foot-server', 'org.codeberg.dnkl.footclient', 'org.codeberg.dnkl.foot-server', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
+HIDDEN_APPS = ('chromium', 'thunar', 'foot', 'org.codeberg.dnkl.foot', 'thunar-settings', 'thunar-bulk-rename', 'xfce4-', 'nm-connection',
                'org.freedesktop.Xwayland', 'debian-', 'gcr-', 'polkit', 'agreety', 'vim', 'htop', 'python3')
 
 

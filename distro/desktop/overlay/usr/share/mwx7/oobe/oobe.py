@@ -152,7 +152,10 @@ class Setup(Gtk.Application):
     # ---- frame --------------------------------------------------------------------------------------------------
     def do_activate(self):
         css = Gtk.CssProvider()
-        css.load_from_path(os.path.join(HERE, 'oobe.css'))
+        try:
+            css.load_from_path(os.path.join(HERE, 'oobe.css'))
+        except GLib.Error:
+            pass  # unstyled is ugly but still usable; a missing stylesheet must never stop the setup
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         win = Gtk.ApplicationWindow(application=self, title='MWX 7 setup')
         win.add_css_class('oobe')
@@ -196,6 +199,7 @@ class Setup(Gtk.Application):
         self.next.add_css_class('primary')
         self.next.connect('clicked', lambda *_: self.go(1))
         bottom.append(self.next)
+        win.set_default_widget(self.next)  # Enter in the name field and the like presses Next (while it is enabled)
         card.append(bottom)
         overlay.add_overlay(card)
         win.set_child(overlay)
@@ -235,6 +239,8 @@ class Setup(Gtk.Application):
             self.refresh_wifi()
         if pid == 'done':
             self.start_finish()
+        if pid == 'account':
+            self.fullname.grab_focus()
         self.validate()
 
     def target(self, step):
@@ -278,6 +284,17 @@ class Setup(Gtk.Application):
             ok = bool(self.fullname.get_text().strip()) and (
                 self.nopass.get_active() or (self.pw1.get_text() and self.pw1.get_text() == self.pw2.get_text()))
         self.next.set_sensitive(ok)
+
+    def account_problem(self):
+        """Why Next is greyed out on the account page, in words; empty when nothing is wrong (or nothing typed yet)."""
+        if self.nopass.get_active():
+            return ''
+        a, b = self.pw1.get_text(), self.pw2.get_text()
+        if b and a != b:
+            return 'The two passwords are not the same.'
+        if a and not b:
+            return 'Type the password again to be sure.'
+        return ''
 
     def tick(self):
         """Keeps the copy progress visible at the bottom on every page."""
@@ -417,7 +434,7 @@ class Setup(Gtk.Application):
                 try:
                     found = any(d.get('has_mwx7') for d in json.loads(subprocess.run(
                         sudo('survey'), capture_output=True, text=True, timeout=30).stdout)['disks'])
-                except (OSError, ValueError, KeyError, subprocess.TimeoutExpired):
+                except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
                     found = False
                 GLib.idle_add(self.installed_note.set_visible, found)
             threading.Thread(target=look, daemon=True).start()
@@ -452,6 +469,8 @@ class Setup(Gtk.Application):
         try:
             self.survey = json.loads(subprocess.run(sudo('survey'), capture_output=True, text=True, timeout=30).stdout)
         except (OSError, ValueError, subprocess.TimeoutExpired):
+            self.survey = {'disks': []}
+        if not isinstance(self.survey, dict) or not isinstance(self.survey.get('disks'), list):
             self.survey = {'disks': []}
         while (c := self.disk_list.get_first_child()):
             self.disk_list.remove(c)
@@ -692,22 +711,32 @@ class Setup(Gtk.Application):
         p.append(scroll)
         row = Gtk.Box(spacing=8)
         self.wifi_pw = Gtk.PasswordEntry(placeholder_text='Network password', show_peek_icon=True, hexpand=True)
+        self.wifi_pw.connect('activate', self.on_join)  # Enter joins the network, it does not skip the page
         row.append(self.wifi_pw)
         join = Gtk.Button(label='Connect')
         join.connect('clicked', self.on_join)
         row.append(join)
         p.append(row)
         self.wifi_msg = self.text('')
+        self.wifi_msg.add_css_class('hint')
         p.append(self.wifi_msg)
         return p
 
     def refresh_wifi(self):
         self.next.set_label('Skip' if not self.online() else 'Next')
-        try:
-            out = subprocess.run(['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan',
-                                  'yes'], capture_output=True, text=True, timeout=15).stdout
-        except (OSError, subprocess.TimeoutExpired):
-            out = ''
+        self.wifi_msg.set_label('Looking for networks…')
+
+        def work():
+            # A rescan takes seconds: off the main thread, or the whole window freezes while it runs.
+            try:
+                out = subprocess.run(['nmcli', '-t', '-f', 'SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan',
+                                      'yes'], capture_output=True, text=True, timeout=15).stdout
+            except (OSError, subprocess.TimeoutExpired):
+                out = ''
+            GLib.idle_add(self.show_networks, out)
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_networks(self, out):
         while (c := self.nets.get_first_child()):
             self.nets.remove(c)
         seen = set()
@@ -721,27 +750,36 @@ class Setup(Gtk.Application):
             r.secure = bool(parts[2])
             r.set_child(Gtk.Label(label=f"{r.ssid}   ·   {parts[1]}%{'   🔒' if r.secure else ''}", xalign=0))
             self.nets.append(r)
+        self.wifi_msg.set_label('' if seen else 'No Wi-Fi networks found. Plug in a network cable, or carry on and '
+                                                'connect later from the status bar.')
+        return False
 
     def on_join(self, *_):
         r = self.nets.get_selected_row()
         if not r:
             self.wifi_msg.set_label('Pick a network first.')
             return
+        if r.secure and not self.wifi_pw.get_text():
+            self.wifi_msg.set_label(f'Type the password of {r.ssid} first.')
+            return
         cmd = ['nmcli', 'device', 'wifi', 'connect', r.ssid] + (['password', self.wifi_pw.get_text()] if r.secure else [])
         self.wifi_msg.set_label(f'Connecting to {r.ssid}…')
 
         def work():
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            GLib.idle_add(lambda: (self.wifi_msg.set_label('Connected.' if res.returncode == 0 else
+            try:
+                ok = subprocess.run(cmd, capture_output=True, text=True, timeout=60).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            GLib.idle_add(lambda: (self.wifi_msg.set_label('Connected.' if ok else
                                                            'That did not work. Check the password and try again.'),
-                                   self.next.set_label('Next'), False)[-1])
+                                   self.next.set_label('Next' if ok else self.next.get_label()), False)[-1])
         threading.Thread(target=work, daemon=True).start()
 
     # ---- 4. account ---------------------------------------------------------------------------------------------
     def page_account(self):
         p = self.page()
         grid = Gtk.Grid(column_spacing=14, row_spacing=10)
-        self.fullname = Gtk.Entry(placeholder_text='Your name', hexpand=True)
+        self.fullname = Gtk.Entry(placeholder_text='Your name', hexpand=True, max_length=60)
         self.login_label = Gtk.Label(xalign=0)
         self.login_label.add_css_class('hint')
         self.pw1 = Gtk.PasswordEntry(placeholder_text='Password', show_peek_icon=True)
@@ -749,10 +787,16 @@ class Setup(Gtk.Application):
         self.nopass = Gtk.CheckButton(label='No password (anyone at this PC can use it; you can add one later in Settings)')
         for w in (self.fullname, self.pw1, self.pw2):
             w.connect('changed', lambda *_: self.on_account_changed())
+        # Enter walks down the form, and on the last field presses Next (when everything is filled in).
+        self.fullname.connect('activate', lambda *_: self.pw1.grab_focus() if self.pw1.get_sensitive() else None)
+        self.pw1.connect('activate', lambda *_: self.pw2.grab_focus())
+        self.pw2.connect('activate', lambda *_: self.next.activate() if self.next.get_sensitive() else None)
+        self.account_msg = Gtk.Label(xalign=0, wrap=True, max_width_chars=60)
+        self.account_msg.add_css_class('refusal')
         self.nopass.connect('toggled', lambda c: (self.pw1.set_sensitive(not c.get_active()),
                                                   self.pw2.set_sensitive(not c.get_active()), self.validate()))
         rows = (('Name', self.fullname), ('', self.login_label), ('Password', self.pw1), ('', self.pw2),
-                ('', self.nopass))
+                ('', self.account_msg), ('', self.nopass))
         for i, (label, w) in enumerate(rows):
             l = Gtk.Label(label=label, xalign=0)
             l.add_css_class('field')
@@ -787,9 +831,14 @@ class Setup(Gtk.Application):
     def on_account_changed(self):
         name = self.fullname.get_text().strip()
         self.login = login_from(name) if name else ''
-        self.login_label.set_label(f'You sign in as “{self.login}”, and this PC is called “{self.login}-pc”.'
+        self.login_label.set_label(f'You sign in as “{self.login}”, and this PC is called “{self.hostname()}”.'
                                    if name else 'Your first name is enough.')
+        self.account_msg.set_label(self.account_problem())
         self.validate()
+
+    def hostname(self):
+        # Account names may hold "_", host names may not.
+        return self.login.replace('_', '-').strip('-') + '-pc'
 
     # ---- 5. finishing -------------------------------------------------------------------------------------------
     def page_done(self):
@@ -812,8 +861,10 @@ class Setup(Gtk.Application):
         return p
 
     def start_finish(self):
-        self.answers = {'fullname': self.fullname.get_text().strip(), 'login': self.login,
-                        'hostname': f'{self.login}-pc', 'password': '' if self.nopass.get_active() else self.pw1.get_text(),
+        # useradd refuses ":" in the full name and "," would split the account's info fields.
+        full = re.sub(r'[:,=\x00-\x1f]', ' ', self.fullname.get_text()).strip()
+        self.answers = {'fullname': full or self.login, 'login': self.login,
+                        'hostname': self.hostname(), 'password': '' if self.nopass.get_active() else self.pw1.get_text(),
                         'language': self.lang[1], 'layout': self.kbd[1], 'variant': self.kbd[2], 'timezone': self.tz,
                         'picture': self.picture}
         self.maybe_finish()
