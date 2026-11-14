@@ -13,6 +13,7 @@ import html
 import json
 import operator
 import os
+import shlex
 import shutil
 import socket
 import struct
@@ -754,7 +755,7 @@ class StartMenu(Gtk.Popover):
         if apps:
             self.results.append(self.group_row('Programs'))
             for _sc, _n, a in apps[:6]:
-                add(self.result_row(app_icon_widget(a, 24), app_name(a), '', lambda a=a: (ensure_x11(), a.launch([], None))))
+                add(self.result_row(app_icon_widget(a, 24), app_name(a), '', lambda a=a: self.shell.launch_app(a)))
         # Settings keywords match at the start of a word ("cal" finds Date & time's calendar, not Display's "scale").
         pages = sorted(((-(2 if label.lower().startswith(q) else 1), label, pid) for pid, label, kw in SETTINGS_PAGES
                         if all(any(t.startswith(w) for t in re.split(r'[\s&]+', (label + ' ' + kw).lower())) for w in words)))[:4]
@@ -858,8 +859,7 @@ class StartMenu(Gtk.Popover):
     def on_row(self, _lb, row):
         self.popdown()
         try:
-            ensure_x11()
-            row.app.launch([], None)
+            self.shell.launch_app(row.app)
         except GLib.Error:
             pass
 
@@ -948,6 +948,11 @@ class Shell(Gtk.Application):
         self.read_conf()
         self.ipc = Ipc()
         self.views = []
+        self.launches = {}  # apps being started: key -> state (see start_launch)
+        # The desktop layer is another process; it hands its launches to the shell so they get the same feedback.
+        act = Gio.SimpleAction.new('launch', GLib.VariantType('as'))
+        act.connect('activate', lambda _a, arg: self.launch(list(arg.unpack())) if arg.n_children() else None)
+        self.add_action(act)
 
     def do_activate(self):
         if getattr(self, 'bar', None):  # a second start of the shell only activates this one: never a second bar
@@ -1372,7 +1377,7 @@ class Shell(Gtk.Application):
             if apps:
                 results.append(group('Applications'))
                 for _sc, name, a in apps:
-                    r = row(app_icon_widget(a, 24), name, a.get_description() or '', lambda a=a: ensure_x11() or a.launch([], None))
+                    r = row(app_icon_widget(a, 24), name, a.get_description() or '', lambda a=a: self.launch_app(a))
                     results.append(r)
                     first = first or r
             if found:
@@ -1707,7 +1712,7 @@ class Shell(Gtk.Application):
         if launch:
             app = next((a for a in (app_for_id(i) for i in ids) if a), None)
             if app and app.supports_uris():
-                self.on_file_drop(b, lambda files, a=app: ensure_x11() or a.launch(files, None))
+                self.on_file_drop(b, lambda files, a=app: self.launch_app(a, files))
         self.dock_items.append((b, ids))
         return b
 
@@ -1734,10 +1739,138 @@ class Shell(Gtk.Application):
             self.dock_running[aid] = self.add_dock_item(label, img, launch, (aid,))
 
     # ---- behaviour ------------------------------------------------------------------------------------------------
+    # ---- launching: feedback until the window maps -----------------------------------------------------------------
+    # No polling: the bounce is a CSS animation that exists only while the class is on the button; the window mapping
+    # arrives as an IPC event (view-mapped -> refresh -> apply_views -> end_mapped_launches), one 15 s timer is the backstop.
+    LAUNCH_TIMEOUT, LAUNCH_FAIL_WINDOW = 15, 5
+    LOG_DIR = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'), 'mwx7')
+
     @staticmethod
-    def launch(cmd):
+    def ids_match(a, b):
+        return any(len(x) >= 3 and len(y) >= 3 and (x in y or y in x) for x in a for y in b)
+
+    def cmd_identity(self, cmd):
+        """(key, label, ids, icon image factory) of a command line: a pinned app, an MWX 7 app, or a plain program."""
+        head = cmd[:2] if cmd[0] == APP and len(cmd) > 1 else cmd[:1]
+        for label, icon, pcmd, ids in PINNED:
+            if (pcmd[:2] if pcmd[0] == APP else pcmd[:1]) == head:
+                return tuple(head), label, ids, lambda i=icon: icon_image(i)
+        name = os.path.basename(head[-1])
+        if cmd[0] == APP and len(head) == 2:
+            ids = (f'org.mwx7.{name}', f'mwx7-{name}', f'{name}.html', f'{name}_html')
+        else:
+            ids = (name.lower(),)
+        return tuple(head), DISPLAY_NAMES.get(name, name.replace('-', ' ').capitalize()), ids, lambda n=name: icon_image(n)
+
+    def launch(self, cmd):
+        key, label, ids, icon = self.cmd_identity(cmd)
+        self.start_launch(key, label, ids, icon, cmd)
+
+    def launch_app(self, app, files=None):
+        """Starts a menu entry (Start, search, notifications, files dropped on a dock icon) with the same feedback."""
+        did = (app.get_id() or '').removesuffix('.desktop').lower()
+        ids = {did, (app.get_startup_wm_class() or '').lower()}
+        if did.startswith('mwx7-'):
+            ids |= {did[5:] + '.html', did[5:] + '_html'}
+        exe = os.path.basename(app.get_executable() or '').lower()
+        ids = tuple(i for i in ids | {exe} if i)
+        argv = None
+        if not files and isinstance(app, Gio.DesktopAppInfo) and app.get_string('Terminal') != 'true' \
+                and not app.get_boolean('DBusActivatable'):
+            # Exec's field codes (%U, %f...) mean "files to open": none here. Dropped, the rest is the command line.
+            try:
+                argv = [a for a in shlex.split(app.get_commandline() or '') if not re.fullmatch(r'%[fFuUdDnNickvm]', a)]
+                argv = [a.replace('%%', '%') for a in argv]
+            except ValueError:
+                argv = None
+        self.start_launch(('app', did), app_name(app), ids, lambda a=app: app_icon_widget(a, 48), argv or None,
+                          fallback=lambda: (ensure_x11(), app.launch(files or [], None)))
+
+    def launching_for(self, ids):
+        return next((k for k, e in self.launches.items() if self.ids_match(e['ids'], ids)), None)
+
+    def start_launch(self, key, label, ids, icon, argv, fallback=None):
+        # A second click while the app is starting does nothing (it used to start a second copy).
+        if key in self.launches or self.launching_for(ids):
+            return
+        btn = next((b for b, bids in self.dock_items if bids and self.ids_match(ids, bids)), None)
+        temp = btn is None
+        if temp:
+            # No dock icon for this app: show one for the time it takes, as the taskbar does.
+            btn = self.add_dock_item(label, icon(), None, ())
+        btn.add_css_class('launching')
+        e = {'seen': {v.get('id') for v in apps_windows(self.views)}, 'ids': ids, 'btn': btn, 'temp': temp, 'label': label, 'start': time.monotonic(), 'proc': None, 'log': None,
+             'timer': GLib.timeout_add_seconds(self.LAUNCH_TIMEOUT, self.end_launch, key, True)}
+        self.launches[key] = e
+        if argv is None:
+            if fallback:
+                fallback()
+            return
         ensure_x11()
-        subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            os.makedirs(self.LOG_DIR, exist_ok=True)
+            e['log'] = os.path.join(self.LOG_DIR, 'launch-' + re.sub(r'[^A-Za-z0-9._-]', '_', '-'.join(key)) + '.log')
+            with open(e['log'], 'wb') as err:
+                proc = subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=err)
+        except OSError as ex:
+            self.launch_failed(key, str(ex))
+            return
+        e['proc'] = proc
+        GLib.child_watch_add(GLib.PRIORITY_DEFAULT, proc.pid, lambda _pid, status: self.on_launch_exit(key, status))
+
+    def on_launch_exit(self, key, status):
+        e = self.launches.get(key)
+        if not e or e.get('mapped'):
+            return
+        try:
+            code = os.waitstatus_to_exitcode(status)
+        except ValueError:
+            code = 1
+        if code == 0:
+            return  # a launcher that handed over to another process: the window may still come, the timer ends it
+        last = ''
+        try:
+            with open(e['log'], 'rb') as f:
+                f.seek(0, os.SEEK_END)
+                f.seek(max(0, f.tell() - 4096))
+                lines = [l.strip() for l in f.read().decode('utf-8', 'replace').splitlines() if l.strip()]
+            last = lines[-1] if lines else ''
+        except OSError:
+            pass
+        if time.monotonic() - e['start'] <= self.LAUNCH_FAIL_WINDOW:
+            self.launch_failed(key, last[:200])
+        else:
+            self.end_launch(key)
+
+    def launch_failed(self, key, detail):
+        e = self.launches.get(key)
+        label = e['label'] if e else key[-1]
+        self.end_launch(key)
+        self.run_bg(['notify-send', '-a', 'MWX 7', f'{label} couldn’t start', detail or 'The program closed right away.'])
+
+    def end_launch(self, key, from_timer=False):
+        e = self.launches.pop(key, None)
+        if not e:
+            return False
+        if not from_timer:
+            GLib.source_remove(e['timer'])
+        e['btn'].remove_css_class('launching')
+        if e['temp'] and not e.get('mapped'):
+            self.dock_items = [(x, i) for x, i in self.dock_items if x is not e['btn']]
+            self.dock_box.remove(e['btn'])
+            self.dock.set_default_size(1, 1)  # a GTK 4 window never shrinks by itself
+        return False
+
+    def end_mapped_launches(self):
+        """From apply_views, i.e. after Wayfire's view-mapped: a launch ends when a window of its app (or of the process
+        we started) is there. A temporary dock icon goes before sync_running_apps gives the app its real one."""
+        wins = apps_windows(self.views)
+        for key, e in list(self.launches.items()):
+            pid = e['proc'].pid if e['proc'] else None
+            if any(v.get('id') not in e['seen'] and (self.ids_match(e['ids'], ((v.get('app-id') or '').lower(),))
+                                                   or (pid and v.get('pid') == pid)) for v in wins):
+                e['mapped'] = True
+                self.end_launch(key)
 
     def windows_of(self, ids):
         # Substrings: Chrome names app windows after their page (chrome-..._notepad.html-...).
@@ -1746,6 +1879,8 @@ class Shell(Gtk.Application):
     def dock_click(self, launch, ids):
         wins = self.windows_of(ids)
         if not wins:
+            if self.launching_for(ids):
+                return
             if launch:
                 launch()
             return
@@ -1854,6 +1989,7 @@ class Shell(Gtk.Application):
         if not isinstance(views, list):
             return False  # no answer this time: keep showing what was last known
         self.views = views
+        self.end_mapped_launches()
         self.sync_running_apps()
         for b, ids in self.dock_items:
             if self.windows_of(ids):
@@ -2907,7 +3043,7 @@ class Shell(Gtk.Application):
                 self.act('wm-actions/set-minimized', {'view_id': w['id'], 'state': False})
             self.act('window-rules/focus-view', {'id': w['id']})
         elif not live and (app := self.nc_app(n)):
-            app.launch([], None)
+            self.launch_app(app)
         self.nc_dismiss(n['id'])
 
     def nc_dismiss(self, nid):

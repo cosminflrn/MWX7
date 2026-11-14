@@ -77,10 +77,28 @@ def ensure_x11():
         except (OSError, ValueError):
             continue
 
+def hand_to_shell(cmd):
+    """The shell (dock) shows the bounce, stops double launches and reports a failed start; it exposes a 'launch' action
+    on the session bus. False when it isn't there (or the call fails), so the caller starts the program itself."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        has_owner = bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner',
+                                  GLib.Variant('(s)', ('org.mwx7.shell',)), GLib.VariantType('(b)'),
+                                  Gio.DBusCallFlags.NONE, 500, None).unpack()[0]
+        if not has_owner:
+            return False
+        Gio.DBusActionGroup.get(bus, 'org.mwx7.shell', '/org/mwx7/shell').activate_action('launch', GLib.Variant('as', list(cmd)))
+        return True
+    except GLib.Error:
+        return False
+
+
 def launch(cmd, fallback=None):
     ensure_x11()
     if fallback and not os.path.exists(cmd[0]):
         cmd = fallback
+    if hand_to_shell(cmd):
+        return
     try:
         subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
