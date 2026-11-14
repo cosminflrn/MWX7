@@ -1,0 +1,7 @@
+[Unit]
+Description=MWX 7: Calendar reminders
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/mwx7/bin/mwx7-reminders
+Nice=10
