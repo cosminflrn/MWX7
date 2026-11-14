@@ -1,9 +1,11 @@
 #include "deco-theme.hpp"
 #include <wayfire/core.hpp>
 #include <wayfire/opengl.hpp>
+#include <wayfire/view.hpp>
 #include <map>
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 
 namespace wf
 {
@@ -11,7 +13,58 @@ namespace decor
 {
 /** Create a new theme with the default parameters */
 decoration_theme_t::decoration_theme_t()
-{}
+{
+    on_blur_option_changed = [] () { damage_all_views(); };
+    core_plugins.set_callback([] () { damage_all_views(); });
+}
+
+decoration_theme_t::~decoration_theme_t()
+{
+    if (blur_option)
+    {
+        blur_option->rem_updated_handler(&on_blur_option_changed);
+    }
+}
+
+void decoration_theme_t::damage_all_views()
+{
+    for (auto& view : wf::get_core().get_all_views())
+    {
+        if (view->is_mapped())
+        {
+            view->damage();
+        }
+    }
+}
+
+bool decoration_theme_t::blur_active() const
+{
+    // mwx7-perf drops the blur plugin from [core] plugins and sets blur_by_default = none when there is no 3D acceleration.
+    std::istringstream in{(std::string)core_plugins};
+    std::string name;
+    bool loaded = false;
+    while (in >> name)
+    {
+        loaded |= (name == "blur");
+    }
+
+    if (!loaded)
+    {
+        return false;
+    }
+
+    // The blur section only exists while the plugin is loaded, so hook its option the first time it is there.
+    if (!blur_option)
+    {
+        blur_option = wf::get_core().config.get_option("blur/blur_by_default");
+        if (blur_option)
+        {
+            blur_option->add_updated_handler(&on_blur_option_changed);
+        }
+    }
+
+    return blur_option && (blur_option->get_value_str() != "none");
+}
 
 /** @return The available height for displaying the title */
 int decoration_theme_t::get_title_height() const
@@ -88,7 +141,16 @@ void decoration_theme_t::render_background(const wf::render_target_t& fb,
 {
     // Wayfire blends premultiplied colours: multiply by alpha here or translucent fills come out far too bright.
     auto pm = [] (wf::color_t c) { return wf::color_t{c.r * c.a, c.g * c.a, c.b * c.a, c.a}; };
-    const wf::color_t c = active_color;
+    wf::color_t c = active_color;
+    // Without blur the glass shows whatever is behind it sharply (desktop gauges inside the title bar, lost traffic lights),
+    // so it turns near-opaque tinted glass of the same hue. With blur the translucent look stays.
+    const bool blurred = blur_active();
+    const double no_blur_alpha = active ? 0.90 : 0.80;
+    if (!blurred)
+    {
+        c.a = std::max(c.a, no_blur_alpha);
+    }
+
     const int band = (int)border_size + (int)title_height;
     update_band(rectangle.width, rectangle.height, band, active);
     OpenGL::render_begin(fb);
@@ -100,7 +162,7 @@ void decoration_theme_t::render_background(const wf::render_target_t& fb,
     } else
     {
         // Unfocused windows: half the tint and a cool grey veil, so the focused one clearly stands out.
-        OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, c.a * 0.5}), proj);
+        OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, blurred ? c.a * 0.5 : c.a}), proj);
         OpenGL::render_rectangle(rectangle, pm({150 / 255.0, 165 / 255.0, 190 / 255.0, 0.22}), proj);
     }
 

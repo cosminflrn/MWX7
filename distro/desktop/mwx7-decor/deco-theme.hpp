@@ -23,6 +23,10 @@ class decoration_theme_t
   public:
     /** Create a new theme with the default parameters */
     decoration_theme_t();
+    ~decoration_theme_t();
+
+    /** Whether Wayfire's blur is really running behind windows (plugin loaded and blur_by_default not 'none'). */
+    bool blur_active() const;
 
     /** @return The available height for displaying the title */
     int get_title_height() const;
@@ -82,6 +86,12 @@ class decoration_theme_t
     mutable int band_key_w = -1, band_key_h = -1, band_key_band = -1;
     mutable bool band_key_active = false;
     void update_band(int width, int height, int band, bool active) const;
+
+    // Frame opacity depends on whether blur runs (see render_background), so a change of either option redraws the frames.
+    wf::option_wrapper_t<std::string> core_plugins{"core/plugins"};
+    mutable std::shared_ptr<wf::config::option_base_t> blur_option;
+    mutable wf::config::option_base_t::updated_callback_t on_blur_option_changed;
+    static void damage_all_views();
 
     wf::option_wrapper_t<std::string> font{"decoration/font"};
     wf::option_wrapper_t<int> title_height{"decoration/title_height"};
