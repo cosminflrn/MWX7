@@ -16,6 +16,7 @@ import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7drives as drives  # noqa: E402
 import mwx7ui  # noqa: E402
 from mwx7ui import Gdk, Gio, GLib, Gtk  # noqa: E402
 import gi  # noqa: E402
@@ -24,6 +25,60 @@ gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import GdkPixbuf  # noqa: E402
 
 COMPUTER = 'computer:'
+NETWORK = 'network:///'  # the Network place; any other "scheme://" place is a server or share browsed through gvfs
+GVFS = f'/run/user/{os.getuid()}/gvfs/'  # where gvfs-fuse shows mounted shares, so the rest of Explorer can use plain paths
+BOOKMARKS = os.path.join(GLib.get_user_config_dir(), 'gtk-3.0', 'bookmarks')  # shared with Thunar and the file pickers
+
+
+def is_uri(loc):
+    return '://' in loc
+
+
+def read_bookmarks():
+    """[(uri, name)] of the network places saved with "Map network drive…" (local folder bookmarks are not ours)."""
+    out = []
+    try:
+        with open(BOOKMARKS) as f:
+            for line in f:
+                uri, _s, name = line.strip().partition(' ')
+                if uri and is_uri(uri) and not uri.startswith('file://'):
+                    out.append((uri, name or uri))
+    except OSError:
+        pass
+    return out
+
+
+def write_bookmarks(extra, drop=None):
+    """Adds (uri, name) to the bookmarks file, or removes the one for `drop`; other people's lines stay as they are."""
+    try:
+        with open(BOOKMARKS) as f:
+            lines = [l.rstrip('\n') for l in f if l.strip()]
+    except OSError:
+        lines = []
+    lines = [l for l in lines if l.split(' ')[0] != drop and not (extra and l.split(' ')[0] == extra[0])]
+    if extra:
+        lines.append(f'{extra[0]} {extra[1]}')
+    os.makedirs(os.path.dirname(BOOKMARKS), exist_ok=True)
+    with open(BOOKMARKS, 'w') as f:
+        f.write('\n'.join(lines) + ('\n' if lines else ''))
+
+
+def to_uri(text):
+    """What was typed as a network place: \\\\server\\share or smb://server/share (or sftp://..., ftp://...) as a gvfs URI."""
+    t = text.strip()
+    if t.startswith('\\\\'):
+        return 'smb://' + urllib.parse.quote(t[2:].replace('\\', '/'), safe='/')
+    if is_uri(t):
+        return t
+    return None
+
+
+def mount_title(path):
+    """The name of the gvfs mount a /run/user/.../gvfs/<mount> path belongs to."""
+    for m in Gio.VolumeMonitor.get().get_mounts():
+        if m.get_root().get_path() == path:
+            return m.get_name()
+    return os.path.basename(path)
 TRASH = os.path.join(GLib.get_user_data_dir(), 'Trash')
 ICONS = mwx7ui.ICONS
 SPECIAL = [(GLib.UserDirectory.DIRECTORY_DESKTOP, 'desktop'), (GLib.UserDirectory.DIRECTORY_DOCUMENTS, 'folder-documents'),
@@ -73,6 +128,7 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 .ex-progress-from { color: #1e3f66; font-weight: 600; }
 .ex-cmd button.ex-on { border-color: #7da2ce; background: linear-gradient(180deg, #dcebfc, #c1dcfc); }
 .ex-group { padding: 12px 14px 4px; font-weight: 600; color: #1e3f66; }
+.ex-drive-btn { padding: 2px 8px; min-height: 0; font-size: 11px; }
 """
 
 
@@ -91,6 +147,91 @@ def kind_icon(path):
     if any(k in mime for k in ('zip', 'tar', 'compressed', 'x-7z', 'rar', 'xz', 'bzip', 'gzip', 'zstd', 'debian')):
         return 'archive'
     return 'file'
+
+
+def mount_op(win):
+    """A Gio.MountOperation that asks for a user name and password (and the questions gvfs has, such as an unknown
+    server key) in MWX 7's own windows."""
+    op = Gio.MountOperation()
+    op.connect('ask-password', lambda o, msg, user, domain, flags: credentials(win, o, msg, user, domain, flags))
+
+    def question(o, msg, choices):
+        dlg = Gtk.AlertDialog(message=msg, buttons=list(choices), cancel_button=-1)
+
+        def chosen(d, res):
+            try:
+                o.set_choice(d.choose_finish(res))
+                o.reply(Gio.MountOperationResult.HANDLED)
+            except GLib.Error:
+                o.reply(Gio.MountOperationResult.ABORTED)
+        dlg.choose(win, None, chosen)
+    op.connect('ask-question', question)
+    return op
+
+
+def credentials(win, op, message, user, domain, flags):
+    """Windows' "Enter network credentials" box: only the fields the share asks for, an anonymous choice when it
+    allows one, and whether to remember the password for this session."""
+    F = Gio.AskPasswordFlags
+    w = mwx7ui.dialog(win, 'Enter Network Credentials', '16/properties')
+    col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18, margin_end=18)
+    col.append(Gtk.Label(label=message, xalign=0, wrap=True, max_width_chars=46, css_classes=['ex-progress-title']))
+    entries = {}
+
+    def field(key, text, initial, secret=False):
+        col.append(Gtk.Label(label=text, xalign=0, css_classes=['ex-meta']))
+        e = Gtk.PasswordEntry(show_peek_icon=True) if secret else Gtk.Entry(text=initial or '', width_chars=34)
+        col.append(e)
+        entries[key] = e
+        return e
+    if flags & F.NEED_USERNAME:
+        field('user', 'User name', user)
+    if flags & F.NEED_DOMAIN:
+        field('domain', 'Domain', domain or 'WORKGROUP')
+    if flags & F.NEED_PASSWORD:
+        field('pass', 'Password', '', True)
+    anon = Gtk.CheckButton(label='Connect anonymously (guest)') if flags & F.ANONYMOUS_SUPPORTED else None
+    if anon:
+        col.append(anon)
+        anon.connect('toggled', lambda b: [e.set_sensitive(not b.get_active()) for e in entries.values()])
+    save = Gtk.CheckButton(label='Remember my password until I log out') if flags & F.SAVING_SUPPORTED else None
+    if save:
+        col.append(save)
+    row = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
+    cancel, ok = Gtk.Button(label='Cancel'), Gtk.Button(label='Connect')
+    ok.add_css_class('suggested-action')
+    row.append(cancel)
+    row.append(ok)
+    col.append(row)
+    w.set_child(col)
+    state = {'done': False}
+
+    def finish(good):
+        if state['done']:
+            return
+        state['done'] = True
+        if good:
+            if anon and anon.get_active():
+                op.set_anonymous(True)
+            else:
+                if 'user' in entries:
+                    op.set_username(entries['user'].get_text())
+                if 'domain' in entries:
+                    op.set_domain(entries['domain'].get_text())
+                if 'pass' in entries:
+                    op.set_password(entries['pass'].get_text())
+            op.set_password_save(Gio.PasswordSave.FOR_SESSION if save and save.get_active() else Gio.PasswordSave.NEVER)
+        op.reply(Gio.MountOperationResult.HANDLED if good else Gio.MountOperationResult.ABORTED)
+        w.destroy()
+    ok.connect('clicked', lambda *_: finish(True))
+    cancel.connect('clicked', lambda *_: finish(False))
+    w.connect('close-request', lambda *_: (finish(False), False)[1])
+    for e in entries.values():
+        e.connect('activate', lambda *_: finish(True))
+    w.present()
+    first = next(iter(entries.values()), None)
+    if first:
+        GLib.idle_add(lambda: (first.grab_focus(), False)[1])
 
 
 def human(n):
@@ -378,7 +519,7 @@ class Explorer:
     def build(self, app, win):
         self.app, self.win = app, win
         win.add_css_class('mwx7-explorer')
-        app.on_open = lambda files: self.go(files[0].get_path())
+        app.on_open = lambda files: self.go(files[0].get_path() or files[0].get_uri())
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         nav = Gtk.Box(spacing=6)
         nav.add_css_class('ex-nav')
@@ -425,6 +566,9 @@ class Explorer:
         self.newdir_btn = Gtk.Button(label='New folder')
         self.newdir_btn.connect('clicked', lambda *_: self.new_folder())
         cmd.append(self.newdir_btn)
+        self.map_btn = Gtk.Button(label='Map network drive…')
+        self.map_btn.connect('clicked', lambda *_: self.map_drive())
+        cmd.append(self.map_btn)
         self.empty_btn = Gtk.Button(label='Empty the Trash')
         self.empty_btn.connect('clicked', lambda *_: self.empty_trash())
         cmd.append(self.empty_btn)
@@ -492,8 +636,12 @@ class Explorer:
         root.append(self.detail)
 
         self.monitor = None
-        start = app.files[0].get_path() if app.files else (sys.argv[1] if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]) else COMPUTER)
+        start = (app.files[0].get_path() or app.files[0].get_uri()) if app.files else (sys.argv[1] if len(sys.argv) > 1 and (os.path.isdir(sys.argv[1]) or sys.argv[1] == NETWORK) else COMPUTER)
         self.fill_side()
+        # Drives and shares come and go: the volume monitor tells us (no polling).
+        self.vmon = Gio.VolumeMonitor.get()
+        for sig in ('mount-added', 'mount-removed', 'mount-changed', 'volume-added', 'volume-removed'):
+            self.vmon.connect(sig, lambda *_a: GLib.idle_add(lambda: (self.drives_changed(), False)[1]))
         self.go(start, remember=False)
         # The items, not the search box, get the keys (GTK would focus the first widget it finds once the window shows).
         win.connect('map', lambda *_: GLib.timeout_add(100, lambda: (self.focus_items(), False)[1]))
@@ -528,9 +676,39 @@ class Explorer:
             self.side.append(self.side_row(os.path.basename(p), icon, p))
         self.side.append(self.side_head('My Computer'))
         self.side.append(self.side_row('Local Disk', 'drive', '/'))
+        live = [drives.key(m) for m in drives.mounts()]
+        for m in drives.mounts():  # USB sticks, cards and phones appear here as they are plugged in
+            path = m.get_root().get_path()
+            if path:
+                self.side.append(self.side_row(drives.label(m, live), 'drive', path))
         self.side.append(self.side_row(GLib.get_real_name() or GLib.get_user_name(), 'user', os.path.expanduser('~')))
+        self.side.append(self.side_head('Network'))
+        self.side.append(self.side_row('Network', 'computer', NETWORK))
+        for uri, name in read_bookmarks():
+            self.side.append(self.side_row(name, 'folder', uri))
         self.side.append(self.side_head(''))
         self.side.append(self.side_row('Trash', 'trash-empty', TRASH))
+
+    def drives_changed(self):
+        """The volume monitor says a drive or share came or went (a signal, not polling): refresh the places on screen."""
+        while (r := self.side.get_first_child()) is not None:
+            self.side.remove(r)
+        self.fill_side()
+        gone = self.loc.startswith(('/run/media/', '/media/', GVFS)) and not os.path.isdir(self.loc)
+        if gone:
+            self.go(COMPUTER)
+        elif self.loc == COMPUTER or self.loc == NETWORK:
+            self.fill()
+        else:
+            self.sync_side()
+
+    def sync_side(self):
+        i = 0
+        while (r := self.side.get_row_at_index(i)) is not None:
+            if getattr(r, 'path', None) == self.loc:
+                self.side.select_row(r)
+                return
+            i += 1
 
     # ---- navigation -----------------------------------------------------------------------------------------------
     def go(self, path, remember=True):
@@ -538,13 +716,13 @@ class Explorer:
             path = TRASH
             for sub in ('files', 'info'):
                 os.makedirs(os.path.join(TRASH, sub), exist_ok=True)
-        if path != COMPUTER and not os.path.isdir(path):
+        if path != COMPUTER and not is_uri(path) and not os.path.isdir(path):
             return
         if remember and path != self.loc:
             self.back.append(self.loc)
             self.fwd.clear()
         self.loc = path
-        if path not in (COMPUTER, TRASH):
+        if path not in (COMPUTER, TRASH) and not is_uri(path):
             mwx7ui.remember(path)
         self.stop_search(True, refill=False)
         self.watch()
@@ -585,6 +763,10 @@ class Explorer:
         self.addr_stack.set_visible_child(self.crumbs)
         if text.strip().lower() in ('my computer', 'computer'):
             self.go(COMPUTER)
+        elif text.strip().lower() == 'network':
+            self.go(NETWORK)
+        elif to_uri(text):
+            self.open_net(to_uri(text))
         elif os.path.isdir(path):
             self.go(os.path.abspath(path))
         elif os.path.isfile(path):
@@ -597,6 +779,13 @@ class Explorer:
             return 'My Computer'
         if path == TRASH:
             return 'Trash'
+        if path == NETWORK:
+            return 'Network'
+        if is_uri(path):
+            u = urllib.parse.urlparse(path)
+            return urllib.parse.unquote(u.path.rstrip('/').rpartition('/')[2] or u.hostname or path)
+        if path.startswith(GVFS) and path.rstrip('/').count('/') == GVFS.count('/'):
+            return mount_title(path.rstrip('/'))
         if path == '/':
             return 'Local Disk'
         if path == os.path.expanduser('~'):
@@ -609,6 +798,24 @@ class Explorer:
         parts = [COMPUTER]
         if self.loc == TRASH:
             parts = [TRASH]
+        elif is_uri(self.loc):
+            u = urllib.parse.urlparse(self.loc)
+            parts = [NETWORK]
+            if self.loc != NETWORK:
+                acc = f'{u.scheme}://{u.netloc}'
+                parts.append(acc + '/')
+                for part in [x for x in u.path.split('/') if x]:
+                    acc += '/' + part
+                    parts.append(acc + '/')
+        elif self.loc.startswith(GVFS):
+            root = GVFS + self.loc[len(GVFS):].split('/')[0]
+            parts = [NETWORK, root]
+            rest = os.path.relpath(self.loc, root)
+            if rest != '.':
+                acc = root
+                for part in rest.split(os.sep):
+                    acc = os.path.join(acc, part)
+                    parts.append(acc)
         elif self.loc != COMPUTER:
             home = os.path.expanduser('~')
             base = home if self.loc.startswith(home) else '/'
@@ -629,7 +836,7 @@ class Explorer:
     # ---- items ----------------------------------------------------------------------------------------------------
     def items(self):
         """[(path, name, is_dir, icon_widget_factory, meta)] for the current place."""
-        if self.loc == COMPUTER:
+        if self.loc == COMPUTER or is_uri(self.loc):
             return []
         folder = os.path.join(TRASH, 'files') if self.loc == TRASH else self.loc
         try:
@@ -674,11 +881,13 @@ class Explorer:
         self.app.set_title(self.title_of(self.loc))
         self.back_btn.set_sensitive(bool(self.back))
         self.fwd_btn.set_sensitive(bool(self.fwd))
-        in_trash, real = self.loc == TRASH, self.loc not in (COMPUTER, TRASH)
+        virtual = self.loc == COMPUTER or is_uri(self.loc)
+        in_trash, real = self.loc == TRASH, self.loc not in (COMPUTER, TRASH) and not virtual
         self.newdir_btn.set_visible(real)
+        self.map_btn.set_visible(virtual)
         self.empty_btn.set_visible(in_trash)
         self.restore_btn.set_visible(in_trash)
-        self.view_btn.set_visible(self.loc != COMPUTER)
+        self.view_btn.set_visible(not virtual)
         while (c := self.flow.get_first_child()) is not None:
             self.flow.remove(c)
         child = self.content.get_first_child()
@@ -699,6 +908,8 @@ class Explorer:
             self.side.unselect_all()
         if self.loc == COMPUTER:
             self.fill_computer()
+        elif is_uri(self.loc):
+            self.fill_network()
         else:
             details = self.view == 'details'
             if details:
@@ -807,6 +1018,249 @@ class Explorer:
             folders.append(self.cell(p, os.path.basename(p), True, False))
         self.content.append(group('Your Folders'))
         self.content.append(folders)
+        self.vols = {}
+        live = [drives.key(m) for m in drives.mounts()]
+        cells = []
+        for m in drives.mounts():
+            path = m.get_root().get_path()
+            frac, sub = None, 'Device'
+            if path:
+                try:
+                    d = shutil.disk_usage(path)
+                    frac, sub = (d.total - d.free) / d.total if d.total else 0, f'{human(d.free)} free of {human(d.total)}'
+                except OSError:
+                    sub = ''
+            cells.append(self.drive_cell('drive', drives.label(m, live), sub, frac, path or m.get_root().get_uri(),
+                                         [('Eject', lambda m=m: self.eject(m))]))
+        for v in Gio.VolumeMonitor.get().get_volumes():  # plugged in but not mounted (yet, or it could not be)
+            if drives.volume_removable(v) and v.get_mount() is None:
+                self.vols[v.get_name()] = v
+                cells.append(self.drive_cell('drive', v.get_name(), 'Double-click to open it', None, 'vol:' + v.get_name()))
+        if cells:
+            self.shelf('Devices with Removable Storage', cells)
+        marks = read_bookmarks()
+        cells = [self.drive_cell('computer', 'Network', 'Computers and shares around you', None, NETWORK)]
+        seen = set()
+        for m in drives.mounts('network'):
+            uri = m.get_root().get_uri()
+            seen.add(uri.rstrip('/'))
+            acts = [('Disconnect', lambda m=m: self.eject(m))]
+            if uri.rstrip('/') in [u.rstrip('/') for u, _n in marks]:
+                acts.append(('Remove', lambda uri=uri: self.forget(uri)))
+            cells.append(self.drive_cell('drive', m.get_name(), 'Network location', None, m.get_root().get_path() or uri, acts))
+        for uri, name in marks:
+            if uri.rstrip('/') not in seen:
+                cells.append(self.drive_cell('drive', name, 'Network location', None, uri,
+                                             [('Remove', lambda uri=uri: self.forget(uri))]))
+        self.shelf('Network Locations', cells)
+
+    def drive_cell(self, icon, title, sub, frac, item, actions=()):
+        """A drive as Windows 7 shows it in Computer: icon, name, a usage bar, the free space and a button or two."""
+        c = Gtk.FlowBoxChild()
+        c.item = item
+        row = Gtk.Box(spacing=10)
+        row.append(mwx7ui.icon(icon, 48))
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3, valign=Gtk.Align.CENTER)
+        col.append(Gtk.Label(label=title, xalign=0, css_classes=['ex-name']))
+        if frac is not None:
+            bar = Gtk.ProgressBar(fraction=frac)
+            bar.add_css_class('ex-drive-bar')
+            bar.set_size_request(180, -1)
+            col.append(bar)
+        col.append(Gtk.Label(label=sub, xalign=0, css_classes=['ex-meta']))
+        row.append(col)
+        for text, fn in actions:
+            b = Gtk.Button(label=text, valign=Gtk.Align.CENTER, focusable=False)
+            b.add_css_class('ex-drive-btn')
+            b.connect('clicked', lambda *_a, fn=fn: fn())
+            row.append(b)
+        c.set_child(row)
+        return c
+
+    def shelf(self, title, cells):
+        g = Gtk.Label(label=title, xalign=0)
+        g.add_css_class('ex-group')
+        self.content.append(g)
+        fb = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.SINGLE, activate_on_single_click=False, homogeneous=False,
+                         max_children_per_line=40, margin_start=6, margin_end=6)
+        fb.add_css_class('ex-items')
+        fb.connect('child-activated', lambda _f, c: self.open_item(c.item))
+        for c in cells:
+            fb.append(c)
+        self.content.append(fb)
+
+    def eject(self, mount):
+        name = drives.label(mount)
+        removable = drives.kind(mount) == 'removable'
+        root = mount.get_root().get_path()
+        if root and self.loc.startswith(root):  # leave it first, as Windows does: nothing of ours holds it open
+            self.go(COMPUTER)
+
+        def done(ok, blockers):
+            if ok:
+                if removable:
+                    self.alert('Safe to Remove Hardware', f'{name} can now be safely removed from the computer.')
+            elif blockers:
+                self.alert(f'Problem ejecting {name}', f'{", ".join(blockers[:3])} is still using it. Close it, then try again.')
+            else:
+                self.alert(f'Problem ejecting {name}', 'A program is still using it. Close any windows showing its files, then try again.')
+        drives.eject(mount, done)
+
+    def open_volume(self, name):
+        v = self.vols.get(name)
+        if v is None:
+            return
+
+        def done(vol, res):
+            try:
+                vol.mount_finish(res)
+            except GLib.Error as e:
+                if not e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.FAILED_HANDLED):
+                    self.alert(f'MWX 7 couldn’t open {name}.', e.message)
+                return
+            m = vol.get_mount()
+            if m and m.get_root().get_path():
+                self.go(m.get_root().get_path())
+        v.mount(Gio.MountMountFlags.NONE, mount_op(self.win), None, done)
+
+    # ---- network: shares and servers through gvfs ---------------------------------------------------------------------
+    def forget(self, uri):
+        write_bookmarks(None, drop=uri)
+        self.drives_changed()
+
+    def open_net(self, uri):
+        """A mounted share is an ordinary folder (gvfs-fuse); servers, the Network place and shares not yet mounted are
+        browsed through Gio, which asks for the password when the share needs one."""
+        p = Gio.File.new_for_uri(uri).get_path()
+        self.go(p if p and os.path.isdir(p) else uri)
+
+    def mount_uri(self, uri, cb):
+        """cb(ok, message): message is empty when it worked or when the person cancelled the password box."""
+        def done(src, res):
+            try:
+                src.mount_enclosing_volume_finish(res)
+            except GLib.Error as e:
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.ALREADY_MOUNTED):
+                    cb(True, '')
+                else:
+                    cb(False, '' if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.FAILED_HANDLED) else e.message)
+                return
+            cb(True, '')
+        Gio.File.new_for_uri(uri).mount_enclosing_volume(Gio.MountMountFlags.NONE, mount_op(self.win), None, done)
+
+    def fill_network(self):
+        """The Network place, or a server: what Gio lists there (computers found on the network, or a server's shares)."""
+        self.net_gen = getattr(self, 'net_gen', 0) + 1
+        gen, uri = self.net_gen, self.loc
+        status = Gtk.Label(label='Searching for network locations…', xalign=0, margin_start=14, margin_top=12,
+                           wrap=True, max_width_chars=70, css_classes=['ex-meta'])
+        self.content.append(status)
+        attrs = 'standard::name,standard::display-name,standard::type,standard::target-uri'
+        src = Gio.File.new_for_uri(uri)
+
+        def listed(f, res, tried=False):
+            if gen != self.net_gen or self.loc != uri:
+                return
+            try:
+                en = f.enumerate_children_finish(res)
+            except GLib.Error as e:
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_MOUNTED) and not tried:
+                    status.set_label('Connecting…')
+                    self.mount_uri(uri, lambda ok, msg: mounted(ok, msg))
+                elif e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_SUPPORTED):
+                    status.set_label('Network places are not available on this system (the gvfs network backends are missing).')
+                else:
+                    status.set_label(e.message)
+                return
+            en.next_files_async(500, GLib.PRIORITY_DEFAULT, None, lambda en_, r: got(en_, r))
+
+        def mounted(ok, msg):
+            if gen != self.net_gen or self.loc != uri:
+                return
+            if not ok:
+                status.set_label(f'MWX 7 couldn’t connect. {msg}' if msg else 'Not connected. Go back, or try again with a password.')
+                return
+            p = Gio.File.new_for_uri(uri).get_path()
+            if p and os.path.isdir(p) and urllib.parse.urlparse(uri).path.strip('/'):
+                self.go(p)  # a share's contents are ordinary files now
+            else:
+                src.enumerate_children_async(attrs, 0, GLib.PRIORITY_DEFAULT, None, lambda f, r: listed(f, r, True))
+
+        def got(en, res):
+            if gen != self.net_gen or self.loc != uri:
+                return
+            try:
+                infos = en.next_files_finish(res)
+            except GLib.Error as e:
+                status.set_label(e.message)
+                return
+            self.content.remove(status)
+            for info in infos:
+                name = info.get_display_name()
+                dest = info.get_attribute_string('standard::target-uri') or src.get_child(info.get_name()).get_uri()
+                share = info.get_file_type() == Gio.FileType.MOUNTABLE
+                icon = 'computer' if uri == NETWORK else 'drive' if share else 'folder'
+                c = Gtk.FlowBoxChild()
+                c.item = dest
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.CENTER)
+                box.append(mwx7ui.icon(icon, 48))
+                box.append(Gtk.Label(label=name, wrap=True, wrap_mode=2, max_width_chars=14, lines=2, ellipsize=3,
+                                     justify=Gtk.Justification.CENTER, css_classes=['ex-name']))
+                c.set_child(box)
+                self.flow.append(c)
+            if not infos:
+                note = ('No computers were found on the network. Use “Map network drive…” to connect to one by name, '
+                        'for example \\\\server\\share.') if uri == NETWORK else 'Nothing is shared here.'
+                self.content.append(Gtk.Label(label=note, xalign=0, margin_start=14, margin_top=12, wrap=True,
+                                              max_width_chars=70, css_classes=['ex-meta']))
+        src.enumerate_children_async(attrs, 0, GLib.PRIORITY_DEFAULT, None, listed)
+
+    def map_drive(self):
+        """Windows' "Map Network Drive": a share by name, connected now and kept in the sidebar and in Computer."""
+        d = mwx7ui.dialog(self.win, 'Map Network Drive', '16/properties')
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18, margin_end=18)
+        col.append(Gtk.Label(label='What network folder would you like to connect to?', xalign=0,
+                             css_classes=['ex-progress-title']))
+        e = Gtk.Entry(width_chars=44, placeholder_text='\\\\server\\share')
+        col.append(e)
+        col.append(Gtk.Label(label='For example  \\\\server\\share,  smb://server/share  or  sftp://server/folder', xalign=0,
+                             css_classes=['ex-meta']))
+        status = Gtk.Label(label='', xalign=0, wrap=True, max_width_chars=50, css_classes=['ex-meta'])
+        col.append(status)
+        row = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=6)
+        cancel, ok = Gtk.Button(label='Cancel'), Gtk.Button(label='Finish')
+        ok.add_css_class('suggested-action')
+        row.append(cancel)
+        row.append(ok)
+        col.append(row)
+        d.set_child(col)
+
+        def finish(*_):
+            text = e.get_text().strip()
+            uri = to_uri(text) or ('smb://' + text.replace('\\', '/') if '/' in text else None)
+            if not uri:
+                status.set_label('Type the folder as \\\\server\\share or as an address such as smb://server/share.')
+                return
+            status.set_label('Connecting…')
+            ok.set_sensitive(False)
+
+            def connected(good, msg):
+                if not good:
+                    ok.set_sensitive(True)
+                    status.set_label(f'MWX 7 couldn’t connect. {msg}' if msg else 'Not connected.')
+                    return
+                u = urllib.parse.urlparse(uri)
+                share = urllib.parse.unquote(u.path.rstrip('/').rpartition('/')[2])
+                write_bookmarks((uri, f'{share} on {u.hostname}' if share else (u.hostname or uri)))
+                d.close()
+                self.drives_changed()
+                self.open_net(uri)
+            self.mount_uri(uri, connected)
+        ok.connect('clicked', finish)
+        e.connect('activate', finish)
+        cancel.connect('clicked', lambda *_: d.close())
+        d.present()
+        GLib.idle_add(lambda: (e.grab_focus(), False)[1])
 
     # ---- drag and drop: drag items onto a folder (or a place on the left) to move them there, as in Explorer ----
     def dnd(self, widget, path, is_dir):
@@ -828,7 +1282,7 @@ class Explorer:
 
         def drop(_t, value, _x, _y):
             dest = where()
-            if dest == COMPUTER:
+            if dest == COMPUTER or is_uri(dest):
                 return False
             files = [f.get_path() for f in value.get_files() if f.get_path()]
             self.move_into(files, dest)
@@ -844,10 +1298,17 @@ class Explorer:
 
     # ---- actions --------------------------------------------------------------------------------------------------
     def selected(self):
-        return [c.item for c in self.flow.get_selected_children()]
+        # Network places and unmounted drives have no path of their own: they are opened, never cut, renamed or deleted.
+        return [c.item for c in self.flow.get_selected_children() if c.item.startswith('/')]
 
     def open_item(self, path):
         if self.loc == TRASH:
+            return
+        if path.startswith('vol:'):
+            self.open_volume(path[4:])
+            return
+        if is_uri(path):
+            self.open_net(path)
             return
         if os.path.isdir(path):
             self.go(path)
@@ -883,11 +1344,11 @@ class Explorer:
             self.detail_title.set_label(f'Search results for “{self.search.get_text().strip()}”')
             self.detail_text.set_label(f'{n} items found  ·  Esc to stop')
         else:
-            n = len(sel) if sel else len(self.items()) if self.loc != COMPUTER else 0
-            here = 'computer' if self.loc == COMPUTER else 'trash-empty' if self.loc == TRASH else 'folder'
+            n = len(sel) if sel else len(self.items()) if self.loc != COMPUTER and not is_uri(self.loc) else 0
+            here = 'computer' if self.loc == COMPUTER or is_uri(self.loc) else 'trash-empty' if self.loc == TRASH else 'folder'
             self.detail_icon.set_from_file(os.path.join(ICONS, here + '.png'))
             self.detail_title.set_label(f'{n} items selected' if sel else self.title_of(self.loc))
-            self.detail_text.set_label('' if sel else (f'{n} items' if self.loc != COMPUTER else ''))
+            self.detail_text.set_label('' if sel else (f'{n} items' if self.loc != COMPUTER and not is_uri(self.loc) else ''))
 
     def toggle_view(self):
         self.view = 'icons' if self.view == 'details' else 'details'
@@ -895,6 +1356,8 @@ class Explorer:
         self.fill()
 
     def copy(self, cut):
+        if self.loc == COMPUTER or is_uri(self.loc):
+            return
         self.clip, self.clip_cut = self.selected(), cut
 
     def unique(self, folder, name):
@@ -906,7 +1369,7 @@ class Explorer:
         return os.path.join(folder, cand)
 
     def paste(self):
-        if self.loc in (COMPUTER, TRASH) or not self.clip:
+        if self.loc in (COMPUTER, TRASH) or is_uri(self.loc) or not self.clip:
             return
         files = [s for s in self.clip if os.path.exists(s) and not self.loc.startswith(s.rstrip('/') + '/')]
         if self.clip_cut:
@@ -917,7 +1380,7 @@ class Explorer:
             self.clip = []
 
     def new_folder(self):
-        if self.loc in (COMPUTER, TRASH):
+        if self.loc in (COMPUTER, TRASH) or is_uri(self.loc):
             return
         try:
             os.mkdir(self.unique(self.loc, 'New folder'))
@@ -946,7 +1409,7 @@ class Explorer:
 
     def rename(self):
         sel = self.selected()
-        if len(sel) != 1 or self.loc == TRASH:
+        if len(sel) != 1 or self.loc in (TRASH, COMPUTER) or is_uri(self.loc):
             return
         src = sel[0]
 
@@ -967,7 +1430,7 @@ class Explorer:
 
     def delete(self):
         sel = self.selected()
-        if not sel:
+        if not sel or self.loc == COMPUTER or is_uri(self.loc):
             return
         if self.loc == TRASH:
             msg, detail, btn = 'Delete permanently?', f'{len(sel)} item(s) will be gone for good.', 'Delete'
@@ -1050,7 +1513,7 @@ class Explorer:
         dlg.choose(self.win, None, done)
 
     def properties(self):
-        sel = self.selected() or ([self.loc] if self.loc not in (COMPUTER, TRASH) else [])
+        sel = self.selected() or ([self.loc] if self.loc not in (COMPUTER, TRASH) and not is_uri(self.loc) else [])
         if len(sel) != 1:
             return
         p = sel[0]
@@ -1161,7 +1624,15 @@ class Explorer:
         self.win.set_focus(c)
 
     def go_up(self):
-        if self.loc == COMPUTER:
+        if self.loc == COMPUTER or self.loc == NETWORK:
+            return
+        if is_uri(self.loc):
+            u = urllib.parse.urlparse(self.loc)
+            parent = u.path.rstrip('/').rpartition('/')[0]
+            self.go(f'{u.scheme}://{u.netloc}{parent}/' if parent else NETWORK)
+            return
+        if self.loc.startswith(GVFS) and self.loc.rstrip('/').count('/') == GVFS.count('/'):
+            self.go(NETWORK)
             return
         self.go(COMPUTER if self.loc in (TRASH, '/') else os.path.dirname(self.loc.rstrip('/')) or '/')
 
@@ -1173,6 +1644,8 @@ class Explorer:
             GLib.source_remove(self.search_timer)
             self.search_timer = 0
         text = text.strip()
+        if self.loc == COMPUTER or is_uri(self.loc):  # nothing to search through here
+            return
         if not text:
             self.stop_search(False)
             return
@@ -1550,7 +2023,7 @@ class Explorer:
                 menu.append('Rename', 'win.ctx::rename')
                 menu.append('Move to Trash', 'win.ctx::delete')
                 menu.append('Properties', 'win.ctx::props')
-        elif self.loc not in (COMPUTER, TRASH):
+        elif self.loc not in (COMPUTER, TRASH) and not is_uri(self.loc):
             menu.append('Paste', 'win.ctx::paste')
             menu.append('New folder', 'win.ctx::newdir')
             menu.append('Refresh', 'win.ctx::refresh')
