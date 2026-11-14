@@ -459,6 +459,15 @@ class Settings(Gtk.Application):
                 if match(child):
                     flow.select_child(child)
                 child = child.get_next_sibling()
+        # Choosing a still picture or a theme turns the live wallpaper off (set_wallpaper): its tile must not stay marked.
+        live, cur = getattr(self, 'live_flow', None), self.live_choice()
+        if live:
+            live.unselect_all()
+            c = live.get_first_child()
+            while c:
+                if cur and getattr(c, 'live', None) == cur:
+                    live.select_child(c)
+                c = c.get_next_sibling()
 
     def page_themes(self):
         p = page()
