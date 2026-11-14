@@ -1,5 +1,4 @@
 """Solitaire (native): Klondike, draw 1. Cards are drawn with cairo on green felt; drag with the mouse."""
-import math
 import random
 import sys
 
@@ -8,133 +7,18 @@ import cairo
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7ui  # noqa: E402
 from mwx7ui import GLib, Gtk  # noqa: E402
+from mwx7cards import CH, CW, card_rrect, draw_card, is_red, text  # noqa: E402
 
-CW, CH, GAP, M, TAB_Y = 70, 98, 14, 14, 132
+GAP, M, TAB_Y = 14, 14, 132
 SW, SH = 7 * CW + 8 * GAP, 560
 DOWN_STEP, UP_STEP = 8, 22
-RED = (0.78, 0.1, 0.12)
-BLACK = (0.1, 0.12, 0.16)
-RANKS = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 CSS = "window.mwx7-solitaire > box { background: #0e5a2e; }"
 
-# A card is [suit, rank, face_up]; suits: 0 spade, 1 heart, 2 diamond, 3 club.
+# A card is [suit, rank, face_up]; suits: 0 spade, 1 heart, 2 diamond, 3 club. Drawing lives in lib/mwx7cards.py.
 
 
 def col_x(i):
     return M + i * (CW + GAP)
-
-
-def is_red(suit):
-    return suit in (1, 2)
-
-
-def suit_path(cr, suit, cx, cy, s):
-    """Original suit glyphs built from arcs and curves, s = half-size."""
-    if suit == 1:  # heart
-        cr.move_to(cx, cy + s)
-        cr.curve_to(cx - s * 1.6, cy - s * 0.1, cx - s * 0.9, cy - s * 1.2, cx, cy - s * 0.4)
-        cr.curve_to(cx + s * 0.9, cy - s * 1.2, cx + s * 1.6, cy - s * 0.1, cx, cy + s)
-    elif suit == 2:  # diamond
-        cr.move_to(cx, cy - s * 1.1)
-        cr.line_to(cx + s * 0.8, cy)
-        cr.line_to(cx, cy + s * 1.1)
-        cr.line_to(cx - s * 0.8, cy)
-    else:
-        if suit == 0:  # spade: a heart upside down plus a stem
-            cr.move_to(cx, cy - s)
-            cr.curve_to(cx - s * 1.6, cy + s * 0.1, cx - s * 0.9, cy + s * 1.2, cx, cy + s * 0.4)
-            cr.curve_to(cx + s * 0.9, cy + s * 1.2, cx + s * 1.6, cy + s * 0.1, cx, cy - s)
-        else:  # club: three discs
-            for dx, dy in ((0, -0.5), (-0.55, 0.3), (0.55, 0.3)):
-                cr.new_sub_path()
-                cr.arc(cx + dx * s, cy + dy * s, s * 0.52, 0, 2 * math.pi)
-        cr.close_path()
-        cr.move_to(cx, cy + s * 0.2)
-        cr.line_to(cx + s * 0.35, cy + s)
-        cr.line_to(cx - s * 0.35, cy + s)
-    cr.close_path()
-    cr.fill()
-
-
-def card_rrect(cr, x, y, w=CW, h=CH, r=6):
-    cr.new_sub_path()
-    for cx, cy, a in ((x + w - r, y + r, -90), (x + w - r, y + h - r, 0), (x + r, y + h - r, 90), (x + r, y + r, 180)):
-        cr.arc(cx, cy, r, math.radians(a), math.radians(a + 90))
-    cr.close_path()
-
-
-def text(cr, s, x, y, size, bold=True):
-    cr.select_font_face('sans-serif', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD if bold else cairo.FONT_WEIGHT_NORMAL)
-    cr.set_font_size(size)
-    cr.move_to(x, y)
-    cr.show_text(s)
-
-
-def draw_card(cr, card, x, y):
-    suit, rank, up = card
-    card_rrect(cr, x + 1.5, y + 2, CW, CH)  # soft shadow
-    cr.set_source_rgba(0, 0, 0, 0.25)
-    cr.fill()
-    card_rrect(cr, x, y)
-    if not up:
-        cr.set_source_rgb(0.95, 0.97, 1)
-        cr.fill()
-        card_rrect(cr, x + 4, y + 4, CW - 8, CH - 8, 3)
-        g = cairo.LinearGradient(x, y, x + CW, y + CH)
-        g.add_color_stop_rgb(0, 0.35, 0.62, 0.95)
-        g.add_color_stop_rgb(1, 0.1, 0.3, 0.7)
-        cr.set_source(g)
-        cr.fill_preserve()
-        cr.set_source_rgba(1, 1, 1, 0.4)
-        cr.set_line_width(1)
-        cr.stroke()
-        cr.save()
-        card_rrect(cr, x + 4, y + 4, CW - 8, CH - 8, 3)
-        cr.clip()
-        cr.set_source_rgba(1, 1, 1, 0.18)  # diamond lattice
-        for k in range(-CH, CW + CH, 12):
-            cr.move_to(x + k, y)
-            cr.line_to(x + k + CH, y + CH)
-            cr.move_to(x + k + CH, y)
-            cr.line_to(x + k, y + CH)
-        cr.stroke()
-        cr.restore()
-        card_rrect(cr, x, y)
-        cr.set_source_rgb(0.55, 0.6, 0.68)
-        cr.set_line_width(1)
-        cr.stroke()
-        return
-    cr.set_source_rgb(1, 1, 1)
-    cr.fill_preserve()
-    cr.set_source_rgb(0.62, 0.66, 0.72)
-    cr.set_line_width(1)
-    cr.stroke()
-    col = RED if is_red(suit) else BLACK
-    cr.set_source_rgb(*col)
-    for bx, by, flip in ((x + 4, y + 4, False), (x + CW - 4, y + CH - 4, True)):
-        cr.save()
-        cr.translate(bx, by)
-        if flip:
-            cr.rotate(math.pi)
-        text(cr, RANKS[rank], 0, 13, 14)
-        suit_path(cr, suit, 6, 22, 5)
-        cr.restore()
-    if rank > 10:  # court cards: a big suit mark and letter
-        suit_path(cr, suit, x + CW / 2, y + CH / 2 - 10, 14)
-        cr.set_font_size(26)
-        e = cr.text_extents(RANKS[rank])
-        text(cr, RANKS[rank], x + CW / 2 - e.width / 2 - e.x_bearing, y + CH / 2 + 28, 26)
-    elif rank == 1:
-        suit_path(cr, suit, x + CW / 2, y + CH / 2, 20)
-    else:
-        pips = {2: [(1, 0), (1, 6)], 3: [(1, 0), (1, 3), (1, 6)], 4: [(0, 0), (2, 0), (0, 6), (2, 6)],
-                5: [(0, 0), (2, 0), (1, 3), (0, 6), (2, 6)], 6: [(0, 0), (2, 0), (0, 3), (2, 3), (0, 6), (2, 6)],
-                7: [(0, 0), (2, 0), (1, 1.5), (0, 3), (2, 3), (0, 6), (2, 6)],
-                8: [(0, 0), (2, 0), (1, 1.5), (0, 3), (2, 3), (1, 4.5), (0, 6), (2, 6)],
-                9: [(0, 0), (2, 0), (0, 2), (2, 2), (1, 3), (0, 4), (2, 4), (0, 6), (2, 6)],
-                10: [(0, 0), (2, 0), (1, 1), (0, 2), (2, 2), (0, 4), (2, 4), (1, 5), (0, 6), (2, 6)]}[rank]
-        for px, py in pips:
-            suit_path(cr, suit, x + 20 + px * 15, y + 20 + py * 9.7, 6)
 
 
 class Solitaire:

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Spider Solitaire
+Comment=Spider solitaire with one, two or four suits
+Exec=/usr/share/mwx7/bin/mwx7-app spider
+Icon=/usr/share/mwx7/icons/spider.png
+Categories=Game;CardGame;
+Keywords=cards;game;
+StartupWMClass=org.mwx7.spider
