@@ -2,6 +2,17 @@
 
 Derived from the git history. Newest first.
 
+## v1.17.0
+- **Snipping Tool**: Print snips a region at once (Shift+Print the screen, Alt+Print the window), copied
+  automatically; pen, highlighter, crop
+- **Task Manager**: live graphs, End process tree, Startup apps
+- **Games**: FreeCell, Spider Solitaire and Hearts
+- **Every app in the MWX 7 look**: GTK, Flatpak and Qt apps (GIMP, LibreOffice, VLC…) follow the Aero theme
+- **Two or more screens**: bar, dock and desktop on the main display, wallpaper on the others, arrange screens in
+  Settings → Display
+- **Settings**: Ease of Access (text size, high contrast, cursor size, reduce motion, magnifier) and Language & region
+  (language, formats, keyboard layouts incl. Romanian)
+
 ## v1.16.0
 - **Keyboard**: press Super to open Start; Alt+Tab switcher, Super+Tab overview, Super+D desktop, Super+E My Computer,
   Print for the Snipping Tool; every flyout works with the keyboard, with an Aero focus ring
