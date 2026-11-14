@@ -6,6 +6,7 @@ image/gif=mwx7-photos.desktop
 image/webp=mwx7-photos.desktop
 image/bmp=mwx7-photos.desktop
 image/tiff=mwx7-photos.desktop
+application/pdf=mwx7-reader.desktop
 audio/ogg=mwx7-mediaplayer.desktop
 audio/mpeg=mwx7-mediaplayer.desktop
 audio/flac=mwx7-mediaplayer.desktop
