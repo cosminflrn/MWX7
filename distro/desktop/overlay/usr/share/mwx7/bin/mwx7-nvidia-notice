@@ -1,0 +1,17 @@
+#!/bin/sh
+# At sign-in, when the first-boot retry (mwx7-nvidia-firstboot.service) is still waiting for the internet or has just installed
+# the NVIDIA driver: says "restart to finish" (with the Secure Boot steps when a key waits to be enrolled). Does nothing on
+# every other PC. Root services cannot reach the person's desktop, so this runs in the session and watches the flags.
+[ -e /var/lib/mwx7/nvidia-pending ] || [ -e /run/mwx7/nvidia-restart ] || exit 0
+for i in $(seq 1 360); do   # up to 30 minutes
+  if [ -e /run/mwx7/nvidia-restart ]; then
+    body="Restart the PC to start using it."
+    if mokutil --list-new 2>/dev/null | grep -q '\[key'; then
+      body="Restart the PC. When the blue screen appears after restart: Enroll MOK → Continue → Yes → type mwx7mwx7 → Reboot."
+    fi
+    notify-send -a "MWX 7" -i video-display "NVIDIA graphics driver installed — restart to finish" "$body" 2>/dev/null
+    exit 0
+  fi
+  sleep 5
+done
+exit 0

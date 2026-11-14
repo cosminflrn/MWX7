@@ -1,0 +1,18 @@
+[Unit]
+Description=MWX 7: install the NVIDIA graphics driver the setup could not (once online)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/mwx7/nvidia-pending
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/share/mwx7/bin/mwx7-nvidia-firstboot
+# Not online yet, or apt failed: try again in 5 minutes, for as long as the flag exists.
+Restart=on-failure
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target

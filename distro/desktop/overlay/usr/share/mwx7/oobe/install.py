@@ -40,6 +40,9 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7nvidia as nvidia  # the NVIDIA driver steps, shared with Settings (mwx7-admin)
+
 MEDIUM = '/run/live/medium'
 SQUASHFS = MEDIUM + '/live/filesystem.squashfs'
 STATE = '/run/mwx7-install'
@@ -558,6 +561,8 @@ def copy(mode, disk, gib=None):
     say('PROGRESS', 1)
     root, esp, own_esp = alongside_partition(lay) if lay else partition(mode, disk)
     if DRYRUN:
+        if nvidia.gpu_present():
+            say('DRYRUN', 'chroot TARGET: install the NVIDIA driver (apt-get install ' + ' '.join(nvidia.PACKAGES) + ')')
         say('STEP', 'Dry run: nothing was changed')
         return
     sh('mkfs.btrfs', '-q', '-f', '-L', 'MWX7', root)
@@ -607,6 +612,7 @@ def copy(mode, disk, gib=None):
     chroot('apt-get', 'purge', '-y', '-qq', '--autoremove', '-o', 'Dpkg::Use-Pty=0', 'live-boot',
            'live-boot-initramfs-tools', 'calamares', 'qt6-wayland', 'qml6-module-qtquick', 'qml6-module-qtquick-window')
     say('PROGRESS', 90)
+    nvidia_driver()
 
     say('STEP', 'Installing the boot menu')
     if uefi():
@@ -637,6 +643,29 @@ def copy(mode, disk, gib=None):
         json.dump({'disk': disk, 'root': root, 'esp': esp}, f)
     say('PROGRESS', 100)
     say('STEP', 'Done')
+
+
+def nvidia_driver():
+    """An NVIDIA card works without any manual step: its driver goes into the new system now. Never fails the setup: without
+    internet (or when apt fails) a flag makes mwx7-nvidia-firstboot.service retry in the background at the first start."""
+    if not nvidia.gpu_present():
+        return
+    flag = os.path.join(TARGET, nvidia.FLAG)
+
+    def later():
+        os.makedirs(os.path.dirname(flag), exist_ok=True)
+        open(flag, 'w').close()
+    if not nvidia.online():
+        say('STEP', 'No internet: the NVIDIA driver follows at the first start')
+        return later()
+    try:
+        nvidia.install(TARGET, lambda text: say('STEP', text))
+    except Exception as e:  # anything at all: a graphics driver must never cost the person their installed system
+        say('STEP', 'The NVIDIA driver follows at the first start')
+        print('NVIDIA driver:', e, file=sys.stderr, flush=True)
+        return later()
+    if os.path.exists(os.path.join(TARGET, nvidia.MOK_FLAG)):
+        say('NOTE', nvidia.MOK_STEPS)  # the setup's last page shows it
 
 
 FIRSTBOOT_SUDOERS = ('# MWX 7 first start after a reset: the setup runs as this user and needs root for its own steps only.\n'

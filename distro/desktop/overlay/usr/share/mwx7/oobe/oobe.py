@@ -145,6 +145,7 @@ class Setup(Gtk.Application):
         self.copy_error = ''
         self.progress = 0
         self.step = ''
+        self.note = ''  # install.py's NOTE line: Secure Boot steps for the NVIDIA driver
         self.finished = False
         self.index = 0
         self.pages = []
@@ -667,6 +668,8 @@ class Setup(Gtk.Application):
                     self.progress = int(value)
                 elif kind == 'STEP':
                     self.step = value
+                elif kind == 'NOTE':
+                    self.note = value
                 elif kind == 'ERROR':
                     last_error = value
             ok = p.wait() == 0
@@ -848,6 +851,10 @@ class Setup(Gtk.Application):
                                    max_width_chars=60, justify=Gtk.Justification.CENTER)
         self.done_text.add_css_class('big')
         p.append(self.done_text)
+        self.note_label = Gtk.Label(wrap=True, max_width_chars=60, justify=Gtk.Justification.CENTER, margin_top=14)
+        self.note_label.add_css_class('big')
+        self.note_label.set_visible(False)
+        p.append(self.note_label)
         self.bar = Gtk.ProgressBar(margin_top=18)
         p.append(self.bar)
         self.done_step = Gtk.Label()
@@ -909,9 +916,15 @@ class Setup(Gtk.Application):
             self.status.set_label('')
             return False  # install.py restarts the PC itself (this setup's user no longer exists)
         else:
-            self.done_text.set_label('MWX 7 is ready. It restarts in a moment; then click your picture to sign in.')
             self.restart.set_label('Restart now')
-            GLib.timeout_add_seconds(6, lambda: self.on_restart() and False)
+            if self.note:
+                # Secure Boot + NVIDIA: the person has to read this before the blue screen comes, so no automatic restart.
+                self.done_text.set_label('MWX 7 is ready. Restart when you are ready, then click your picture to sign in.')
+                self.note_label.set_label(self.note)
+                self.note_label.set_visible(True)
+            else:
+                self.done_text.set_label('MWX 7 is ready. It restarts in a moment; then click your picture to sign in.')
+                GLib.timeout_add_seconds(6, lambda: self.on_restart() and False)
         self.done_step.set_label('')
         self.status.set_label('')
         self.restart.set_visible(True)
