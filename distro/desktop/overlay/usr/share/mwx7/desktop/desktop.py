@@ -14,6 +14,7 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -31,6 +32,8 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango, PangoCairo  # n
 from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7displays as displays  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 APP = '/usr/share/mwx7/bin/mwx7-app'
 SETTINGS = '/usr/share/mwx7/settings/mwx7-settings'
@@ -745,6 +748,66 @@ class DesktopIcon(Gtk.Box):
             self.last_click = 0 if moved else now
 
 
+class WallOnly(Gtk.Window):
+    """The desktop of a screen that is not the primary one: just the wallpaper, painted for this screen's own size (icons
+    and widgets live on the primary screen). One layer surface per output, closed by the compositor when it goes away."""
+
+    def __init__(self, app, monitor):
+        super().__init__(application=app)
+        self.app, self.monitor, self.size, self.key, self.gen = app, monitor, (0, 0), None, 0
+        self.add_css_class('desktop-layer')
+        self.add_css_class('opaque')  # opaque region: the compositor skips what is beneath
+        Layer.init_for_window(self)
+        Layer.set_monitor(self, monitor)
+        Layer.set_layer(self, Layer.Layer.BOTTOM)
+        Layer.set_namespace(self, 'mwx7-desktop-wall')
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(self, e, True)
+        Layer.set_exclusive_zone(self, -1)
+        Layer.set_keyboard_mode(self, Layer.KeyboardMode.NONE)
+        self.pic = Gtk.Picture(content_fit=Gtk.ContentFit.FILL, can_shrink=True, can_target=False, focusable=False,
+                               hexpand=True, vexpand=True)
+        self.set_child(self.pic)
+        self.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, w, h: self.resized(w, h)))
+
+    def resized(self, w, h):
+        if (w, h) != self.size and w > 0 and h > 0:
+            self.size = (w, h)
+            self.reload()
+
+    def reload(self):
+        """Scale the current wallpaper to this screen (off the main thread); no-op when picture and size are unchanged."""
+        w, h = self.size
+        path = self.app.wall_path()
+        try:
+            key = (path, os.stat(path).st_mtime_ns, w, h)
+        except OSError:
+            return
+        if key == self.key or w <= 0:
+            return
+        self.key = key
+        self.gen += 1
+        gen = self.gen
+
+        def work():
+            try:
+                out = self.app.scale_wall(path, key[:2], w, h)
+                GLib.idle_add(self.done, gen, out)
+            except GLib.Error:
+                GLib.idle_add(self.failed, gen)
+        threading.Thread(target=work, daemon=True).start()
+
+    def failed(self, gen):
+        if gen == self.gen:
+            self.key = None
+        return False
+
+    def done(self, gen, pix):
+        if gen == self.gen:
+            self.pic.set_paintable(Gdk.Texture.new_for_pixbuf(pix))
+        return False
+
+
 class Desktop(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='org.mwx7.desktop')
@@ -769,6 +832,11 @@ class Desktop(Gtk.Application):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_USER)
         self.win = self.build()
         self.win.present()
+        self.sync_timer = 0
+        Gdk.Display.get_default().get_monitors().connect('items-changed', lambda *_a: self.sync_later())
+        self.disp_mon = Gio.File.new_for_path(displays.CONF).monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.disp_mon.connect('changed', lambda *_a: self.sync_later())
+        self.sync_outputs()
         if self.gadgets_on:
             self.start_timers()
 
@@ -777,6 +845,9 @@ class Desktop(Gtk.Application):
         w.add_css_class('desktop-layer')
         self.win = w  # update_background (called from set_live below) needs it before do_activate stores the result
         Layer.init_for_window(w)
+        mon = displays.pick_primary(displays.monitors(Gdk.Display.get_default()))
+        if mon is not None:
+            Layer.set_monitor(w, mon)  # icons and widgets live on the primary screen only
         # BOTTOM sits above the live wallpaper (background layer) and below every window. Exclusive zone -1 makes the
         # surface ignore the bar's and dock's reserved strips and cover the whole output, so the wallpaper it paints
         # also shows behind them; icons and widgets are inset by those strips instead (see set_insets).
@@ -804,6 +875,8 @@ class Desktop(Gtk.Application):
                                     hexpand=True, vexpand=True)
         self.wall_key = None  # (path, mtime) of the picture that is shown or being prepared
         self.wall_src = None  # (key, decoded pixbuf): decoded once per picture, not per size
+        self.wall_lock = threading.Lock()
+        self.others = {}  # connector -> WallOnly, one per screen that is not the primary
         self.wall_size = (0, 0)
         self.wall_gen = 0
         self.wall_ready = False
@@ -884,6 +957,44 @@ class Desktop(Gtk.Application):
         w.connect('realize', lambda win: win.get_surface().connect('layout', lambda _s, wd, h: self.layout(wd, h)))
         return w
 
+    # -- screens
+    def sync_later(self):
+        # Plugging a screen in is a burst of events: one pass after they settle.
+        if self.sync_timer:
+            GLib.source_remove(self.sync_timer)
+        self.sync_timer = GLib.timeout_add(400, self.sync_outputs)
+
+    def sync_outputs(self):
+        """The desktop (icons, widgets) goes on the primary screen; every other screen gets a wallpaper-only surface.
+        Runs at start and on every hotplug or change of the main display."""
+        self.sync_timer = 0
+        try:
+            mons = displays.monitors(Gdk.Display.get_default())
+            main = displays.pick_primary(mons)
+            if main is None:
+                return False
+            if self.win is not None:
+                cur = Layer.get_monitor(self.win)
+                if cur is None or cur not in mons or displays.connector(cur) != displays.connector(main) \
+                        or not self.win.get_visible():
+                    Layer.set_monitor(self.win, main)  # remaps; also revives the layer when its screen was unplugged
+                    self.win.present()
+                    self.wall_size = (0, 0)  # the new output's size arrives with its configure; wallpaper redone then
+                if self.live_win is not None and Layer.get_monitor(self.live_win) != main:
+                    Layer.set_monitor(self.live_win, main)
+                    self.live_win.present()
+            want = {displays.connector(m) or str(i): m for i, m in enumerate(mons) if m is not main}
+            for name in [n for n in self.others if n not in want or self.others[n].monitor not in mons]:
+                self.others.pop(name).destroy()
+            for name, m in want.items():
+                if name not in self.others:
+                    o = WallOnly(self, m)
+                    self.others[name] = o
+                    o.present()
+        except Exception as e:  # never let a hotplug event take the desktop down
+            print('sync_outputs:', e, file=sys.stderr)
+        return False
+
     # -- still wallpaper
     def wall_path(self):
         try:
@@ -901,6 +1012,8 @@ class Desktop(Gtk.Application):
     def wall_reload(self):
         self.wall_timer = 0
         self.load_wall()
+        for o in list(self.others.values()):
+            o.reload()
         return False
 
     def load_wall(self):
@@ -918,24 +1031,41 @@ class Desktop(Gtk.Application):
             return
         self.wall_key, self.wall_size = key, (w, h)
         self.wall_gen += 1
-        gen, src = self.wall_gen, self.wall_src
+        gen = self.wall_gen
 
         def work():
             try:
-                pix = src[1] if src and src[0] == key else GdkPixbuf.Pixbuf.new_from_file(path)
-                k = max(w / pix.get_width(), h / pix.get_height())
-                sw, sh = max(w, math.ceil(pix.get_width() * k)), max(h, math.ceil(pix.get_height() * k))
-                big = pix.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
-                out = big.new_subpixbuf((sw - w) // 2, (sh - h) // 2, w, h)
-                if out.get_has_alpha():  # a transparent PNG would make the whole surface non-opaque: flatten it on black
-                    flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, w, h)
-                    flat.fill(0x000000ff)
-                    out.composite(flat, 0, 0, w, h, 0, 0, 1, 1, GdkPixbuf.InterpType.NEAREST, 255)
-                    out = flat
-                GLib.idle_add(self.wall_done, gen, key, pix, out.copy())
+                pix = self.decode_wall(path, key)
+                GLib.idle_add(self.wall_done, gen, key, pix, self.fit_wall(pix, w, h))
             except GLib.Error:
                 GLib.idle_add(self.wall_failed, gen)
         threading.Thread(target=work, daemon=True).start()
+
+    def decode_wall(self, path, key):
+        """The decoded picture, shared by every screen (decoded once per picture, not per screen)."""
+        with self.wall_lock:
+            src = self.wall_src
+            if not (src and src[0] == key):
+                src = (key, GdkPixbuf.Pixbuf.new_from_file(path))
+                self.wall_src = src
+            return src[1]
+
+    @staticmethod
+    def fit_wall(pix, w, h):
+        """Scaled and cropped to exactly w x h ("fill", like swaybg -m fill)."""
+        k = max(w / pix.get_width(), h / pix.get_height())
+        sw, sh = max(w, math.ceil(pix.get_width() * k)), max(h, math.ceil(pix.get_height() * k))
+        big = pix.scale_simple(sw, sh, GdkPixbuf.InterpType.BILINEAR)
+        out = big.new_subpixbuf((sw - w) // 2, (sh - h) // 2, w, h)
+        if out.get_has_alpha():  # a transparent PNG would make the whole surface non-opaque: flatten it on black
+            flat = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, w, h)
+            flat.fill(0x000000ff)
+            out.composite(flat, 0, 0, w, h, 0, 0, 1, 1, GdkPixbuf.InterpType.NEAREST, 255)
+            out = flat
+        return out.copy()
+
+    def scale_wall(self, path, key, w, h):
+        return self.fit_wall(self.decode_wall(path, key), w, h)  # for the other screens' WallOnly (worker thread)
 
     def wall_failed(self, gen):
         if gen == self.wall_gen:
@@ -945,7 +1075,8 @@ class Desktop(Gtk.Application):
     def wall_done(self, gen, key, src, scaled):
         if gen != self.wall_gen:  # a newer picture or size was asked for meanwhile
             return False
-        self.wall_src = (key, src)
+        with self.wall_lock:
+            self.wall_src = (key, src)
         self.wall_pic.set_paintable(Gdk.Texture.new_for_pixbuf(scaled))
         self.wall_ready = True
         self.update_background()
@@ -1641,6 +1772,9 @@ class Desktop(Gtk.Application):
             w = Gtk.Window(application=self)
             w.add_css_class('live-layer')
             Layer.init_for_window(w)
+            mon = displays.pick_primary(displays.monitors(Gdk.Display.get_default()))
+            if mon is not None:
+                Layer.set_monitor(w, mon)  # the video plays on the primary screen; the others show the still picture
             Layer.set_layer(w, Layer.Layer.BACKGROUND)
             Layer.set_namespace(w, 'mwx7-live')
             for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):

@@ -26,6 +26,9 @@ gi.require_version('GdkPixbuf', '2.0')
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7displays as displays  # noqa: E402
+import arrange  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 CONF_DIR = os.path.join(GLib.get_user_config_dir(), 'mwx7')
 WF_INI = os.path.join(CONF_DIR, 'wayfire.ini')
@@ -92,6 +95,23 @@ def ini_set(section, key, value):
     # Wayfire reloads its config when the file is modified in place (inotify IN_MODIFY); a new file renamed over it
     # is never noticed, which is why changes (window colour) did not apply. One write() of the whole file, never
     # shorter than before (a padding comment fills the rest), so Wayfire can't read a truncated or half-written file.
+    ini_write(text)
+
+
+def ini_unset(section, key):
+    """Remove a key (no-op when absent)."""
+    try:
+        text = open(WF_INI).read()
+    except OSError:
+        return
+    m = re.search(r'^\[' + re.escape(section) + r'\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+    if not m or not re.search(r'^' + re.escape(key) + r'\s*=', m.group(1), re.M):
+        return
+    body = re.sub(r'^' + re.escape(key) + r'\s*=.*\n?', '', m.group(1), count=1, flags=re.M)
+    ini_write(text[:m.start(1)] + body + text[m.end(1):])
+
+
+def ini_write(text):
     text = re.sub(r'\n#PAD *\n?\Z', '\n', text)
     data = text.encode()
     old = os.path.getsize(WF_INI)
@@ -551,6 +571,12 @@ class Settings(Gtk.Application):
     def read_outputs():
         """Screens as wlr-randr reports them: [{name, make, model, scale, physical_size, modes: [{width, height, refresh,
         preferred, current}]}]. `--json` where this wlr-randr has it, else its plain text."""
+        fake = os.environ.get('MWX7_FAKE_OUTPUTS')  # a JSON file in wlr-randr --json's shape: for screenshots and checks
+        if fake:
+            try:
+                return json.load(open(fake))
+            except (OSError, ValueError):
+                return []
         if not shutil.which('wlr-randr'):
             return []
         try:
@@ -573,6 +599,16 @@ class Settings(Gtk.Application):
                 flags = (m.group(4) or '').split(', ')
                 cur['modes'].append({'width': int(m.group(1)), 'height': int(m.group(2)), 'refresh': float(m.group(3)),
                                      'preferred': 'preferred' in flags, 'current': 'current' in flags})
+            elif t.startswith('Position:'):
+                try:
+                    px, py = t.split(':', 1)[1].strip().split(',')
+                    cur['position'] = {'x': int(px), 'y': int(py)}
+                except ValueError:
+                    pass
+            elif t.startswith('Enabled:'):
+                cur['enabled'] = t.split(':', 1)[1].strip().lower() == 'yes'
+            elif t.startswith('Transform:'):
+                cur['transform'] = t.split(':', 1)[1].strip()
             elif t.startswith('Scale:'):
                 try:
                     cur['scale'] = float(t.split(':', 1)[1])
@@ -751,12 +787,135 @@ class Settings(Gtk.Application):
         outputs = self.read_outputs()
         if not outputs:
             p.append(note('No display information is available here (wlr-randr found no screen).'))
+        if len(outputs) > 1:
+            self.arrangement(p, outputs)
         for o in outputs:
             self.output_controls(p, o)
         self.animations_section(p)
         self.night_light(p)
         self.graphics_driver(p)
         return p
+
+    @staticmethod
+    def randr_pos(items):
+        """Move screens right now: items is [(name, x, y)]. True when wlr-randr accepted it."""
+        cmd = ['wlr-randr']
+        for name, x, y in items:
+            cmd += ['--output', name, '--pos', f'{x},{y}']
+        try:
+            return subprocess.run(cmd, capture_output=True, timeout=10).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def identify(self, outputs):
+        """Windows' "Identify": a big number on every screen for two seconds, the same numbers as in the arrangement."""
+        mons = displays.monitors(Gdk.Display.get_default())
+        for i, o in enumerate(outputs):
+            mon = next((m for m in mons if displays.connector(m) == o.get('name')), None)
+            if mon is None:
+                continue
+            w = Gtk.Window(title='MWX 7', decorated=False)
+            w.add_css_class('identify')
+            w.set_child(Gtk.Label(label=str(i + 1), css_classes=['identify-num']))
+            w.fullscreen_on_monitor(mon)
+            w.present()
+            GLib.timeout_add(2000, lambda win=w: win.destroy() and False)
+
+    def arrangement(self, p, outputs):
+        """Drag the screens to where they sit on the desk; choose the main display; extend or duplicate. Positions
+        apply at once through wlr-randr (with the 15-second "Keep these settings?" question) and are kept in wayfire.ini
+        as [output:NAME] position = x,y, which Wayfire reads at every start."""
+        p.append(section('Arrange your displays'))
+        p.append(note('Drag the screens to match how they sit on your desk. The main display carries the bar, the dock and '
+                      'the desktop icons.'))
+        rects = []
+        for o in outputs:
+            w, h = arrange.logical_size(o)
+            x, y = arrange.position_of(o)
+            rects.append({'name': o.get('name', '?'), 'x': x, 'y': y, 'w': w, 'h': h})
+        arrange.normalize(rects)
+        names = [r['name'] for r in rects]
+        mons = displays.monitors(Gdk.Display.get_default())
+        main = displays.pick_primary(mons)
+        main_name = displays.connector(main) if main is not None and displays.connector(main) in names else (
+            displays.primary_name() if displays.primary_name() in names else names[0])
+        start = {r['name']: (r['x'], r['y']) for r in rects}
+        st = {'main': main_name, 'start': dict(start)}
+        status = note('')
+        apply_btn = Gtk.Button(label='Apply', sensitive=False)
+        main_btn = Gtk.Button(label='Make this my main display')
+        ident = Gtk.Button(label='Identify')
+
+        def moved_names():
+            return [r for r in rects if (r['x'], r['y']) != st['start'][r['name']]]
+
+        def refresh(*_a):
+            apply_btn.set_sensitive(bool(moved_names()))
+            main_btn.set_sensitive(area.selected != st['main'])
+            area.primary = st['main']
+            area.queue_draw()
+            status.set_label('')
+
+        area = arrange.Arrange(rects, main_name, on_select=lambda _n: refresh(), on_moved=refresh)
+        area.set_halign(Gtk.Align.FILL)
+        p.append(area)
+        row = Gtk.Box(spacing=8)
+        row.append(ident)
+        row.append(main_btn)
+        row.append(apply_btn)
+        p.append(row)
+        p.append(status)
+
+        def set_main(*_a):
+            st['main'] = area.selected
+            displays.set_primary(area.selected)  # the shell and the desktop layer follow this file live
+            refresh()
+        main_btn.connect('clicked', set_main)
+        ident.connect('clicked', lambda *_a: self.identify(outputs))
+
+        def do_apply(*_a):
+            changed = moved_names()
+            old = {r['name']: st['start'][r['name']] for r in changed}
+            new = {r['name']: (r['x'], r['y']) for r in changed}
+            if not self.randr_pos([(n, x, y) for n, (x, y) in new.items()]):
+                status.set_label('The screens did not accept that arrangement.')
+                for r in changed:
+                    r['x'], r['y'] = old[r['name']]
+                refresh()
+                return
+            apply_btn.set_sensitive(False)
+
+            def keep():
+                for n, (x, y) in new.items():
+                    ini_set(f'output:{n}', 'position', f'{x},{y}')
+                st['start'].update(new)
+                refresh()
+
+            def back():
+                self.randr_pos([(n, x, y) for n, (x, y) in old.items()])
+                for r in changed:
+                    r['x'], r['y'] = old[r['name']]
+                refresh()
+            self.keep_dialog(keep, back)
+        apply_btn.connect('clicked', do_apply)
+        # Extend or duplicate: Wayfire's [output:NAME] mirror_from makes a screen show another one's picture.
+        mirrored = any(ini_get(f'output:{n}', 'mirror_from') for n in names)
+        ext = Gtk.CheckButton(label='Extend these displays')
+        dup = Gtk.CheckButton(label='Duplicate these displays', group=ext)
+        (dup if mirrored else ext).set_active(True)
+
+        def mode_changed(*_a):
+            for n in names:
+                if dup.get_active() and n != st['main']:
+                    ini_set(f'output:{n}', 'mirror_from', st['main'])
+                else:
+                    ini_unset(f'output:{n}', 'mirror_from')
+            status.set_label('Duplicating the main display.' if dup.get_active() else 'Each screen shows its own desktop.')
+        dup.connect('toggled', lambda *_a: mode_changed())
+        p.append(field('Multiple displays', ext))
+        p.append(field('', dup))
+        p.append(note('Duplicate shows the main display on the other screens; it may need signing out and in again to apply.'))
+        refresh()
 
     def night_light(self, p):
         """Night light: warmer colours from sunset to sunrise (where the weather widget's city is) or between hours of
