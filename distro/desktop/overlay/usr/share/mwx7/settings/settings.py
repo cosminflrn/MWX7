@@ -3660,6 +3660,8 @@ link, link:visited { color: #66ccff; }
         install.connect('clicked', on_install)
         show_available(update_info())
 
+        self.firmware_section(p)
+
         if os.path.exists('/etc/mwx7/installed') and run(['findmnt', '-no', 'SOURCE', '/']).strip().endswith('[/@previous]'):
             # The boot menu fell back to the version before the last update (or it was chosen there): keeping it makes
             # it the version MWX 7 starts from from now on.
@@ -3695,6 +3697,199 @@ link, link:visited { color: #66ccff; }
             row.append(factory)
             p.append(row)
         return p
+
+    # ---- Device firmware (fwupd) -------------------------------------------------------------------------------------
+    @staticmethod
+    def metered_now():
+        """The connection in use is metered (same test as mwx7-update). Blocking: call off the UI thread."""
+        if os.environ.get('MWX7_FAKE_FWUPD'):
+            try:
+                return bool(json.load(open(os.environ['MWX7_FAKE_FWUPD'])).get('metered'))
+            except (OSError, ValueError):
+                return False
+        m = re.search(r' dev (\S+)', run(['ip', '-o', 'route', 'show', 'default']))
+        if not m or not shutil.which('nmcli'):
+            return False
+        return run(['nmcli', '-t', '-g', 'GENERAL.METERED', 'device', 'show', m.group(1)]).startswith(('yes', 'guess-yes'))
+
+    @staticmethod
+    def fwupd_state():
+        """(updates, updatable_count, problem): the devices with a firmware update waiting (fwupdmgr's own JSON), how many
+        devices fwupd can update at all, and a plain sentence when fwupd could not be asked. Slow: not on the UI thread."""
+        fake = os.environ.get('MWX7_FAKE_FWUPD')  # a JSON file {"updates": ..., "devices": ...} (the two outputs): screenshots
+        if fake:
+            try:
+                d = json.load(open(fake))
+            except (OSError, ValueError):
+                return [], 0, 'The test file for firmware could not be read.'
+            if d.get('problem'):
+                return [], 0, d['problem']
+            ups, devs = d.get('updates') or {}, d.get('devices') or {}
+        else:
+            if not shutil.which('fwupdmgr'):
+                return [], 0, 'Firmware updates are not installed on this PC.'
+            out = []
+            for args in (['get-updates', '--json'], ['get-devices', '--json']):
+                try:
+                    r = subprocess.run(['fwupdmgr'] + args, capture_output=True, text=True, timeout=60)
+                except (OSError, subprocess.TimeoutExpired):
+                    return [], 0, 'The firmware service did not answer. Try again in a moment.'
+                try:
+                    data = json.loads(r.stdout)
+                except ValueError:
+                    data = {}
+                text = (r.stderr + r.stdout).lower()
+                if 'Devices' not in data and ('daemon' in text or 'dbus' in text):
+                    return [], 0, 'The firmware service (fwupd) is not running. It starts by itself when needed; try again in a moment.'
+                out.append(data)  # "nothing to update" exits non-zero with no Devices list: that is just an empty answer
+            ups, devs = out
+        waiting = [d for d in ups.get('Devices', []) if re.fullmatch(r'[0-9a-f]{40}', d.get('DeviceId') or '') and d.get('Releases')]
+        updatable = [d for d in devs.get('Devices', []) if 'updatable' in (d.get('Flags') or [])]
+        return waiting, len(updatable), ''
+
+    def firmware_section(self, p):
+        p.append(section('Device firmware'))
+        p.append(note('Firmware is the software inside the PC’s own parts: the BIOS/UEFI, SSDs, docking stations, keyboards. '
+                      'Updates come from the makers through the Linux Vendor Firmware Service.'))
+        warn = note('⚠ Keep the PC plugged in while firmware installs, and do not turn it off. The PC may restart '
+                    'and it can take a few minutes.')
+        warn.add_css_class('status')
+        warn.set_visible(False)
+        p.append(warn)
+        listing = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        status = note('Looking for firmware updates…')
+        status.add_css_class('status')
+        detail = note('')
+        bar = Gtk.ProgressBar(visible=False)
+        refresh = Gtk.Button(label='Check for firmware updates', halign=Gtk.Align.START)
+        refresh.add_css_class('suggested-action')
+        buttons = []
+        armed = {'what': None}  # on a metered connection the first click only warns; the second one goes ahead
+        pulse = {'id': 0}
+        after = {'msg': ''}
+
+        def busy(on):
+            refresh.set_sensitive(not on)
+            for b in buttons:
+                b.set_sensitive(not on)
+            bar.set_visible(on)
+            if on and not pulse['id']:
+                def tick():
+                    bar.pulse()
+                    return True
+                pulse['id'] = GLib.timeout_add(150, tick)
+            elif not on and pulse['id']:
+                GLib.source_remove(pulse['id'])
+                pulse['id'] = 0
+
+        def render(result):
+            render0(result)
+            if after['msg']:  # what just happened is more useful than the list's own summary
+                status.set_label(after['msg'] + ' ' + status.get_label())
+                after['msg'] = ''
+            return False
+
+        def render0(result):
+            waiting, updatable, problem = result
+            while (c := listing.get_first_child()):
+                listing.remove(c)
+            buttons.clear()
+            busy(False)
+            warn.set_visible(bool(waiting))
+            if problem:
+                status.set_label(problem)
+                return False
+            if not waiting:
+                status.set_label('All device firmware is up to date.' if updatable else
+                                 'No devices on this PC can be updated this way, or none has an update.')
+                if updatable:
+                    detail.set_label(f'{updatable} device' + ('s' if updatable != 1 else '') + ' checked.')
+                return False
+            status.set_label(f'{len(waiting)} firmware update' + ('s are' if len(waiting) != 1 else ' is') + ' available.')
+            for d in waiting:
+                rel = d['Releases'][0]
+                card = Gtk.Box(spacing=12)
+                text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+                title = Gtk.Label(label=d.get('Name') or 'Device', xalign=0, wrap=True)
+                title.add_css_class('section')
+                text.append(title)
+                vend = d.get('Vendor')
+                text.append(note(f'Version {d.get("Version", "?")} → {rel.get("Version", "?")}'
+                                 + (f'  ·  {vend}' if vend else '')
+                                 + ('  ·  important' if rel.get('Urgency') in ('high', 'critical') else '')))
+                if rel.get('Summary'):
+                    text.append(note(rel['Summary']))
+                card.append(text)
+                b = Gtk.Button(label='Update', valign=Gtk.Align.CENTER)
+                b.connect('clicked', lambda _b, dev=d: go(['update', dev['DeviceId']], dev.get('Name') or 'this device'))
+                buttons.append(b)
+                card.append(b)
+                listing.append(card)
+            return False
+
+        def load(*_):
+            busy(True)
+            detail.set_label('')
+            threading.Thread(target=lambda: GLib.idle_add(render, self.fwupd_state()), daemon=True).start()
+
+        def go(verb, what):
+            """verb: ['refresh'] or ['update', id]. Asks before using a metered connection."""
+            busy(True)
+            threading.Thread(target=lambda: GLib.idle_add(lambda m=self.metered_now(): start(verb, what, m) and False),
+                             daemon=True).start()
+
+        def start(verb, what, metered):
+            key = tuple(verb)
+            if metered and armed['what'] != key:
+                armed['what'] = key
+                busy(False)
+                status.set_label('This connection is metered (a phone hotspot or data plan) and firmware files can be large. '
+                                 'Press the button again to go ahead anyway.')
+                return False
+            armed['what'] = None
+            busy(True)
+            if verb[0] == 'refresh':
+                status.set_label('Checking for firmware updates…')
+            else:
+                status.set_label(f'Installing firmware for {what}… keep the PC plugged in; it may restart.')
+            detail.set_label('')
+
+            def work():
+                try:
+                    r = subprocess.run(['pkexec', ADMIN, 'firmware'] + verb, capture_output=True, text=True, timeout=1800)
+                    code, out = r.returncode, (r.stderr + '\n' + r.stdout).strip()
+                except (OSError, subprocess.TimeoutExpired) as e:
+                    code, out = 1, str(e)
+                GLib.idle_add(lambda: finished(verb, what, code, out) and False)
+            threading.Thread(target=work, daemon=True).start()
+            return False
+
+        def finished(verb, what, code, out):
+            last = (out.splitlines() or [''])[-1][:160]
+            low = out.lower()
+            if code == 0 and verb[0] == 'update':
+                after['msg'] = f'Firmware for {what} is installed. If it asks for a restart, it finishes then.'
+                load()
+            elif code == 0 or (verb[0] == 'refresh' and code == 2):  # 2: nothing new since the last time
+                load()
+            else:
+                busy(False)
+                if any(w in low for w in ('resolve', 'download', 'network', 'offline', 'curl', 'connection')):
+                    status.set_label('Could not reach the firmware service. Is the PC online?')
+                elif 'daemon' in low or 'dbus' in low:
+                    status.set_label('The firmware service (fwupd) is not running. Try again in a moment.')
+                elif code in (126, 127) and not last:
+                    status.set_label('Not allowed: an administrator has to confirm firmware changes.')
+                else:
+                    status.set_label('The firmware update did not finish.' if verb[0] == 'update' else
+                                     'Could not check for firmware updates.')
+                detail.set_label(last)
+            return False
+
+        refresh.connect('clicked', lambda *_: go(['refresh'], ''))
+        for w in (listing, status, bar, detail, refresh):
+            p.append(w)
+        load()
 
     def page_backup(self):
         p = page('Backup', 'Copies the files and settings of every account to an external drive.')

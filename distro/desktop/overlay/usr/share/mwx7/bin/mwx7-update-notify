@@ -14,5 +14,22 @@ while :; do
   ready=0
   [ "$(sed -n 's/^ready=//p' $info 2>/dev/null)" = 1 ] && [ "$(sed -n 's/^count=//p' $info 2>/dev/null)" = "$count" ] && ready=1
   if [ "$count" -gt 0 ]; then echo "$count ${ours:--} $ready" > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"; else rm -f "$STATE"; fi
+  # Device firmware: fwupd's own daily timer fetches the metadata, so asking the daemon here is local. One notification per
+  # set of waiting updates (device id + version), then silence until something new appears. Never installs anything.
+  if command -v fwupdmgr >/dev/null 2>&1; then
+    fw=$(timeout 60 fwupdmgr get-updates --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    devs = json.load(sys.stdin).get("Devices", [])
+except ValueError:
+    devs = []
+print(len(devs), ",".join(sorted(d.get("DeviceId", "") + (d.get("Releases") or [{}])[0].get("Version", "") for d in devs)))' 2>/dev/null)
+    n=${fw%% *}
+    if [ "${n:-0}" -gt 0 ] && [ "$fw" != "$(cat "$STATE.fw" 2>/dev/null)" ]; then
+      echo "$fw" > "$STATE.fw"
+      notify-send -a "MWX 7" -i system-software-update "Firmware updates are available" \
+        "$n device(s) can be updated. Open Settings, Updates, Device firmware." 2>/dev/null || true
+    fi
+  fi
   sleep 600
 done

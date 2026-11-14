@@ -17,6 +17,8 @@
   mwx7-admin printer add NAME URI  add a driverless (IPP Everywhere) printer; NAME is letters, numbers, - and _
   mwx7-admin printer default NAME  make it the default printer
   mwx7-admin printer remove NAME   remove it
+  mwx7-admin firmware refresh      fetch the list of firmware updates (fwupd, from the Linux Vendor Firmware Service)
+  mwx7-admin firmware update ID    install the firmware update for one device; ID is fwupd's 40-hex-digit device id
   mwx7-admin nvidia install|remove the NVIDIA driver from Debian's non-free components (a restart finishes it)
   mwx7-admin reset [keep]          Reset MWX 7: reinstalled from the newest ISO on GitHub at this PC's version, then a
                                    restart. Plain: absolutely clean (the first-start setup runs and offers the newest
@@ -63,6 +65,18 @@ FLATPAK_ID = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]{1,199}\Z')
 FLATHUB_URL = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
 
 
+# fwupd names a device by the SHA-1 of its id: 40 lowercase hex digits. Nothing else ever reaches fwupdmgr's command line.
+FWUPD_DEVICE_ID = re.compile(r'[0-9a-f]{40}\Z')
+
+
+def firmware(args):
+    """Settings -> Updates -> Device firmware. fwupd checks the vendor signature of every file itself; this only relays.
+    Never --force, never a file path: the update comes from fwupd's own (signed) metadata. It runs as root because writing
+    firmware needs it (the user's own D-Bus call would ask polkit anyway, but the password dialog is already ours)."""
+    exe = shutil.which('fwupdmgr') or sys.exit('Firmware updates are not installed on this PC.')
+    sys.exit(subprocess.run([exe] + args, env=dict(os.environ, LC_ALL='C', TERM='dumb')).returncode)
+
+
 def main():
     uid = os.environ.get('PKEXEC_UID')
     if os.geteuid() != 0 or not uid:
@@ -103,6 +117,10 @@ def main():
         os.chmod(f'/var/lib/AccountsService/icons/{user}', 0o644)
     elif cmd[:1] == ['printer'] and len(cmd) >= 2:
         printer(cmd[1:])
+    elif cmd == ['firmware', 'refresh']:
+        firmware(['refresh', '--force'])
+    elif len(cmd) == 3 and cmd[:2] == ['firmware', 'update'] and FWUPD_DEVICE_ID.match(cmd[2]):
+        firmware(['update', '--assume-yes', '--no-reboot-check', '--no-unreported-check', cmd[2]])
     elif cmd in (['nvidia', 'install'], ['nvidia', 'remove']):
         nvidia(cmd[1] == 'install')
     elif cmd == ['recovery-prepare'] and os.path.exists('/etc/mwx7/installed'):
