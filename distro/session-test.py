@@ -261,7 +261,12 @@ def main():
     shot(q, '02b-start-search')
     q.key('ret')
     time.sleep(25 * SCALE)  # Notepad is a Chrome app window: the first start is slow
-    app = shot(q, '03-notepad')
+    app = shot(q, '03-notepad-opened')
+    # The desktop widgets sit exactly where Wayfire places a new window's title bar, which hid the yellow/green lights from a
+    # colour search: tile the window to the left half first (Super+Left, the [grid] binding), where nothing else is coloured.
+    q.key('meta_l', 'left')
+    time.sleep(3 * SCALE)
+    app = shot(q, '03-notepad') or app
     if not (desktop and app):
         return
     # Hover the traffic lights, found by colour (the window is placed by Wayfire, nobody knows where).
@@ -277,7 +282,7 @@ def main():
             shot(q, f'04-hover-{name}')
     # Move away, close Notepad, then the tour of the main apps.
     q.move(app[0] // 2, app[1] // 2, size=(app[0], app[1]), steps=3)
-    for f, what in (('03-notepad.png', 'Notepad'), ('04-hover-close.png', 'Notepad close light'),
+    for f, what in (('03-notepad-opened.png', 'Notepad as opened'), ('03-notepad.png', 'Notepad tiled left'), ('04-hover-close.png', 'Notepad close light'),
                     ('04-hover-minimize.png', 'Notepad minimize light'), ('04-hover-maximize.png', 'Notepad maximize light')):
         if os.path.exists(os.path.join(OUT, f)):
             shots.append((f, what))
