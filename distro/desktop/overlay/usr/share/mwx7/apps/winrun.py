@@ -45,7 +45,7 @@ def bottles_installed():
 def open_with_bottles(path):
     # Bottles takes the file as its argument and asks which bottle to run it in (it declares the same file types itself).
     if shutil.which('flatpak'):
-        cmd = ['flatpak', 'run', BOTTLES, path]
+        cmd = ['flatpak', 'run', '--file-forwarding', BOTTLES, '@@', path, '@@']  # the sandbox sees only forwarded files
     else:
         cmd = ['bottles', path]
     subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
