@@ -339,12 +339,19 @@ class Ipc:
                 self.sock = None
                 return None
 
+    # The events the bar and the dock react to. Wayfire only hooks the signals some client asked for: watching all of
+    # them (no list) made it build and send a JSON copy of the window for every pointer motion of a drag
+    # (view-geometry-changed), only for the shell to drop it. Unknown names are ignored, hence both fullscreen names.
+    WATCHED_EVENTS = ['view-mapped', 'view-unmapped', 'view-focused', 'view-title-changed', 'view-app-id-changed',
+                      'view-tiled', 'view-minimized', 'view-fullscreen', 'view-fullscreened', 'view-sticky',
+                      'output-wset-changed', 'wset-workspace-changed']
+
     def watch(self, on_event):
         """Blocking loop on its own socket; reconnects if Wayfire restarts."""
         while True:
             try:
                 s = self._connect(timeout=None)  # the event stream may be quiet for hours
-                self._send(s, 'window-rules/events/watch')
+                self._send(s, 'window-rules/events/watch', {'events': self.WATCHED_EVENTS})
                 self._recv(s)
                 while True:
                     on_event(self._recv(s))
