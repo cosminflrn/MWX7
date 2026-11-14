@@ -68,6 +68,8 @@ systemctl enable mwx7-boot-ok.service >/dev/null 2>&1 || true  # resets the star
 systemctl enable mwx7-logon-marker.service >/dev/null 2>&1 || true  # serial marker for the automated install test
 # Finishes an update that was cut short (next start); checks for updates daily and downloads them quietly.
 systemctl enable mwx7-update-recover.service mwx7-update-auto.timer >/dev/null 2>&1 || true
+# Previous versions of files: an hourly snapshot of /home (the script does nothing when /home is not btrfs @home).
+systemctl enable mwx7-snapshots.timer >/dev/null 2>&1 || true
 
 # Boot menu: MWX 7's entry names, checked so a mistake can never leave the system without a boot menu. An installed
 # system gets the menu rebuilt now; the ISO build and the first-start setup build theirs themselves.

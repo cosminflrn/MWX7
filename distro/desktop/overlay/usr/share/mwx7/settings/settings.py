@@ -30,6 +30,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7displays as displays  # noqa: E402
+import mwx7versions  # noqa: E402
 import arrange  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 CONF_DIR = os.path.join(GLib.get_user_config_dir(), 'mwx7')
@@ -3719,6 +3720,8 @@ link, link:visited { color: #66ccff; }
             p.append(w)
         p.append(field('Back up', sched))
         p.append(note('If the drive is not connected at the time, the backup runs the next time it is.'))
+        if mwx7versions.on_btrfs_home():  # snapshots need btrfs: on any other file system this part does not exist
+            self.previous_versions_section(p)
         busy = {'on': False}
         loading = {'on': False}
 
@@ -3819,6 +3822,66 @@ link, link:visited { color: #66ccff; }
         sched.connect('notify::selected', on_sched)
         load()
         return p
+
+    def previous_versions_section(self, p):
+        """"Keep previous versions of my files": hourly read-only snapshots of /home (bin/mwx7-snapshots), which Explorer's
+        "Restore previous versions" reads. Turning it off keeps what exists; deleting needs a click on the red button."""
+        p.append(section('Previous versions'))
+        keep = Gtk.CheckButton(label='Keep previous versions of my files')
+        keep.set_active(mwx7versions.enabled())
+        status = note('')
+        wipe = Gtk.Button(label='Delete all previous versions\u2026', halign=Gtk.Align.START)
+        wipe.add_css_class('destructive-action')
+        p.append(keep)
+        p.append(note('MWX 7 quietly keeps copies of your files: every hour for a day, then daily for a week and weekly for a month '
+                      '(nothing is kept while the disk is more than 90% full). Right-click a file or folder in Explorer and choose '
+                      '\u201cRestore previous versions\u201d to get an older one back. These copies share the disk with your files and '
+                      'are not a backup: they live on this PC.'))
+        p.append(status)
+        p.append(wipe)
+        loading = {'on': False}
+
+        def reflect():
+            n = len(mwx7versions.snapshots())
+            wipe.set_sensitive(n > 0)
+            status.set_label(f'{n} earlier version{"s" if n != 1 else ""} of your files kept.' if n else 'No earlier versions kept yet.')
+
+        def toggled(*_):
+            if loading['on']:
+                return
+            on = keep.get_active()
+            keep.set_sensitive(False)
+
+            def done(ok, err):
+                keep.set_sensitive(True)
+                if not ok:
+                    loading['on'] = True
+                    keep.set_active(mwx7versions.enabled())
+                    loading['on'] = False
+                    status.set_label(err or 'Not allowed.')
+                else:
+                    reflect()
+                return False
+            self.admin(['versions', 'on' if on else 'off'], done)
+
+        def ask(*_):
+            dlg = Gtk.AlertDialog(message='Delete all previous versions?', detail='The older copies of your files and folders are '
+                                  'deleted for good. Your current files are not touched.', buttons=['Delete', 'Cancel'],
+                                  default_button=1, cancel_button=1)
+
+            def answered(d, res):
+                try:
+                    if d.choose_finish(res) != 0:
+                        return
+                except GLib.Error:
+                    return
+                wipe.set_sensitive(False)
+                status.set_label('Deleting\u2026')
+                self.admin(['versions', 'delete-all'], lambda ok, err: (reflect(), None if ok else status.set_label(err)) and False)
+            dlg.choose(self.get_active_window(), None, answered)
+        keep.connect('toggled', toggled)
+        wipe.connect('clicked', ask)
+        reflect()
 
     def small_window(self, title, icon_name):
         """A small window of Settings' own (password, repair): framed in Aero glass like Settings. Not transient: MWX 7's

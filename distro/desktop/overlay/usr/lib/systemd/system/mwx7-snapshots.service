@@ -1,0 +1,10 @@
+[Unit]
+Description=MWX 7: keep a read-only snapshot of /home (previous versions of files)
+ConditionPathExists=/etc/mwx7/installed
+ConditionPathExists=!/var/lib/mwx7/snapshots-off
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/usr/share/mwx7/bin/mwx7-snapshots take
