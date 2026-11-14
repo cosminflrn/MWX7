@@ -38,6 +38,9 @@ button.dock-item {
 }
 button.dock-item:hover { background: radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.35), transparent 70%); }
 button.dock-item image { -gtk-icon-shadow: 0 2px 3px rgba(0, 0, 0, 0.35); }
+/* Starting an app: the icon hops until its window appears. The class is removed on map, so nothing animates at rest. */
+@keyframes dock-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-9px); } 70% { transform: translateY(0); } 100% { transform: translateY(0); } }
+button.dock-item.launching image { animation: dock-bounce 0.8s ease-in-out infinite; }
 .run-dot { min-width: 4px; min-height: 4px; margin: 1px 0 3px; border-radius: 2px; background: transparent; }
 button.dock-item.running .run-dot { background: rgba(255, 255, 255, 0.95); box-shadow: 0 0 4px 1px rgba(160, 220, 255, 0.9); }
 
