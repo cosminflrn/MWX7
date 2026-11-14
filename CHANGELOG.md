@@ -2,6 +2,15 @@
 
 Derived from the git history. Newest first.
 
+## v1.18.0
+- **USB drives**: plug in a stick and it opens like Windows' AutoPlay; "Safely remove hardware" in the bar
+- **Network**: My Computer browses Windows shares (Map network drive…); Settings → Network with known Wi-Fi networks,
+  hidden networks, connection details, static IP/DNS, metered, airplane mode and VPN (WireGuard, OpenVPN)
+- **Apps show they're starting**: the dock icon bounces until the window opens, and you're told if an app can't start
+- **Settings opens faster** (only the page you look at is built)
+- Live wallpapers: no black flash when switching, paused while locked or the screen is off
+- The install image builds again (it stopped since live wallpapers) and passes the BIOS, UEFI and Secure Boot boot tests
+
 ## v1.17.0
 - **Snipping Tool**: Print snips a region at once (Shift+Print the screen, Alt+Print the window), copied
   automatically; pen, highlighter, crop
