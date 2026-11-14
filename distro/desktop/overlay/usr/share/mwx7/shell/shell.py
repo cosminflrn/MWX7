@@ -36,6 +36,7 @@ from gi.repository import Gtk4LayerShell as Layer  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7displays as displays  # noqa: E402
+import mwx7drives as drives  # noqa: E402
 ICONS = '/usr/share/mwx7/icons'
 WF_INI = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config'), 'mwx7', 'wayfire.ini')
 
@@ -986,6 +987,7 @@ class Shell(Gtk.Application):
         self.refresh()
         self.start_clipboard()
         self.start_notifications()
+        self.start_drives()
         # For screenshots of the Start menu in automated checks (no pointer there): MWX7_SHELL_OPEN=start.
         what = os.environ.get('MWX7_SHELL_OPEN')
         if what == 'search':
@@ -1138,6 +1140,7 @@ class Shell(Gtk.Application):
         self.upd_btn.set_popover(upd_pop)
         right.append(self.upd_btn)
         self.build_clipboard(right)
+        self.build_drives(right)
         # Network: an icon whose tooltip names the connection (NetworkManager, polled; cheap and robust).
         self.net = Gtk.Image.new_from_icon_name('network-offline-symbolic')
         net_btn = Gtk.MenuButton()
@@ -2826,6 +2829,147 @@ class Shell(Gtk.Application):
             self.run_bg(['brightnessctl', '-q', 'set', f'{value}%'])
             return False
         self.bright_src = GLib.timeout_add(80, write)
+
+    # ---- removable drives: AutoPlay notice and "Safely remove hardware" ----------------------------------------------------
+    def build_drives(self, right):
+        """A bar icon that exists only while a USB stick, card or phone is mounted; its flyout ejects them."""
+        self.drv_btn = Gtk.MenuButton(tooltip_text='Safely remove hardware', visible=False)
+        self.drv_btn.add_css_class('tray-btn')
+        self.drv_btn.set_child(Gtk.Image.new_from_icon_name('media-eject-symbolic'))
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.connect('show', lambda p: self.fill_drives(p))
+        self.drv_btn.set_popover(pop)
+        set_a11y_name(self.drv_btn, 'Safely remove hardware')
+        right.append(self.drv_btn)
+
+    def start_drives(self):
+        """Mounts what gets plugged in and reacts to the volume monitor's signals; nothing polls."""
+        self.drv_notes = {}      # notification id -> what a click on it does
+        self.drv_failed = set()  # volumes that already told the person they can't be opened
+        try:
+            self.nbus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            self.nbus.signal_subscribe('org.freedesktop.Notifications', 'org.freedesktop.Notifications', 'ActionInvoked',
+                                       '/org/freedesktop/Notifications', None, Gio.DBusSignalFlags.NONE, self.on_note_action)
+        except GLib.Error:
+            self.nbus = None
+        self.vmon = Gio.VolumeMonitor.get()
+        self.drv_known = {drives.key(m) for m in drives.mounts()}  # already mounted at login: no AutoPlay for those
+        for sig, fn in (('volume-added', self.on_volume_added), ('mount-added', self.on_mount_added),
+                        ('mount-removed', lambda _m, _x: self.drives_changed()),
+                        ('mount-changed', lambda _m, _x: self.drives_changed())):
+            self.vmon.connect(sig, fn)
+        for v in self.vmon.get_volumes():
+            self.on_volume_added(self.vmon, v)
+        self.drives_changed()
+
+    def drives_changed(self):
+        live = drives.mounts()
+        self.drv_known &= {drives.key(m) for m in live}  # unplugged: the next plug-in gets its AutoPlay again
+        self.drv_btn.set_visible(bool(live))
+        if self.drv_btn.get_popover().is_visible():
+            self.fill_drives(self.drv_btn.get_popover())
+
+    def on_volume_added(self, _mon, vol):
+        # A USB stick, card or disc appeared: mount it for the person (gvfs does not do it by itself).
+        if not drives.volume_removable(vol) or vol.get_mount() is not None or not vol.should_automount():
+            return
+        op = Gio.MountOperation()
+        op.connect('ask-password', lambda o, *_a: o.reply(Gio.MountOperationResult.ABORTED))  # encrypted: not here
+
+        def done(v, res):
+            try:
+                v.mount_finish(res)
+            except GLib.Error as e:
+                if e.matches(Gio.io_error_quark(), Gio.IOErrorEnum.ALREADY_MOUNTED) or e.matches(
+                        Gio.io_error_quark(), Gio.IOErrorEnum.FAILED_HANDLED):
+                    return
+                if v.get_name() not in self.drv_failed:
+                    self.drv_failed.add(v.get_name())
+                    self.notify(v.get_name(), 'MWX 7 couldn’t open this drive. It may be unformatted or encrypted.',
+                                'drive-removable-media')
+        vol.mount(Gio.MountMountFlags.NONE, op, None, done)
+
+    def on_mount_added(self, _mon, mount):
+        if drives.kind(mount) != 'removable':
+            return
+        k = drives.key(mount)
+        self.drives_changed()
+        if k in self.drv_known:
+            return
+        self.drv_known.add(k)
+        # AutoPlay, the Windows 7 way: the drive's name and letter, one click opens it.
+        path = mount.get_default_location().get_path() or mount.get_root().get_path()
+        uri = mount.get_default_location().get_uri()
+        self.notify(drives.label(mount), 'Open folder to view files', 'drive-removable-media',
+                    lambda: self.open_drive(path, uri))
+
+    def open_drive(self, path, uri):
+        if path:
+            self.launch([APP, 'explorer', path])
+        else:  # a phone without the gvfs FUSE mount: whatever handles the address
+            try:
+                Gio.AppInfo.launch_default_for_uri(uri, None)
+            except GLib.Error:
+                pass
+
+    def fill_drives(self, pop):
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        col.set_size_request(280, -1)
+        head = Gtk.Label(label='Safely remove hardware', xalign=0)
+        head.add_css_class('menu-head')
+        col.append(head)
+        for m in drives.mounts():
+            b = Gtk.Button()
+            b.add_css_class('menu-row')
+            row = Gtk.Box(spacing=8)
+            row.append(Gtk.Image.new_from_icon_name('media-eject-symbolic'))
+            row.append(Gtk.Label(label='Eject ' + drives.label(m), xalign=0, hexpand=True, ellipsize=3))
+            b.set_child(row)
+            b.connect('clicked', lambda _b, m=m: (pop.popdown(), self.eject_drive(m)))
+            col.append(b)
+        if col.get_first_child().get_next_sibling() is None:
+            col.append(Gtk.Label(label='Nothing to remove', xalign=0, margin_start=10, margin_bottom=6))
+        pop.set_child(col)
+
+    def eject_drive(self, mount):
+        name = drives.label(mount)
+
+        def done(ok, blockers):
+            if ok:
+                self.notify('Safe to Remove Hardware', f'{name} can now be safely removed from the computer.',
+                            'media-eject')
+            else:
+                who = ', '.join(blockers[:3])
+                self.notify(f'Problem ejecting {name}',
+                            (f'{who} is still using it. Close it, then try again.' if blockers else
+                             'A program is still using it. Close any windows showing its files, then try again.'),
+                            'dialog-warning')
+            self.drives_changed()
+        drives.eject(mount, done)
+
+    def notify(self, summary, body, icon, on_click=None):
+        """A desktop notification through mako, with a default action (a click) when there is something to open."""
+        if not self.nbus:
+            return
+        actions = ['default', 'Open'] if on_click else []
+
+        def sent(bus, res):
+            try:
+                nid = bus.call_finish(res).unpack()[0]
+            except GLib.Error:
+                return
+            if on_click:
+                self.drv_notes[nid] = on_click
+        self.nbus.call('org.freedesktop.Notifications', '/org/freedesktop/Notifications', 'org.freedesktop.Notifications',
+                       'Notify', GLib.Variant('(susssasa{sv}i)', ('MWX 7', 0, icon, summary, body, actions, {}, 10000)),
+                       None, Gio.DBusCallFlags.NONE, -1, None, sent)
+
+    def on_note_action(self, _c, _s, _p, _i, _sig, params):
+        nid, action = params.unpack()
+        fn = self.drv_notes.pop(nid, None)
+        if fn and action == 'default':
+            fn()
 
     # ---- notification center (mako) -----------------------------------------------------------------------------------
     def build_notifications(self, right):

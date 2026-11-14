@@ -15,4 +15,7 @@ plymouth plymouth-themes
 flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome network-manager-openvpn polkitd pkexec lxpolkit sudo nftables ufw systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
+# Drives and shares: udisks2 + gvfs mount USB sticks, cards and phones (MTP); gvfs-backends is the Windows/SMB, SFTP and FTP side of
+# Explorer's Network; gvfs-fuse shows mounts as plain paths; lsof lets gvfs name the program that blocks an eject.
+udisks2 gvfs gvfs-backends gvfs-fuse lsof
 bluez libspa-0.2-bluetooth cups cups-browsed ipp-usb brightnessctl upower
