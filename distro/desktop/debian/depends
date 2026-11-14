@@ -14,6 +14,8 @@ plymouth plymouth-themes
 # Apps and system: Files, Terminal, networking, password prompts, admin, firewall, compressed-RAM swap, updates.
 flatpak thunar ffmpegthumbnailer foot network-manager network-manager-gnome network-manager-openvpn polkitd pkexec lxpolkit sudo nftables ufw systemd-zram-generator
 unattended-upgrades apt-utils locales util-linux-extra
+# Reader (the PDF viewer, apps/reader.py) draws pages with poppler, through GObject introspection.
+gir1.2-poppler-0.18
 # Devices: Bluetooth (with sound over Bluetooth), printing (driverless IPP; ipp-usb for USB printers).
 # Drives and shares: udisks2 + gvfs mount USB sticks, cards and phones (MTP); gvfs-backends is the Windows/SMB, SFTP and FTP side of
 # Explorer's Network; gvfs-fuse shows mounts as plain paths; lsof lets gvfs name the program that blocks an eject.

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Reader
+Comment=Read PDF documents
+Exec=/usr/share/mwx7/bin/mwx7-app reader %f
+Icon=/usr/share/mwx7/icons/reader.png
+Categories=Office;Viewer;
+Keywords=pdf;document;reader;viewer;ebook;
+StartupWMClass=org.mwx7.reader
+MimeType=application/pdf;

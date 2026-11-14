@@ -2924,6 +2924,7 @@ link, link:visited { color: #66ccff; }
                     'image/avif', 'image/heif']),
         ('Text editor', ['text/plain', 'text/markdown', 'text/x-python', 'text/x-csrc', 'text/x-shellscript', 'text/css',
                          'application/json', 'application/xml', 'text/xml']),
+        ('PDF documents', ['application/pdf']),
         ('File manager', ['inode/directory']),
     ]
 
