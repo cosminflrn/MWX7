@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FreeCell
+Comment=Free cell solitaire
+Exec=/usr/share/mwx7/bin/mwx7-app freecell
+Icon=/usr/share/mwx7/icons/freecell.png
+Categories=Game;CardGame;
+Keywords=cards;game;
+StartupWMClass=org.mwx7.freecell

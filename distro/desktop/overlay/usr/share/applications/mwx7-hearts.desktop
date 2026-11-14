@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hearts
+Comment=The trick-taking card game
+Exec=/usr/share/mwx7/bin/mwx7-app hearts
+Icon=/usr/share/mwx7/icons/hearts.png
+Categories=Game;CardGame;
+Keywords=cards;game;
+StartupWMClass=org.mwx7.hearts

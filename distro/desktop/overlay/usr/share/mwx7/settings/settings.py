@@ -230,6 +230,8 @@ class Settings(Gtk.Application):
             ('sound', 'Sound', 'audio', self.page_sound),
             ('keyboard', 'Keyboard', 'text', self.page_keyboard),
             ('mouse', 'Mouse', 'settings', self.page_mouse),
+            ('access', 'Ease of Access', 'settings', self.page_access),
+            ('language', 'Language & region', 'text', self.page_language),
             ('bluetooth', 'Bluetooth', 'bluetooth', self.page_bluetooth),
             ('printers', 'Printers', 'printer', self.page_printers),
             ('account', 'User account', 'user', self.page_account),
@@ -1674,6 +1676,425 @@ class Settings(Gtk.Application):
         p.append(dd)
         p.append(status)
         return p
+
+    # ---- Ease of Access ---------------------------------------------------------------------------------------------
+    # Text size and cursor size go to GSettings (GTK apps, this one and the shell included, follow them live). High contrast
+    # is a marked block in the user's gtk.css (GTK_THEME overrides the gtk-theme setting in MWX 7's session, so switching the
+    # theme would do nothing). Magnifier is Wayfire's zoom plugin: in 0.9 it only zooms with modifier + scroll wheel.
+    A11Y_JSON = os.path.join(CONF_DIR, 'access.json')
+    HC_BEGIN, HC_END = '/* mwx7-high-contrast begin */', '/* mwx7-high-contrast end */'
+    HC_CSS = """
+window, window.background, dialog, .background, popover contents, list, scrolledwindow, viewport, box.page { background: #000000; background-image: none; color: #ffffff; }
+* { border-color: #ffffff; text-shadow: none; }
+label, .note, .key, .section, .page-title, row, row label { color: #ffffff; }
+button, entry, spinbutton, dropdown, combobox, textview, textview text, text { background: #000000; background-image: none; color: #ffffff; border: 2px solid #ffffff; box-shadow: none; }
+button:hover, row:hover { background: #ffffff; background-image: none; color: #000000; }
+button:hover label, row:hover label { color: #000000; }
+row:selected, :selected, selection { background: #ffff00; background-image: none; color: #000000; }
+row:selected label { color: #000000; }
+*:focus-visible, *:focus { outline: 3px solid #ffff00; outline-offset: 1px; }
+link, link:visited { color: #66ccff; }
+"""
+
+    @staticmethod
+    def gsettings(schema='org.gnome.desktop.interface'):
+        """GSettings for a schema, or None when it is not installed (Gio.Settings would abort the process)."""
+        src = Gio.SettingsSchemaSource.get_default()
+        return Gio.Settings.new(schema) if src and src.lookup(schema, True) else None
+
+    def a11y_get(self, key, default=None):
+        try:
+            return json.load(open(self.A11Y_JSON)).get(key, default)
+        except (OSError, ValueError, AttributeError):
+            return default
+
+    def a11y_set(self, key, value):
+        try:
+            c = json.load(open(self.A11Y_JSON))
+            c = c if isinstance(c, dict) else {}
+        except (OSError, ValueError):
+            c = {}
+        c[key] = value
+        os.makedirs(CONF_DIR, exist_ok=True)
+        with open(self.A11Y_JSON + '.tmp', 'w') as f:
+            json.dump(c, f)
+        os.replace(self.A11Y_JSON + '.tmp', self.A11Y_JSON)
+
+    def high_contrast_files(self, on):
+        """Add or remove our marked block in the user's GTK 3 and GTK 4 stylesheets; the rest of those files is left alone."""
+        for ver in ('gtk-4.0', 'gtk-3.0'):
+            path = os.path.join(GLib.get_user_config_dir(), ver, 'gtk.css')
+            try:
+                text = open(path).read()
+            except OSError:
+                text = ''
+            text = re.sub(re.escape(self.HC_BEGIN) + r'.*?' + re.escape(self.HC_END) + r'\n?', '', text, flags=re.S)
+            if on:
+                css = self.HC_CSS if ver == 'gtk-4.0' else self.HC_CSS.replace(':focus-visible', ':focus')
+                text = text.rstrip('\n') + ('\n' if text.strip() else '') + f'{self.HC_BEGIN}\n{css}{self.HC_END}\n'
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, 'w') as f:
+                    f.write(text)
+            except OSError:
+                pass
+        # This window follows at once; apps already open pick the stylesheet up the next time they start.
+        if not hasattr(self, 'hc_provider'):
+            self.hc_provider = Gtk.CssProvider()
+            Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.hc_provider,
+                                                      Gtk.STYLE_PROVIDER_PRIORITY_USER + 2)
+        self.hc_provider.load_from_string(self.HC_CSS if on else '')
+        g = self.gsettings('org.gnome.desktop.a11y.interface')
+        if g:
+            g.set_boolean('high-contrast', on)
+
+    @staticmethod
+    def high_contrast_on():
+        try:
+            return 'mwx7-high-contrast begin' in open(os.path.join(GLib.get_user_config_dir(), 'gtk-4.0', 'gtk.css')).read()
+        except OSError:
+            return False
+
+    @staticmethod
+    def plugins_get():
+        return ini_get('core', 'plugins', '').split()
+
+    def set_magnifier(self, on):
+        plugins = [x for x in self.plugins_get() if x != 'zoom']
+        if on and plugins:
+            plugins.append('zoom')
+        if plugins:
+            ini_set('core', 'plugins', ' '.join(plugins))
+
+    def page_access(self):
+        p = page('Ease of Access', 'Make the screen easier to see and the desktop calmer to use.')
+        g = self.gsettings()
+        p.append(section('Text size'))
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 100, 200, 5)
+        scale.set_value(round((g.get_double('text-scaling-factor') if g else 1.0) * 100))
+        for v in (100, 150, 200):
+            scale.add_mark(v, Gtk.PositionType.BOTTOM, f'{v}%')
+        scale.set_size_request(360, -1)
+        scale.set_halign(Gtk.Align.START)
+        pending = []
+
+        def apply_scale():
+            pending.clear()
+            if g:
+                g.set_double('text-scaling-factor', round(scale.get_value()) / 100)
+            return False
+
+        def on_scale(_s):
+            # Settings itself grows with the text, which would move the slider under the pointer: wait until it rests.
+            for src in pending:
+                GLib.source_remove(src)
+            pending[:] = [GLib.timeout_add(450, apply_scale)]
+        scale.connect('value-changed', on_scale)
+        p.append(scale)
+        p.append(note('Text in this window and in apps that follow the system text size changes as soon as you stop dragging.'
+                      if g else 'Text size needs the GNOME settings schemas, which are not installed.'))
+
+        p.append(section('Contrast'))
+        hc = Gtk.CheckButton(label='High contrast: white on black with yellow selection')
+        hc.set_active(self.high_contrast_on())
+        hc.connect('toggled', lambda c: self.high_contrast_files(c.get_active()))
+        p.append(hc)
+        p.append(note('Applies to this window now and to apps the next time they start.'))
+
+        p.append(section('Pointer'))
+        sizes = [(24, 'Normal'), (32, 'Large'), (48, 'Larger'), (64, 'Extra large'), (96, 'Huge')]
+        cur = int(ini_get('input', 'cursor_size', '24') or 24)
+
+        def set_cursor(v):
+            ini_set('input', 'cursor_size', str(v))
+            if g:
+                g.set_int('cursor-size', v)
+        p.append(field('Cursor size', self.choice(sizes, cur, set_cursor)))
+        p.append(note('The pointer changes at once; apps already open may keep the old size until they restart.'))
+
+        p.append(section('Motion'))
+        red = Gtk.CheckButton(label='Reduce motion (turns window animations off)')
+        red.set_active(ini_get('mwx7-animate', 'level', 'full') == 'off')
+
+        def on_motion(c):
+            if c.get_active():
+                self.a11y_set('prev_anim', ini_get('mwx7-animate', 'level', 'full'))
+                level = 'off'
+            else:
+                level = self.a11y_get('prev_anim', 'full')
+                level = level if level in ('full', 'reduced') else 'full'
+            # The same record Display -> Animations writes, so a level chosen here is never overridden by mwx7-perf.
+            os.makedirs(CONF_DIR, exist_ok=True)
+            with open(os.path.join(CONF_DIR, 'animations.json'), 'w') as f:
+                json.dump({'level': level}, f)
+            try:
+                os.unlink(os.path.join(CONF_DIR, 'perf-animations.json'))
+            except OSError:
+                pass
+            ini_set('mwx7-animate', 'level', level)
+        red.connect('toggled', on_motion)
+        p.append(red)
+        p.append(note('Display -> Animations has the finer choice (Full, Reduced, Off).'))
+
+        p.append(section('Magnifier'))
+        mag = Gtk.CheckButton(label='Zoom the screen with Windows key + scroll wheel')
+        mag.set_active('zoom' in self.plugins_get())
+        mag.connect('toggled', lambda c: self.set_magnifier(c.get_active()))
+        p.append(mag)
+        p.append(note('Hold the Windows key and scroll up to zoom in, down to zoom out. Wayfire 0.9 has no zoom keys.'))
+        return p
+
+    # ---- Language & region ------------------------------------------------------------------------------------------
+    LANG_NAMES = {
+        'af': 'Afrikaans', 'ar': 'Arabic', 'bg': 'Bulgarian', 'ca': 'Catalan', 'cs': 'Czech', 'da': 'Danish', 'de': 'German',
+        'el': 'Greek', 'en': 'English', 'es': 'Spanish', 'et': 'Estonian', 'fi': 'Finnish', 'fr': 'French', 'he': 'Hebrew',
+        'hi': 'Hindi', 'hr': 'Croatian', 'hu': 'Hungarian', 'id': 'Indonesian', 'it': 'Italian', 'ja': 'Japanese',
+        'ko': 'Korean', 'lt': 'Lithuanian', 'lv': 'Latvian', 'nb': 'Norwegian Bokmal', 'nl': 'Dutch', 'pl': 'Polish',
+        'pt': 'Portuguese', 'ro': 'Romanian', 'ru': 'Russian', 'sk': 'Slovak', 'sl': 'Slovenian', 'sr': 'Serbian',
+        'sv': 'Swedish', 'th': 'Thai', 'tr': 'Turkish', 'uk': 'Ukrainian', 'vi': 'Vietnamese', 'zh': 'Chinese'}
+    COUNTRIES = {
+        'AT': 'Austria', 'AU': 'Australia', 'BE': 'Belgium', 'BG': 'Bulgaria', 'BR': 'Brazil', 'CA': 'Canada',
+        'CH': 'Switzerland', 'CN': 'China', 'CZ': 'Czechia', 'DE': 'Germany', 'DK': 'Denmark', 'ES': 'Spain', 'FI': 'Finland',
+        'FR': 'France', 'GB': 'United Kingdom', 'GR': 'Greece', 'HR': 'Croatia', 'HU': 'Hungary', 'IE': 'Ireland',
+        'IL': 'Israel', 'IN': 'India', 'IT': 'Italy', 'JP': 'Japan', 'KR': 'Korea', 'MD': 'Moldova', 'MX': 'Mexico',
+        'NL': 'Netherlands', 'NO': 'Norway', 'NZ': 'New Zealand', 'PL': 'Poland', 'PT': 'Portugal', 'RO': 'Romania',
+        'RS': 'Serbia', 'RU': 'Russia', 'SE': 'Sweden', 'SI': 'Slovenia', 'SK': 'Slovakia', 'TR': 'Turkey', 'UA': 'Ukraine',
+        'US': 'United States', 'ZA': 'South Africa'}
+    REGION_CONF = os.path.join(GLib.get_user_config_dir(), 'environment.d', '50-mwx7-region.conf')
+    REGION_KEYS = ('LC_TIME', 'LC_NUMERIC', 'LC_MONETARY', 'LC_PAPER', 'LC_MEASUREMENT')
+    KEY_LAYOUTS = [('us', '', 'English (US)'), ('ro', 'std', 'Romanian (standard)'), ('ro', '', 'Romanian (legacy)'),
+                   ('gb', '', 'English (UK)'), ('de', '', 'German'), ('fr', '', 'French'), ('es', '', 'Spanish'),
+                   ('it', '', 'Italian'), ('pl', '', 'Polish'), ('hu', '', 'Hungarian'), ('bg', '', 'Bulgarian'),
+                   ('ru', '', 'Russian'), ('cz', '', 'Czech'), ('pt', '', 'Portuguese'), ('nl', '', 'Dutch')]
+
+    @classmethod
+    def locale_label(cls, loc):
+        m = re.match(r'([a-z]{2,3})_([A-Z]{2})', loc)
+        if not m:
+            return loc
+        return f'{cls.LANG_NAMES.get(m.group(1), m.group(1))} ({cls.COUNTRIES.get(m.group(2), m.group(2))})'
+
+    @staticmethod
+    def installed_locales():
+        """Generated UTF-8 locales, spelled the way /usr/share/i18n/SUPPORTED does (ro_RO.UTF-8)."""
+        out = run(['locale', '-a']).split()
+        return {l.replace('.utf8', '.UTF-8') for l in out if re.fullmatch(r'[a-z]{2,3}_[A-Z]{2}\.utf8', l)}
+
+    @staticmethod
+    def supported_locales():
+        try:
+            lines = open('/usr/share/i18n/SUPPORTED', encoding='utf-8').read().splitlines()
+        except OSError:
+            return set()
+        return {l.split()[0] for l in lines if re.fullmatch(r'[a-z]{2,3}_[A-Z]{2}\.UTF-8 UTF-8\s*(#.*)?', l.strip())}
+
+    @staticmethod
+    def system_lang():
+        try:
+            for l in open('/etc/default/locale'):
+                m = re.match(r'LANG="?([^"\s]+)"?', l)
+                if m:
+                    return m.group(1)
+        except OSError:
+            pass
+        return os.environ.get('LANG', 'en_US.UTF-8')
+
+    def read_region(self):
+        try:
+            for l in open(self.REGION_CONF):
+                k, _, v = l.strip().partition('=')
+                if k == 'LC_TIME':
+                    return v
+        except OSError:
+            pass
+        return ''
+
+    def write_region(self, loc):
+        """~/.config/environment.d drop-in (systemd's format; mwx7-session reads it too). No choice removes the file."""
+        if not loc:
+            try:
+                os.unlink(self.REGION_CONF)
+            except OSError:
+                pass
+            return
+        os.makedirs(os.path.dirname(self.REGION_CONF), exist_ok=True)
+        with open(self.REGION_CONF, 'w') as f:
+            f.write('# Written by MWX 7 Settings -> Language & region.\n' + ''.join(f'{k}={loc}\n' for k in self.REGION_KEYS))
+
+    @staticmethod
+    def region_example(loc):
+        code = ("import locale,datetime,sys;locale.setlocale(locale.LC_ALL,sys.argv[1]);"
+                "print(datetime.datetime(2026,3,9,18,45).strftime('%x  %X'));"
+                "print(locale.format_string('%.2f',1234567.89,grouping=True))")
+        out = run(['python3', '-I', '-c', code, loc]).strip().splitlines()
+        return f'{out[0]}      {out[1]}' if len(out) == 2 else ''
+
+    def page_language(self):
+        p = page('Language & region', 'The language of the system, how dates and numbers look, and the keyboards you type with.')
+        installed, supported = self.installed_locales(), self.supported_locales()
+        names = sorted(installed | supported | {'en_US.UTF-8'}, key=lambda l: (self.locale_label(l), l))
+        status = note('')
+
+        def label(l):
+            return self.locale_label(l) + ('' if l in installed else '  (downloaded when chosen)')
+
+        p.append(section('Language'))
+        cur = self.system_lang()
+        dd = Gtk.DropDown.new_from_strings([label(l) for l in names])
+        dd.set_enable_search(True)
+        dd.set_selected(names.index(cur) if cur in names else 0)
+
+        def on_lang(d, _p):
+            loc = names[d.get_selected()]
+            if loc == self.system_lang():
+                return
+            status.set_label('Changing the language...')
+
+            def done(ok, err):
+                if ok:
+                    installed.add(loc)
+                    status.set_label('Language set. Apps that support it use it the next time you sign in.')
+                else:
+                    status.set_label('Could not change the language: ' + (err or 'not allowed'))
+            self.admin(['locale', 'set', loc], done)
+        dd.connect('notify::selected', on_lang)
+        p.append(field('System language', dd))
+        p.append(note("Apps that support it. MWX 7's own windows are in English for now."))
+
+        p.append(section('Regional format'))
+        fmt_names = [''] + names
+        fdd = Gtk.DropDown.new_from_strings(['Same as the language'] + [label(l) for l in names])
+        fdd.set_enable_search(True)
+        fcur = self.read_region()
+        fdd.set_selected(fmt_names.index(fcur) if fcur in fmt_names else 0)
+        example = note('')
+
+        def show_example(loc):
+            example.set_label(('Example: ' + self.region_example(loc)) if loc in installed else '')
+
+        def on_fmt(d, _p):
+            loc = fmt_names[d.get_selected()]
+
+            def apply():
+                self.write_region(loc)
+                show_example(loc)
+                status.set_label('Formats saved. Apps use them the next time you sign in.')
+            if loc and loc not in installed:
+                status.set_label('Preparing the formats, this takes a moment...')
+
+                def added(ok, err):
+                    if ok:
+                        installed.add(loc)
+                        apply()
+                    else:
+                        status.set_label('Could not prepare them: ' + (err or 'not allowed'))
+                self.admin(['locale', 'add', loc], added)
+            else:
+                apply()
+        fdd.connect('notify::selected', on_fmt)
+        p.append(field('Dates, numbers, currency', fdd))
+        p.append(example)
+        show_example(fcur)
+        p.append(status)
+
+        self.layout_section(p)
+        return p
+
+    # Keyboard layouts as Wayfire's [input] xkb_layout / xkb_variant: two comma lists that line up by position.
+    def xkb_names(self):
+        """{(layout, variant): name}: the curated list first, then everything X11's rules file knows."""
+        names = {(l, v): n for l, v, n in self.KEY_LAYOUTS}
+        try:
+            text = open('/usr/share/X11/xkb/rules/base.lst', encoding='utf-8', errors='replace').read()
+        except OSError:
+            return names
+        sec = None
+        for line in text.splitlines():
+            if line.startswith('!'):
+                sec = line[1:].strip()
+                continue
+            if sec == 'layout':
+                m = re.match(r'\s+([a-z0-9_]+)\s+(.+)', line)
+                if m and (m.group(1), '') not in names:
+                    names[(m.group(1), '')] = m.group(2).strip()
+            elif sec == 'variant':
+                m = re.match(r'\s+([a-z0-9_]+)\s+([a-z0-9_]+): (.+)', line)
+                if m and (m.group(2), m.group(1)) not in names:
+                    names[(m.group(2), m.group(1))] = m.group(3).strip()
+        return names
+
+    @staticmethod
+    def switch_shortcut():
+        opts = ini_get('input', 'xkb_options', 'grp:win_space_toggle')
+        for o, label in (('grp:win_space_toggle', 'Windows key + Space'), ('grp:alt_shift_toggle', 'Alt + Shift'),
+                         ('grp:ctrl_shift_toggle', 'Ctrl + Shift'), ('grp:alt_space_toggle', 'Alt + Space')):
+            if o in opts:
+                return label
+        return 'the shortcut set in your keyboard options'
+
+    def layout_section(self, p):
+        names = self.xkb_names()
+        p.append(section('Keyboard layouts'))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        p.append(box)
+        hint = note('')
+
+        def current():
+            lay = [x.strip() for x in ini_get('input', 'xkb_layout', 'us').split(',')]
+            var = [x.strip() for x in ini_get('input', 'xkb_variant', '').split(',')]
+            var += [''] * (len(lay) - len(var))
+            return [(l, v) for l, v in zip(lay, var) if l] or [('us', '')]
+
+        def save(pairs):
+            ini_set('input', 'xkb_layout', ','.join(l for l, _v in pairs))
+            ini_set('input', 'xkb_variant', ','.join(v for _l, v in pairs))
+            refill()
+
+        def refill():
+            while box.get_first_child():
+                box.remove(box.get_first_child())
+            pairs = current()
+            for i, pr in enumerate(pairs):
+                r = Gtk.Box(spacing=6)
+                r.append(Gtk.Label(label=('Default: ' if i == 0 else '') + names.get(pr, f'{pr[0]} {pr[1]}'.strip()),
+                                   xalign=0, width_chars=34))
+                for icon, tip, delta in (('go-up-symbolic', 'Move up', -1), ('go-down-symbolic', 'Move down', 1)):
+                    b = Gtk.Button.new_from_icon_name(icon)
+                    b.set_tooltip_text(tip)
+                    b.set_sensitive(0 <= i + delta < len(pairs))
+
+                    def move(_b, i=i, delta=delta):
+                        q = current()
+                        q[i], q[i + delta] = q[i + delta], q[i]
+                        save(q)
+                    b.connect('clicked', move)
+                    r.append(b)
+                rm = Gtk.Button.new_from_icon_name('list-remove-symbolic')
+                rm.set_tooltip_text('Remove')
+                rm.set_sensitive(len(pairs) > 1)
+                rm.connect('clicked', lambda _b, i=i: save([x for j, x in enumerate(current()) if j != i]))
+                r.append(rm)
+                box.append(r)
+            hint.set_label(f'Switch between layouts with {self.switch_shortcut()}.' if len(pairs) > 1
+                           else 'Add a second layout to switch between them.')
+
+        keys = sorted(names, key=lambda k: (names[k].lower(), k))
+        add = Gtk.DropDown.new_from_strings([names[k] for k in keys])
+        add.set_enable_search(True)
+        add.set_selected(keys.index(('ro', 'std')) if ('ro', 'std') in keys else 0)
+        addb = Gtk.Button(label='Add layout')
+
+        def on_add(_b):
+            k, q = keys[add.get_selected()], current()
+            if k not in q:
+                save(q + [k])
+        addb.connect('clicked', on_add)
+        row = Gtk.Box(spacing=8)
+        row.append(add)
+        row.append(addb)
+        refill()
+        p.append(row)
+        p.append(hint)
 
     # ---- Account ----------------------------------------------------------------------------------------------------
     @staticmethod
