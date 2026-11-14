@@ -1,0 +1,12 @@
+[Unit]
+Description=MWX 7: built-in NVIDIA driver when NVIDIA's own did not load (key not enrolled with Secure Boot on)
+After=systemd-modules-load.service systemd-udev-settle.service
+Before=greetd.service
+ConditionPathExists=/etc/modprobe.d/mwx7-nvidia.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/mwx7/bin/mwx7-gpu-fallback
+
+[Install]
+WantedBy=multi-user.target
