@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+"""First start after a setup that could not install the NVIDIA driver (no internet then): mwx7-nvidia-firstboot.service runs this
+as root while the flag /var/lib/mwx7/nvidia-pending exists. Not online yet: exits 1 and systemd tries again in a few minutes.
+Done: the flag goes, /run/mwx7/nvidia-restart appears (mwx7-nvidia-notice tells the person)."""
+import os
+import sys
+
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7nvidia as nv
+
+FLAG = '/' + nv.FLAG
+if not os.path.exists(FLAG):
+    sys.exit(0)
+if not nv.gpu_present():
+    os.unlink(FLAG)
+    sys.exit(0)
+if not nv.online():
+    sys.exit(1)
+try:
+    nv.install('/')
+except RuntimeError as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+os.unlink(FLAG)  # a card too old for the driver also ends here: nouveau stays, nothing to tell
+if os.path.exists('/' + nv.CONF):
+    os.makedirs('/run/mwx7', exist_ok=True)
+    open('/run/mwx7/nvidia-restart', 'w').close()

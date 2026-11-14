@@ -1151,6 +1151,15 @@ class Settings(Gtk.Application):
         p.append(status)
         p.append(btn)
         p.append(note('A restart is required after installing or removing it.'))
+        # Secure Boot: the firmware itself insists that a person confirms the driver's signing key at the next start.
+        mok = run(['mokutil', '--list-new'])
+        queued = re.search(r'\[key \d+\]', mok) or (not mok.strip() and os.path.exists('/var/lib/mwx7/mok-queued')
+                                                      and not os.path.isdir('/sys/module/nvidia'))
+        if sb and queued:
+            warn = Gtk.Label(xalign=0, wrap=True, label='Secure Boot is on, so one step is left. When the blue screen appears '
+                             'after restart: Enroll MOK \u2192 Continue \u2192 Yes \u2192 type mwx7mwx7 \u2192 Reboot.')
+            warn.add_css_class('note')
+            p.append(warn)
 
     # ---- Bluetooth --------------------------------------------------------------------------------------------------
     BT_MAC = re.compile(r'[0-9A-F]{2}(:[0-9A-F]{2}){5}\Z')

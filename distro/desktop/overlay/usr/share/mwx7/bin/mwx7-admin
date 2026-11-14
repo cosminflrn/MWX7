@@ -389,59 +389,14 @@ def printer(args):
         sys.exit(__doc__)
 
 
-def enable_non_free():
-    """Debian's own sources only: add contrib and non-free to the one-line and the deb822 forms."""
-    for path in ['/etc/apt/sources.list'] + glob.glob('/etc/apt/sources.list.d/*.sources'):
-        try:
-            old = open(path).read()
-        except OSError:
-            continue
-        lines = old.split('\n')
-        deb822 = path.endswith('.sources')
-        debian = deb822 and any(l.startswith('URIs:') and 'debian.org' in l for l in lines)
-        for i, l in enumerate(lines):
-            if (deb822 and debian and l.startswith('Components:')) or (
-                    not deb822 and re.match(r'deb\s', l) and 'debian.org' in l):
-                lines[i] = l + ''.join(f' {c}' for c in ('contrib', 'non-free') if c not in l.split())
-        if '\n'.join(lines) != old:
-            with open(path + '.tmp', 'w') as f:
-                f.write('\n'.join(lines))
-            os.replace(path + '.tmp', path)
-
-
-NVIDIA_CONF = '/etc/modprobe.d/mwx7-nvidia.conf'
-
-
-def secure_boot_on():
-    r = subprocess.run(['mokutil', '--sb-state'], capture_output=True, text=True)
-    return 'enabled' in r.stdout.lower()
-
-
 def nvidia(install):
-    env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
+    # The steps live in lib/mwx7nvidia.py: the first-start setup and the first-boot retry run the very same ones.
+    sys.path.insert(0, '/usr/share/mwx7/lib')
+    import mwx7nvidia
     if install:
-        enable_non_free()
-        subprocess.run(['apt-get', 'update'], check=True, env=env)
-        # The kernel module is built on this PC (DKMS), which needs the headers of the installed kernel; the headers
-        # metapackage follows linux-image-amd64, so they always match it.
-        subprocess.run(['apt-get', 'install', '-y', 'linux-headers-amd64', 'dkms', 'nvidia-driver', 'firmware-misc-nonfree'],
-                       check=True, env=env)
-        # Wayfire needs the driver's kernel modesetting (and its framebuffer) to get a screen at all.
-        with open(NVIDIA_CONF, 'w') as f:
-            f.write('# MWX 7: Wayland needs kernel modesetting with the NVIDIA driver.\noptions nvidia-drm modeset=1 fbdev=1\n')
-        subprocess.run(['update-initramfs', '-u'], check=True, env=env)
-        if secure_boot_on() and os.path.exists('/var/lib/dkms/mok.pub'):
-            # Unsigned kernel modules are refused with Secure Boot on, so the driver would never load. Queue DKMS's signing
-            # key for enrollment: at the next start a blue screen (MOK manager) asks for this one-time password. Enrolling
-            # needs the person at the screen, which is exactly the point of it. Failure is not fatal: Settings explains.
-            subprocess.run(['mokutil', '--import', '/var/lib/dkms/mok.pub'], input='mwx7mwx7\nmwx7mwx7\n', text=True,
-                           capture_output=True)
+        mwx7nvidia.install('/')
     else:
-        # Only the driver goes: the firmware package is harmless and other hardware may use it.
-        subprocess.run(['apt-get', 'remove', '--purge', '-y', 'nvidia-driver'], check=True, env=env)
-        if os.path.exists(NVIDIA_CONF):
-            os.unlink(NVIDIA_CONF)
-            subprocess.run(['update-initramfs', '-u'], check=False, env=env)
+        mwx7nvidia.remove('/')
 
 
 def reset(keep):
