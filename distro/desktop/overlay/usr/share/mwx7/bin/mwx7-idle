@@ -13,6 +13,9 @@ case "$1" in
   screen)  # called by swayidle: "off" / "on"
     # DPMS (wlr-output-power-management), not wlr-randr --off: turning the output off removes it, and the bar, dock
     # and desktop came back re-laid out (seen in the test VM).
+    # The flag tells the desktop layer to pause a live wallpaper while nothing is shown (and to play it again at once).
+    FLAG="${XDG_RUNTIME_DIR:-/tmp}/mwx7-screen-off"
+    if [ "$2" = off ]; then : > "$FLAG"; else rm -f "$FLAG"; fi
     wlopm "--$2" '*' >/dev/null 2>&1
     exit 0 ;;
   battery)  # laptops: dims the screen and asks for the power-saver profile while the battery is low and not charging
