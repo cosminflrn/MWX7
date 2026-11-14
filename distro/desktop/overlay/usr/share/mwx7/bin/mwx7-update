@@ -141,6 +141,8 @@ do_install() {
   snapshot >"$after"
   # Upgraded = the name was installed before and its name+version line changed (new packages are not upgrades).
   comm -13 "$before" "$after" | awk 'NR==FNR { old[$1]=1; next } ($1 in old) { print $1 }' "$before" - >"$STATE/last-upgraded"
+  # Changed or new packages that can stop the PC from starting (a new kernel is a new package name, not an upgrade).
+  comm -13 "$before" "$after" | awk '{ print $1 }' | grep -E '^(linux-image|linux-base|systemd|udev|libc6|grub|shim|initramfs|plymouth|mesa|libgl|libdrm|firmware|btrfs|greetd|cage$|wayfire|mwx7)' >"$STATE/last-boot-relevant" || true
   rm -f "$before" "$after"
   [ "$rc" = 0 ] || return "$rc"
   echo "MWX7-PROGRESS 96 Cleaning up"
@@ -149,7 +151,8 @@ do_install() {
   # The boot menu gets the previous version's entry (and the current kernel).
   update-grub >/dev/null 2>&1 || true
   # The next starts are counted: two that do not reach the logon screen and GRUB boots the previous version instead.
-  [ -z "$kept" ] || /usr/share/mwx7/bin/mwx7-bootcount arm || true
+  # Only after an update that touched what starting depends on: a browser or office update must never send the PC back.
+  [ -z "$kept" ] || [ ! -s "$STATE/last-boot-relevant" ] || /usr/share/mwx7/bin/mwx7-bootcount arm || true
   rm -f "$BUSY" "$STATE/whats-new-available"
   info_set count 0
   info_set version ""

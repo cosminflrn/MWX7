@@ -1,17 +1,41 @@
 #!/bin/sh
-# "Repair MWX 7" in the boot menu: rebuilds MWX 7 from the recovery copy, keeping accounts, files, apps and settings
-# (the same as Settings -> Updates -> Repair MWX 7), showing its progress on the splash, then restarts.
-say() { plymouth display-message --text="$1" 2>/dev/null || echo "$1"; }
+# "Repair MWX 7" in the boot menu. Started by systemd.run= on the kernel command line (etc/grub.d/42_mwx7), from the copy
+# in /boot/mwx7-recovery that update-grub keeps: it must work when /usr/share/mwx7 or the package state is broken.
+# Shows oobe/repair.py (two clicks: Repair keeping files / Reset to factory, plus Restart). If that screen cannot start
+# (no graphics), the safe choice runs by itself: Repair, which keeps everything. Never asks for typing.
+D=$(dirname "$(readlink -f "$0")")
+[ -f "$D/install.py" ] || D=$D/../oobe  # the installed copy keeps install.py in oobe/
+say() { echo "$1" >/dev/console 2>/dev/null; plymouth display-message --text="$1" 2>/dev/null || true; }
+reboot_in() { sleep "$1"; systemctl reboot; exit 0; }
+[ -f "$D/install.py" ] || { say "Repair is not available: MWX 7's repair files are missing."; reboot_in 20; }
+
+plymouth quit 2>/dev/null || true  # the splash would hold the screen
+rm -f /run/mwx7-repair-shown /run/mwx7-repair-error
+if [ -f "$D/repair.py" ] && command -v cage >/dev/null 2>&1; then
+  mkdir -p -m 700 /run/mwx7-repair
+  export XDG_RUNTIME_DIR=/run/mwx7-repair HOME=/root XDG_SESSION_TYPE=wayland WLR_RENDERER_ALLOW_SOFTWARE=1 \
+    WLR_NO_HARDWARE_CURSORS=1 GSK_RENDERER=cairo GDK_BACKEND=wayland GTK_A11Y=none
+  # No screen after a minute: give up on it (cage ends with its window) and repair without asking.
+  ( sleep 60; [ -e /run/mwx7-repair-shown ] || pkill -x cage ) &
+  watcher=$!
+  if command -v openvt >/dev/null 2>&1; then
+    openvt -c 1 -s -f -w -- cage -d -- /usr/bin/python3 "$D/repair.py" >/run/mwx7-repair.log 2>&1
+  else
+    cage -d -- /usr/bin/python3 "$D/repair.py" >/run/mwx7-repair.log 2>&1
+  fi
+  kill "$watcher" 2>/dev/null || true
+  # The screen was shown: the person decided (install.py restarts the PC itself when it is done); closing it means Restart.
+  [ ! -e /run/mwx7-repair-shown ] || reboot_in 3
+fi
+
 say "Repairing MWX 7… Don't turn off your PC."
-python3 /usr/share/mwx7/oobe/install.py reinstall keep 2>&1 | while read -r kind rest; do
+python3 "$D/install.py" reinstall keep 2>&1 | while read -r kind rest; do
   case "$kind" in
     STEP) say "$rest…" ;;
     PROGRESS) plymouth system-update --progress="$rest" 2>/dev/null || true ;;
     ERROR) say "Repair did not work: $rest"; echo "$rest" > /run/mwx7-repair-error ;;
   esac
 done
-if [ -e /run/mwx7-repair-error ]; then
-  # Nothing was changed: start MWX 7 normally after a moment to read the message.
-  sleep 20
-  systemctl reboot
-fi
+# Nothing was changed when it failed: start MWX 7 normally after a moment to read the message.
+if [ -e /run/mwx7-repair-error ]; then reboot_in 20; fi
+exit 0

@@ -1,6 +1,8 @@
 #!/bin/sh
 # MWX 7's own boot menu entries (shown with the menu: hold Esc while the PC starts):
-#   Repair MWX 7                 rebuilds MWX 7 from the recovery copy, keeping everything (mwx7-repair)
+#   Repair MWX 7                 a screen with Repair (keeps everything) and Reset to factory, both rebuilding MWX 7 from the
+#                                recovery copy without internet (mwx7-repair, run from /boot/mwx7-recovery: a copy made here,
+#                                so it still works when /usr/share/mwx7 is damaged)
 #   MWX 7 (previous version)     the system as it was before the last update (mwx7-update keeps it); also the default
 #                                after two starts in a row that did not reach the logon screen (01_mwx7_safe)
 set -e
@@ -10,6 +12,19 @@ findmnt -no SOURCE / | grep -q '\[/@\]$' || exit 0
 dev=$(grub-probe --target=device /)
 uuid=$(grub-probe --target=fs_uuid /)
 boot=$(make_system_path_relative_to_its_root /boot)  # /@/boot
+# The repair tools, kept where a damaged /usr/share/mwx7 or package state cannot reach them. Only replaced by a complete,
+# working set; a failure here must never stop the boot menu from being written.
+(
+  S=/usr/share/mwx7
+  R=/boot/mwx7-recovery
+  t=$R.new
+  rm -rf "$t"
+  mkdir -p "$t"
+  cp $S/bin/mwx7-repair $S/oobe/install.py $S/oobe/repair.py $S/oobe/oobe.css "$t"/ &&
+    sh -n "$t/mwx7-repair" && python3 -c 'import sys; [compile(open(f).read(), f, "exec") for f in sys.argv[1:]]' "$t/install.py" "$t/repair.py" &&
+    chmod 755 "$t/mwx7-repair" && rm -rf "$R.old" && { [ ! -d "$R" ] || mv "$R" "$R.old"; } && mv "$t" "$R" && rm -rf "$R.old"
+  rm -rf "$t"
+) >/dev/null 2>&1 || true
 prep=$(prepare_grub_to_access_device "$dev" | grub_add_tab)
 k=$(ls /boot/vmlinuz-* 2>/dev/null | sort -V | tail -n 1)
 [ -n "$k" ] || exit 0
@@ -18,7 +33,7 @@ cat <<ENTRY
 menuentry 'Repair MWX 7' --class mwx7 {
 $prep
 	echo 'Repairing MWX 7...'
-	linux $boot/vmlinuz-$v root=UUID=$uuid ro rootflags=subvol=@ quiet splash loglevel=3 mwx7.repair systemd.unit=mwx7-repair.target
+	linux $boot/vmlinuz-$v root=UUID=$uuid ro rootflags=subvol=@ quiet loglevel=3 mwx7.repair systemd.unit=kernel-command-line.target systemd.run=/boot/mwx7-recovery/mwx7-repair
 	initrd $boot/initrd.img-$v
 }
 ENTRY

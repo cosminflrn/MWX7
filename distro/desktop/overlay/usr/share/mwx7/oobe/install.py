@@ -742,7 +742,11 @@ def recovery_sync(fetch):
         with open(rec + '/debs/Packages', 'w') as f:
             subprocess.run(['apt-ftparchive', 'packages', '.'], cwd=rec + '/debs', stdout=f, check=True)
         n = len([d for d in os.listdir(rec + '/debs') if d.endswith('.deb')])
-        state = {'version': open('/usr/share/mwx7/version').read().strip(), 'packages': n, 'missing': len(want) - n}
+        try:
+            version = open('/usr/share/mwx7/version').read().strip()
+        except OSError:  # a damaged system must still be able to record what the recovery copy holds
+            version = ''
+        state = {'version': version, 'packages': n, 'missing': len(want) - n}
         # Settings reads this copy (it can't look inside @recovery) to say whether Repair and Reset are ready.
         os.makedirs('/var/lib/mwx7', exist_ok=True)
         for path in (rec + '/state.json', '/var/lib/mwx7/recovery.json'):
@@ -885,13 +889,22 @@ def reinstall(keep):
     top, iso = STATE + '/top', STATE + '/iso'
     for d in (top, iso):
         os.makedirs(d, exist_ok=True)
-    # The person only asks for Repair or Reset: a recovery copy that is missing or incomplete is completed first.
-    try:
-        st = json.load(open('/var/lib/mwx7/recovery.json'))
-    except (OSError, ValueError):
-        st = None
-    if not st or st.get('missing'):
+    # The person only asks for Repair or Reset: a recovery copy that is missing is completed first (needs internet). One
+    # that holds the ISO is used as it is, offline: the copy's own state decides (/var/lib/mwx7 may be what is broken);
+    # package files it lacks only mean those packages come back at the ISO's version.
+    with Recovery(root) as rec:
+        complete = os.path.exists(rec + '/mwx7.iso') and os.path.exists(rec + '/manifest.json')
+        try:
+            missing = json.load(open(rec + '/state.json')).get('missing', 0)
+        except (OSError, ValueError):
+            missing = 0
+    if not complete:
         recovery_prepare()
+    elif missing:
+        try:
+            recovery_prepare()
+        except (RuntimeError, OSError):
+            pass  # offline: go on with what the copy has
     with Recovery(root) as rec:
         if not os.path.exists(rec + '/manifest.json'):
             raise RuntimeError('MWX 7 could not be downloaded for this. Connect to the internet and try again.')
@@ -992,6 +1005,8 @@ def reinstall(keep):
             else:
                 chroot('grub-install', '--target=i386-pc', '/dev/' + sh('lsblk', '-no', 'PKNAME', root).strip())
             chroot('update-grub')
+            # A repaired system starts with a clean count (a Repair after failed starts must not be sent back by them).
+            subprocess.run(['chroot', TARGET, '/usr/share/mwx7/bin/mwx7-bootcount', 'clear'], capture_output=True)
             unmount_all()
             if not keep:
                 for sub in ('@home', '@log', '@cache'):
