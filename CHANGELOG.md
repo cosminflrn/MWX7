@@ -2,6 +2,20 @@
 
 Derived from the git history. Newest first.
 
+## v1.20.0
+- **Smoother in VMware and on PCs without a 3D driver**: dragging a window no longer redraws its title bar on every
+  mouse move, hovering the window buttons swaps ready-made images, and blur is now really off without acceleration
+- **Reader**: a PDF viewer (thumbnails, find, zoom, print), the default for PDF files
+- **Calendar**: month, week and day views, repeating events, reminders, .ics import and export; dots on the bar's calendar
+- **Explorer**: compressed (zip) folders — Send to → Compressed folder, Extract All…, open a .zip like a folder;
+  Restore previous versions of files (hourly snapshots of your files, Settings → Backup)
+- **Snipping Tool records the screen** (Shift+Super+R), with sound if you want
+- **Windows programs**: double-click an .exe and MWX 7 offers to run it with Bottles or find a Linux version
+- **Device firmware updates** (BIOS, SSD, docks) in Settings → Updates
+- **Terminal** in the MWX 7 look; first-start setup polished (Enter goes Next, clearer password messages)
+- Every release is now built and tested on GitHub: boot (BIOS, UEFI, Secure Boot), a full install, then a real sign-in
+  with screenshots of the desktop, Start menu and an app
+
 ## v1.19.0
 - **Start menu**: Recent items flyout (opens on hover), pin programs to the top of the list (right-click), and search
   now finds text inside your documents ("In file contents")
