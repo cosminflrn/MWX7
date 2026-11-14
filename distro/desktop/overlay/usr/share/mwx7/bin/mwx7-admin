@@ -71,7 +71,7 @@ FWUPD_DEVICE_ID = re.compile(r'[0-9a-f]{40}\Z')
 
 def firmware(args):
     """Settings -> Updates -> Device firmware. fwupd checks the vendor signature of every file itself; this only relays.
-    Never --force, never a file path: the update comes from fwupd's own (signed) metadata. It runs as root because writing
+    Never a file path: the update comes from fwupd's own (signed) metadata (--force on refresh only skips the age check). It runs as root because writing
     firmware needs it (the user's own D-Bus call would ask polkit anyway, but the password dialog is already ours)."""
     exe = shutil.which('fwupdmgr') or sys.exit('Firmware updates are not installed on this PC.')
     sys.exit(subprocess.run([exe] + args, env=dict(os.environ, LC_ALL='C', TERM='dumb')).returncode)

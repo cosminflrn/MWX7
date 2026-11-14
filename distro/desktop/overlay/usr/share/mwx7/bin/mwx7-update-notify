@@ -16,7 +16,8 @@ while :; do
   if [ "$count" -gt 0 ]; then echo "$count ${ours:--} $ready" > "$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"; else rm -f "$STATE"; fi
   # Device firmware: fwupd's own daily timer fetches the metadata, so asking the daemon here is local. One notification per
   # set of waiting updates (device id + version), then silence until something new appears. Never installs anything.
-  if command -v fwupdmgr >/dev/null 2>&1; then
+  fwtick=$(( ${fwtick:-0} + 1 ))
+  if [ $(( fwtick % 6 )) -eq 1 ] && command -v fwupdmgr >/dev/null 2>&1; then  # hourly: asking wakes the daemon
     fw=$(timeout 60 fwupdmgr get-updates --json 2>/dev/null | python3 -c '
 import json, sys
 try:
