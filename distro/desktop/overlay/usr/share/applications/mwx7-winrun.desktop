@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Run Windows programs
+Comment=Open a Windows program (.exe or .msi) with Bottles, or find a Linux version
+Exec=/usr/share/mwx7/bin/mwx7-app winrun %f
+Icon=/usr/share/mwx7/icons/exe.png
+NoDisplay=true
+Categories=System;
+StartupWMClass=org.mwx7.winrun
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/vnd.microsoft.portable-executable;application/x-dosexec;

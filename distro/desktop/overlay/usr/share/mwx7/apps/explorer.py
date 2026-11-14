@@ -146,6 +146,8 @@ def kind_icon(path):
     """MWX 7's own icon for a file, by what it is (the concept's Explorer does the same)."""
     if path.lower().endswith('.zip'):
         return 'zipfolder'  # a zip opens like a folder here (Windows 7's “Compressed (zipped) folder”)
+    if path.lower().endswith(('.exe', '.msi')):
+        return 'exe'  # a Windows program: double-clicking it opens "Run Windows programs"
     ctype, _u = Gio.content_type_guess(path, None)
     mime = Gio.content_type_get_mime_type(ctype) or ''
     if mime.startswith('image/'):

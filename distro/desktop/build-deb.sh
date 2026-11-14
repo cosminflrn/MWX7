@@ -109,6 +109,8 @@ for n in text-x-generic text-plain text-x-script application-x-shellscript; do i
 icon image mimetypes image-x-generic; icon audio mimetypes audio-x-generic; icon video mimetypes video-x-generic
 for n in package-x-generic application-x-archive application-zip application-x-compressed-tar; do icon archive mimetypes "$n"; done
 for n in application-octet-stream unknown application-x-generic; do icon file-blank mimetypes "$n"; done
+for n in application-x-ms-dos-executable application-x-msdownload application-x-msi application-vnd.microsoft.portable-executable application-x-dosexec; do
+  icon exe mimetypes "$n"; done
 icon explorer apps system-file-manager; icon explorer apps org.xfce.thunar; icon explorer apps thunar
 icon browser apps web-browser; icon settings apps preferences-system
 # What's new (Settings -> Updates): the newest section of CHANGELOG.md, bullets only.
