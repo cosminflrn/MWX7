@@ -660,7 +660,7 @@ def nvidia_driver():
         return later()
     try:
         nvidia.install(TARGET, lambda text: say('STEP', text))
-    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+    except Exception as e:  # anything at all: a graphics driver must never cost the person their installed system
         say('STEP', 'The NVIDIA driver follows at the first start')
         print('NVIDIA driver:', e, file=sys.stderr, flush=True)
         return later()
