@@ -86,7 +86,6 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
     wf::region_t cached_region;
 
     wf::dimensions_t size;
-    bool is_frameless = false;
 
     int current_thickness;
     int current_titlebar;
@@ -376,8 +375,7 @@ class simple_decoration_node_t : public wf::scene::node_t, public wf::pointer_in
         // The pending state: this runs as maximize/restore is requested, before Wayfire commits the new size, and the
         // frame must agree with the margins chosen for that size.
         const auto& state = _view.lock()->toplevel()->pending();
-        is_frameless = frameless(state);
-        if (is_frameless)
+        if (frameless(state))
         {
             current_thickness = 0;
             current_titlebar  = 0;
@@ -410,15 +408,6 @@ wf::simple_decorator_t::simple_decorator_t(wayfire_toplevel_view view)
 
     on_view_geometry_changed = [this] (auto)
     {
-        // Dragging a window lands here on every pointer motion, with only the position changed. Rebuilding the layout
-        // then made three new traffic lights (cairo drawing plus a fresh GL texture each, the old three deleted) per
-        // motion, and on VMware every texture is a surface created on the host. Same size, same frame: nothing to do.
-        const auto dims = wf::dimensions(this->view->get_geometry());
-        if ((dims == deco->size) && (frameless(this->view->toplevel()->pending()) == deco->is_frameless))
-        {
-            return;
-        }
-
         // Maximize and restore show up here once they are committed: the frame goes or comes back with them.
         deco->update_decoration_size();
         deco->resize(wf::dimensions(this->view->get_geometry()));
