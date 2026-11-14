@@ -110,6 +110,7 @@ WALLPAPERS = '/usr/share/mwx7/wallpapers'
 DEFAULT_WALL = '/usr/share/mwx7/wallpaper.jpg'
 # Fallbacks for the bar's and dock's heights until the compositor tells us (the surface covers the whole output).
 BAR_FALLBACK, DOCK_FALLBACK = 28, 72
+SCREEN_OFF = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-screen-off')  # kept by bin/mwx7-idle
 LIVE = '/usr/share/mwx7/live'  # live wallpaper loops: <name>.mp4, chosen by desktop.json's "live_wallpaper"
 # What the widget gallery lists, in the column's order: (id, title, one line about it)
 GADGET_INFO = [('clock', 'Clock', 'Analog clock with the date.'), ('calendar', 'Calendar', 'This month, today marked.'),
@@ -132,11 +133,16 @@ def wayfire(method, data=None):
 
 def wayfire_views():
     """Wayfire's window list (the same request the shell uses), or None when it cannot be asked."""
+    return wayfire_list('window-rules/list-views')
+
+
+def wayfire_list(method):
+    """The JSON list a Wayfire IPC request answers with, or None when it cannot be asked."""
     try:
         s = socket.socket(socket.AF_UNIX)
         s.settimeout(2)
         s.connect(os.environ.get('WAYFIRE_SOCKET', ''))
-        body = json.dumps({'method': 'window-rules/list-views', 'data': {}}).encode()
+        body = json.dumps({'method': method, 'data': {}}).encode()
         s.sendall(struct.pack('<I', len(body)) + body)
         buf = b''
         while len(buf) < 4:
@@ -880,13 +886,17 @@ class Desktop(Gtk.Application):
         self.fixed = Gtk.Fixed()
         # The live wallpaper is not drawn here: this surface only covers the area between bar and dock. It gets its own
         # full-screen surface on the background layer (see set_live); this one stays transparent over it.
-        self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
+        self.live_pic = None
+        self.live_still = None  # the clip's thumbnail under the video, so the layer is never empty before the first frame
         self.live_media = None
         self.live_win = None
         self.live_name = ''
         self.live_paused = False
+        self.live_ready = False  # the live layer is on screen: only then does this one turn transparent (no black gap)
+        self.live_gen = 0
         self.live_timer = 0
         self.live_soft = None
+        self.live_dpms = None  # watches the flag mwx7-idle keeps while the outputs are off
         self.gallery = None
         # The still wallpaper: a texture already scaled to the surface size (see load_wall), shown 1:1 so no draw scales it.
         self.wall_pic = Gtk.Picture(content_fit=Gtk.ContentFit.FILL, can_shrink=True, can_target=False, focusable=False,
@@ -998,9 +1008,12 @@ class Desktop(Gtk.Application):
                     Layer.set_monitor(self.win, main)  # remaps; also revives the layer when its screen was unplugged
                     self.win.present()
                     self.wall_size = (0, 0)  # the new output's size arrives with its configure; wallpaper redone then
-                if self.live_win is not None and Layer.get_monitor(self.live_win) != main:
-                    Layer.set_monitor(self.live_win, main)
-                    self.live_win.present()
+                if self.live_win is not None:
+                    lcur = Layer.get_monitor(self.live_win)
+                    if lcur is None or lcur not in mons or displays.connector(lcur) != displays.connector(main) \
+                            or not self.live_win.get_visible():
+                        Layer.set_monitor(self.live_win, main)  # the video follows the primary screen
+                        self.live_win.present()
             want = {displays.connector(m) or str(i): m for i, m in enumerate(mons) if m is not main}
             for name in [n for n in self.others if n not in want or self.others[n].monitor not in mons]:
                 self.others.pop(name).destroy()
@@ -1103,7 +1116,7 @@ class Desktop(Gtk.Application):
     def update_background(self):
         """Opaque desktop (CSS .opaque makes GTK send the opaque region, so the compositor skips what is beneath) while a
         still wallpaper is shown; transparent over the video layer while the live wallpaper plays."""
-        still = self.wall_ready and not self.live_win
+        still = self.wall_ready and not (self.live_win and self.live_ready)
         self.wall_pic.set_visible(bool(still))
         if still:
             self.win.add_css_class('opaque')
@@ -1756,83 +1769,150 @@ class Desktop(Gtk.Application):
         return any(w in name for w in ('llvmpipe', 'softpipe', 'software'))
 
     def stop_swaybg(self):
-        """swaybg is a background-layer surface too; two of them on one layer have no defined order, so it stops while
-        the video plays (and set_live('') starts it again). Returns True while the video is still wanted."""
-        if self.live_win:
+        """swaybg is a background-layer surface too; two of them on one layer have no defined order, so it stops once the
+        video layer is on screen (never before: it is what covers the screen until then)."""
+        if self.live_win and self.live_ready:
             subprocess.run(['pkill', '-u', str(os.getuid()), '-x', 'swaybg'])
         return False
+
+    def live_drop_media(self):
+        """Releases the pipeline for real (clear() closes the stream: decoder, buffers, textures), not only pauses it."""
+        if self.live_media:
+            m, self.live_media = self.live_media, None
+            if self.live_pic:
+                self.live_pic.set_paintable(None)
+            m.pause()
+            m.clear()
+
+    def live_close(self):
+        if self.live_win:
+            self.live_win.destroy()
+        self.live_win = self.live_pic = self.live_still = None
+        self.live_ready = False
+
+    def live_open(self):
+        w = Gtk.Window(application=self)
+        w.add_css_class('live-layer')
+        Layer.init_for_window(w)
+        mon = displays.pick_primary(displays.monitors(Gdk.Display.get_default()))
+        if mon is not None:
+            Layer.set_monitor(w, mon)  # the video plays on the primary screen; the others show the still picture
+        Layer.set_layer(w, Layer.Layer.BACKGROUND)
+        Layer.set_namespace(w, 'mwx7-live')
+        for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
+            Layer.set_anchor(w, e, True)
+        Layer.set_exclusive_zone(w, -1)  # -1: ignore the bar's and dock's strips, cover the whole output
+        Layer.set_keyboard_mode(w, Layer.KeyboardMode.NONE)
+        self.live_still = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True, can_target=False, focusable=False,
+                                      hexpand=True, vexpand=True)
+        self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True, can_target=False, focusable=False,
+                                    hexpand=True, vexpand=True)
+        box = Gtk.Overlay()
+        box.set_child(self.live_still)
+        box.add_overlay(self.live_pic)
+        w.set_child(box)
+        self.live_win = w
+        self.live_ready = False
+        gen = self.live_gen
+
+        def shown(*_a):
+            # The compositor needs a moment to show a new layer surface; the desktop layer stays opaque until then, so the
+            # screen never shows black, and swaybg only goes after.
+            def ready():
+                if gen == self.live_gen and self.live_win is w:
+                    self.live_ready = True
+                    self.update_background()
+                    self.stop_swaybg()
+                return False
+            GLib.timeout_add(400, ready)
+        w.connect('map', shown)
+        w.present()
 
     def set_live(self, name):
         """Play LIVE/<name>.mp4 looped and muted on a full-screen background layer surface of its own; '' (or a missing
         file, or software rendering) goes back to the still wallpaper."""
         path = os.path.join(LIVE, os.path.basename(name) + '.mp4') if name else ''
+        self.live_gen += 1  # forgets any "ready" timer of an earlier call
         if self.live_timer:
             GLib.source_remove(self.live_timer)
             self.live_timer = 0
-        if self.live_media:
-            self.live_media.pause()
-            self.live_pic.set_paintable(None)
-            self.live_media = None
+        self.live_drop_media()
         self.live_name = name
         was_live = self.live_win is not None
-        if name and os.path.isfile(path) and self.live_soft is None:
+        playable = bool(name) and os.path.isfile(path)
+        if playable and self.live_soft is None:
             self.live_soft = self.software_gl()
-        if not (name and os.path.isfile(path)) or self.live_soft:
-            if self.live_win:
-                self.live_win.destroy()
-                self.live_win = None
-            if was_live:  # bring the still wallpaper back (painted by this layer)
+        if not playable or self.live_soft:
+            self.live_close()
+            if was_live:  # bring the still wallpaper back (painted by this layer, which turns opaque again)
                 self.load_wall()
                 self.update_background()
             return
         if not self.live_win:
-            self.live_pic = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_target=False, focusable=False)
-            w = Gtk.Window(application=self)
-            w.add_css_class('live-layer')
-            Layer.init_for_window(w)
-            mon = displays.pick_primary(displays.monitors(Gdk.Display.get_default()))
-            if mon is not None:
-                Layer.set_monitor(w, mon)  # the video plays on the primary screen; the others show the still picture
-            Layer.set_layer(w, Layer.Layer.BACKGROUND)
-            Layer.set_namespace(w, 'mwx7-live')
-            for e in (Layer.Edge.TOP, Layer.Edge.BOTTOM, Layer.Edge.LEFT, Layer.Edge.RIGHT):
-                Layer.set_anchor(w, e, True)
-            Layer.set_exclusive_zone(w, -1)  # -1: ignore the bar's and dock's strips, cover the whole output
-            Layer.set_keyboard_mode(w, Layer.KeyboardMode.NONE)
-            w.set_child(self.live_pic)
-            self.live_win = w
-            w.present()
-            self.update_background()  # transparent over the video
+            self.live_open()
+        # The still of the same name is the clip's first frame (it is also its Settings thumbnail): shown until the video
+        # has a frame of its own, so there is no flash.
+        still = os.path.join(WALLPAPERS, os.path.basename(name) + '.jpg')
+        if os.path.isfile(still):
+            self.live_still.set_filename(still)
+            self.live_still.set_visible(True)
         media = Gtk.MediaFile.new_for_filename(path)
-        media.set_loop(True)
+        media.set_loop(True)  # the stream seeks back to 0 itself: no new pipeline per round
         media.set_muted(True)
         self.live_media = media
+        hid = []
+
+        def frame(m):
+            if m.is_prepared() and self.live_media is m and self.live_still:
+                self.live_still.set_visible(False)
+                self.live_still.set_paintable(None)
+                if hid:
+                    m.disconnect(hid.pop())
+        hid.append(media.connect('invalidate-contents', frame))
         self.live_pic.set_paintable(media)
         self.live_paused = False
         media.play()
-        # swaybg may still be starting at login: stop it now and again shortly after.
-        for secs in (0, 2, 6):
-            GLib.timeout_add_seconds(secs, self.stop_swaybg) if secs else self.stop_swaybg()
-        # A video nobody can see is wasted power: look every 2 s for a covering window or the lock screen.
+        self.update_background()  # (no change until the layer is on screen)
+        # A video nobody can see is wasted power: look every 2 s for a covering window, the lock screen or a dark screen;
+        # the flag mwx7-idle keeps for DPMS also wakes it at once.
         self.live_timer = GLib.timeout_add_seconds(2, self.live_check)
+        if self.live_dpms is None:
+            self.live_dpms = Gio.File.new_for_path(SCREEN_OFF).monitor_file(Gio.FileMonitorFlags.NONE, None)
+            self.live_dpms.connect('changed', lambda *_a: self.live_check() and False)
+        self.live_check()
 
     def live_check(self):
+        if not self.live_media:
+            return False
         area = getattr(self, 'width', 0) * getattr(self, 'height', 0)
-        def work():
-            locked = subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'swaylock'], capture_output=True).returncode == 0
-            views = wayfire_views()
+        main = displays.connector(displays.pick_primary(displays.monitors(Gdk.Display.get_default())))
+        dark = os.path.exists(SCREEN_OFF)  # DPMS: mwx7-idle keeps this flag while the outputs are off
 
-            def big(v):  # a window over ~80% of the desktop area hides the video as well as a maximized one does
-                g = v.get('geometry') if isinstance(v.get('geometry'), dict) else {}
-                return area > 0 and g.get('width', 0) * g.get('height', 0) >= 0.8 * area
-            covered = locked or any(
-                isinstance(v, dict) and v.get('mapped', True) and not v.get('minimized') and v.get('role', 'toplevel') == 'toplevel'
-                and (v.get('fullscreen') or v.get('maximized') or v.get('tiled-edges') == 15 or big(v)) for v in (views or []))
+        def work():
+            def running(*args):
+                return subprocess.run(['pgrep', '-u', str(os.getuid())] + list(args), capture_output=True).returncode == 0
+            covered = dark or running('-x', 'swaylock') or running('-f', '[m]wx7-lockscreen')
+            if not covered:
+                views = wayfire_views()
+                # Only windows on the screen that plays the video count (a maximized one on the other screen hides nothing).
+                oid = None
+                for o in (wayfire_list('window-rules/list-outputs') or []) if main else []:
+                    if isinstance(o, dict) and o.get('name') == main:
+                        oid = o.get('id')
+
+                def big(v):  # a window over ~80% of the desktop area hides the video as well as a maximized one does
+                    g = v.get('geometry') if isinstance(v.get('geometry'), dict) else {}
+                    return area > 0 and g.get('width', 0) * g.get('height', 0) >= 0.8 * area
+                covered = any(
+                    isinstance(v, dict) and v.get('mapped', True) and not v.get('minimized')
+                    and v.get('role', 'toplevel') == 'toplevel' and (oid is None or v.get('output-id', oid) == oid)
+                    and (v.get('fullscreen') or v.get('maximized') or v.get('tiled-edges') == 15 or big(v)) for v in (views or []))
             GLib.idle_add(self.live_apply, covered)
         threading.Thread(target=work, daemon=True).start()
         return True
 
     def live_apply(self, covered):
+        """PAUSED, not just hidden: a paused GStreamer pipeline decodes nothing and the layer is not redrawn."""
         if self.live_media and covered != self.live_paused:
             self.live_paused = covered
             self.live_media.pause() if covered else self.live_media.play()

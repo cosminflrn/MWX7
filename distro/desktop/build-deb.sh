@@ -28,15 +28,17 @@ cp -a "$REPO/public/media/avatars" "$S/avatars"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$S/wallpaper.jpg"
 cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" \
    "$REPO/public/media/pictures/"*.jpg "$S/wallpapers/"
-# Live wallpapers (Settings -> Wallpapers -> Live): the concept's loops, re-encoded to 720p, 24 fps, H.264 tuned for cheap decoding (a 1080p loop kept a core
-# busy in VMs), no audio, when
-# ffmpeg is there; the originals (also 1080p) otherwise. Each one's still (<name>.jpg above) is its poster.
+# Live wallpapers (Settings -> Wallpapers -> Live): the concept's loops, re-encoded to 720p/24 fps H.264 (High, 4:2:0, tuned
+# for cheap decoding: a 1080p loop kept a core busy in VMs), no audio. Each one's still (<name>.jpg above) is its thumbnail
+# and the picture shown until the first video frame. Without ffmpeg the originals (1080p) are shipped, with a warning.
 mkdir -p "$S/live"
 for n in meadow sierra; do
   if command -v ffmpeg >/dev/null; then
-    ffmpeg -v error -y -i "$REPO/public/media/wallpapers/$n.mp4" -an -vf "scale='min(1280,iw)':-2,fps=24" -c:v libx264 \
-      -preset veryfast -tune fastdecode -crf 26 -pix_fmt yuv420p -movflags +faststart "$S/live/$n.mp4"
+    ffmpeg -nostdin -v error -y -i "$REPO/public/media/wallpapers/$n.mp4" -an -vf "scale='min(1280,iw)':-2,fps=24" -c:v libx264 \
+      -profile:v high -preset veryfast -tune fastdecode -crf 26 -pix_fmt yuv420p -movflags +faststart "$S/live/$n.mp4"
+    [ -s "$S/live/$n.mp4" ] || { echo "live wallpaper $n: re-encode failed" >&2; exit 1; }
   else
+    echo "warning: no ffmpeg, shipping the original 1080p $n.mp4" >&2
     cp "$REPO/public/media/wallpapers/$n.mp4" "$S/live/$n.mp4"
   fi
 done
