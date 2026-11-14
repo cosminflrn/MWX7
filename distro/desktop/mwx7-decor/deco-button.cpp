@@ -97,19 +97,13 @@ void button_t::set_active(bool active)
 void button_t::render(const wf::render_target_t& fb, wf::geometry_t geometry,
     wf::geometry_t scissor)
 {
-    if (!current_texture)
-    {
-        return;
-    }
-
     OpenGL::render_begin(fb);
     fb.logic_scissor(scissor);
-    OpenGL::render_texture(current_texture->tex, fb, geometry, {1, 1, 1, 1},
+    OpenGL::render_texture(button_texture.tex, fb, geometry, {1, 1, 1, 1},
         OpenGL::TEXTURE_TRANSFORM_INVERT_Y);
     OpenGL::render_end();
 
-    // running() first: fading() reads an option string, and this runs for every button on every frame of a drag.
-    if (this->hover.running() && fading())
+    if (fading() && this->hover.running())
     {
         add_idle_damage();
     }
@@ -119,31 +113,14 @@ void button_t::update_texture()
 {
     // Redraw the icon only when it would look different: the hover fade in 12 steps, plus active and type. Drawing
     // with cairo and uploading the texture on every animation frame was the costly part of hovering.
-    const int step = (int)std::lround(hover_value() * 12);
-    const int key  = theme.get_title_height() * 100000 + step * 64 + (is_active ? 32 : 0) + (int)type % 32;
-    if ((key == last_texture_key) && current_texture)
+    const int key = theme.get_title_height() * 100000 + (int)std::lround(hover_value() * 12) * 64 +
+        (is_active ? 32 : 0) + (int)type % 32;
+    if ((key == last_texture_key) && (button_texture.tex != (GLuint)-1))
     {
         return;
     }
 
     last_texture_key = key;
-    // The resting looks are drawn at their exact level (as before); only in-between fade frames are rounded to steps.
-    const int rest_hovered = (int)std::lround(HOVERED * 12), rest_pressed = (int)std::lround(PRESSED * 12);
-    const bool rest = (step == 0) || (step == rest_hovered) || (step == rest_pressed);
-    wf::simple_texture_t *target = &fade_texture;
-    if (rest)
-    {
-        auto& slot = rest_textures[key];
-        if (slot)
-        {
-            current_texture = slot.get();
-            return;
-        }
-
-        slot   = std::make_unique<wf::simple_texture_t>();
-        target = slot.get();
-    }
-
     /**
      * We render at 100% resolution
      * When uploading the texture, this gets scaled
@@ -154,16 +131,15 @@ void button_t::update_texture()
         .width  = 1.0 * theme.get_title_height(),
         .height = 1.0 * theme.get_title_height(),
         .border = 1.0,
-        .hover_progress = !rest ? hover_value() : step == 0 ? NORMAL : step == rest_hovered ? HOVERED : PRESSED,
+        .hover_progress = hover_value(),
         .active = is_active,
     };
 
     auto surface = theme.get_button_surface(type, state);
     OpenGL::render_begin();
-    cairo_surface_upload_to_texture(surface, *target);
+    cairo_surface_upload_to_texture(surface, this->button_texture);
     OpenGL::render_end();
     cairo_surface_destroy(surface);
-    current_texture = target;
 }
 
 void button_t::add_idle_damage()
