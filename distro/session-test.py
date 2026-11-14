@@ -129,7 +129,7 @@ def pixels(img, step=2):
 
 def find_lights(before, after):
     """The window's traffic lights. Red is the topmost new red blob (nothing else red appears with a window). Yellow and green
-    are then searched only in the title bar row to the right of red: the busy widget background of the desktop (yellow and green
+    are then searched only in the title bar row to the left of red (green, yellow, red): the busy widget background of the desktop (yellow and green
     pixels all over it) confused a whole-screen search."""
     w, h, b = before
     red_p = lambda r, g, bl: r > 190 and g < 100 and bl < 100  # noqa: E731
@@ -153,7 +153,7 @@ def find_lights(before, after):
     for name, p in preds.items():
         px, py = [], []
         for y in range(max(0, ry - 8), ry + 9):
-            for x in range(rx + 6, min(w, rx + 90)):
+            for x in range(max(0, rx - 90), rx - 6):
                 i = (y * w + x) * 3
                 if p(d[i], d[i + 1], d[i + 2]):
                     px.append(x)
