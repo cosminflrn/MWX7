@@ -273,6 +273,7 @@ class Settings(Gtk.Application):
             ('mouse', 'Mouse', 'settings', self.page_mouse),
             ('access', 'Ease of Access', 'settings', self.page_access),
             ('language', 'Language & region', 'text', self.page_language),
+            ('network', 'Network', 'computer', self.page_network),
             ('bluetooth', 'Bluetooth', 'bluetooth', self.page_bluetooth),
             ('printers', 'Printers', 'printer', self.page_printers),
             ('account', 'User account', 'user', self.page_account),
@@ -1252,6 +1253,430 @@ class Settings(Gtk.Application):
         scan.connect('clicked', do_scan)
         refresh()
         return p
+
+    # ---- Network (NetworkManager through nmcli, the way the bar's network flyout talks to it) -------------------------
+    NM_TYPES = {'802-11-wireless': 'Wi-Fi', '802-3-ethernet': 'Ethernet', 'vpn': 'VPN', 'wireguard': 'WireGuard'}
+
+    @staticmethod
+    def nm(args, timeout=30):
+        """nmcli with its terse output: (exit code, stdout, stderr). Code -1 when nmcli is missing or did not answer."""
+        try:
+            r = subprocess.run(['nmcli'] + args, capture_output=True, text=True, timeout=timeout)
+            return r.returncode, r.stdout, r.stderr.strip()
+        except OSError:
+            return -1, '', 'NetworkManager (nmcli) is not installed.'
+        except subprocess.TimeoutExpired:
+            return -1, '', 'NetworkManager did not answer in time.'
+
+    @staticmethod
+    def nm_split(line):
+        """One line of nmcli -t: fields are separated by ':' and a ':' or '\\' inside a value is escaped with '\\'."""
+        out, cur, i = [], '', 0
+        while i < len(line):
+            c = line[i]
+            if c == '\\' and i + 1 < len(line):
+                cur += line[i + 1]
+                i += 2
+                continue
+            if c == ':':
+                out.append(cur)
+                cur = ''
+            else:
+                cur += c
+            i += 1
+        out.append(cur)
+        return out
+
+    def nm_connections(self):
+        """Every saved connection of a kind we show: [(name, uuid, type, autoconnect, active)], None if NM did not answer."""
+        rc, out, _e = self.nm(['-t', '-f', 'NAME,UUID,TYPE,AUTOCONNECT,ACTIVE', 'connection', 'show'])
+        if rc != 0:
+            return None
+        res = []
+        for line in out.splitlines():
+            f = self.nm_split(line)
+            if len(f) >= 5 and f[2] in self.NM_TYPES:
+                res.append((f[0], f[1], f[2], f[3] == 'yes', f[4] == 'yes'))
+        return res
+
+    def nm_details(self):
+        """The connection in use: [(label, value)] from the first connected Wi-Fi or Ethernet device, [] when offline."""
+        rc, out, _e = self.nm(['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device'])
+        dev = None
+        for line in out.splitlines() if rc == 0 else []:
+            f = self.nm_split(line)
+            if len(f) >= 4 and f[2] == 'connected' and f[1] in ('wifi', 'ethernet'):
+                dev = f
+                break
+        if not dev:
+            return []
+        rc, out, _e = self.nm(['-t', '-f', 'GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS', 'device', 'show', dev[0]])
+        vals = {}
+        for line in out.splitlines():
+            k, _s, v = line.partition(':')
+            vals.setdefault(re.sub(r'\[\d+\]$', '', k), []).append(v.replace('\\:', ':'))
+        speed = ''
+        if dev[1] == 'ethernet':
+            try:
+                with open(f'/sys/class/net/{dev[0]}/speed') as fh:
+                    mbit = int(fh.read().strip())
+                speed = f'{mbit} Mbit/s' if mbit > 0 else ''
+            except (OSError, ValueError):
+                pass
+        else:
+            rc, out, _e = self.nm(['-t', '-f', 'IN-USE,RATE', 'device', 'wifi', 'list', 'ifname', dev[0]])
+            for line in out.splitlines():
+                f = self.nm_split(line)
+                if f and f[0] == '*' and len(f) > 1:
+                    speed = f[1]
+        first = lambda k: ', '.join(vals.get(k, [])) or '–'
+        return [('Connection', dev[3] or dev[0]), ('Type', 'Wi-Fi' if dev[1] == 'wifi' else 'Ethernet'),
+                ('IP address', first('IP4.ADDRESS')), ('Gateway', first('IP4.GATEWAY')), ('DNS', first('IP4.DNS')),
+                ('MAC address', first('GENERAL.HWADDR')), ('Speed', speed or '–')]
+
+    def nm_conn(self, uuid):
+        """The editable settings of one saved connection."""
+        keys = ['connection.autoconnect', 'connection.metered', 'ipv4.method', 'ipv4.addresses', 'ipv4.gateway', 'ipv4.dns']
+        rc, out, _e = self.nm(['-t', '-f', ','.join(keys), 'connection', 'show', uuid])
+        d = {}
+        for line in out.splitlines() if rc == 0 else []:
+            k, _s, v = line.partition(':')
+            d[k] = v.replace('\\:', ':')
+        return d
+
+    def nm_modify_and_up(self, uuid, cmd):
+        """Change a connection, then re-activate it when it is up so the change takes effect at once."""
+        res = self.nm(cmd)
+        if res[0] == 0:
+            rc, out, _e = self.nm(['-t', '-f', 'UUID', 'connection', 'show', '--active'])
+            if uuid in out.split():
+                res = self.nm(['connection', 'up', 'uuid', uuid], 60)
+        return res
+
+    @staticmethod
+    def clean_err(err):
+        lines = err.strip().splitlines()
+        return re.sub(r'^Error:\s*', '', lines[-1]) if lines else 'That did not work.'
+
+    def page_network(self):
+        p = page('Network', 'Wi-Fi and wired connections, VPN and airplane mode.')
+        if not shutil.which('nmcli'):
+            p.append(note('Network management is not available: NetworkManager is not installed on this PC.'))
+            return p
+        status = note('')
+        quiet = {'n': 0}  # >0 while the page sets a switch itself, so that is not taken for a click
+
+        def bg(work, then=None, msg=None):
+            """Run work() off the UI thread, then then(result) on it; msg is shown while it runs."""
+            if msg:
+                status.set_label(msg)
+
+            def th():
+                res = work()
+                if then:
+                    GLib.idle_add(lambda: then(res) and False)
+            threading.Thread(target=th, daemon=True).start()
+
+        def result(res, ok_text):
+            status.set_label(ok_text if res[0] == 0 else self.clean_err(res[2]))
+            reload()
+
+        def saved(res):
+            result(res, 'Saved.')
+
+        # -- Airplane mode
+        p.append(section('Airplane mode'))
+        air = Gtk.Switch(valign=Gtk.Align.CENTER)
+        r = Gtk.Box(spacing=12)
+        r.append(Gtk.Label(label='Turn off all wireless', xalign=0, width_chars=20, css_classes=['key']))
+        r.append(air)
+        r.append(Gtk.Label(label='Wi-Fi, mobile broadband and Bluetooth', css_classes=['note']))
+        p.append(r)
+
+        def on_air(sw, _p):
+            if quiet['n']:
+                return
+            on = sw.get_active()
+
+            def work():
+                if on:
+                    out = self.nm(['radio', 'all', 'off'])
+                    run(['rfkill', 'block', 'all'])
+                else:
+                    run(['rfkill', 'unblock', 'all'])
+                    out = self.nm(['radio', 'all', 'on'])
+                return out
+            bg(work, lambda res: result(res, 'Airplane mode is on.' if on else 'Wireless is back on.'), 'Please wait…')
+        air.connect('notify::active', on_air)
+
+        # -- This connection
+        p.append(section('This connection'))
+        det = Gtk.Grid(column_spacing=14, row_spacing=3)
+        p.append(det)
+
+        def show_details(rows):
+            while det.get_first_child():
+                det.remove(det.get_first_child())
+            if not rows:
+                det.attach(note('Not connected to a network.'), 0, 0, 2, 1)
+            for i, (k, v) in enumerate(rows):
+                det.attach(Gtk.Label(label=k, xalign=0, css_classes=['key']), 0, i, 1, 1)
+                det.attach(Gtk.Label(label=v, xalign=0, selectable=True), 1, i, 1, 1)
+
+        # -- Known networks
+        p.append(section('Known networks'))
+        known = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        p.append(known)
+        hid = Gtk.Button(label='Join a hidden network…', halign=Gtk.Align.START, margin_top=4)
+        p.append(hid)
+
+        # -- VPN
+        p.append(section('VPN'))
+        vpnbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        p.append(vpnbox)
+        imp = Gtk.Button(label='Import a VPN file…', halign=Gtk.Align.START, margin_top=4)
+        p.append(imp)
+        p.append(note('WireGuard (.conf) and OpenVPN (.ovpn) files are supported.'))
+        p.append(status)
+
+        def switch(on, key, uuid):
+            sw = Gtk.Switch(active=on, valign=Gtk.Align.CENTER)
+            sw.connect('notify::active', lambda s, _p: bg(
+                lambda: self.nm(['connection', 'modify', 'uuid', uuid, key, 'yes' if s.get_active() else 'no']), saved))
+            return sw
+
+        def conn_row(name, uuid, kind, active, vpn):
+            exp = Gtk.Expander()
+            head = Gtk.Box(spacing=8)
+            head.append(Gtk.Label(label=name, xalign=0, hexpand=True, ellipsize=3))
+            head.append(Gtk.Label(label=kind, css_classes=['note']))
+            if active:
+                head.append(Gtk.Label(label='Connected', css_classes=['pill', 'ok']))
+            exp.set_label_widget(head)
+            body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=22, margin_top=6, margin_bottom=8)
+            exp.set_child(body)
+            acts = Gtk.Box(spacing=8)
+            toggle = Gtk.Button(label='Disconnect' if active else 'Connect')
+            toggle.connect('clicked', lambda *_a: bg(
+                lambda: self.nm(['connection', 'down' if active else 'up', 'uuid', uuid], 60),
+                lambda res: result(res, 'Disconnected.' if active else f'Connected to {name}.'), 'Please wait…'))
+            acts.append(toggle)
+            if kind == 'Wi-Fi':
+                pw = Gtk.Button(label='Show password…')
+                pw.connect('clicked', lambda *_a: show_password(name, uuid))
+                acts.append(pw)
+            forget = Gtk.Button(label='Remove' if vpn else 'Forget', css_classes=['destructive-action'])
+            forget.connect('clicked', lambda *_a: bg(lambda: self.nm(['connection', 'delete', 'uuid', uuid]),
+                                                    lambda res: result(res, f'{name} removed.')))
+            acts.append(forget)
+            body.append(acts)
+            loaded = [False]
+
+            def fill(d):
+                if not d:
+                    body.append(note('The settings of this connection could not be read.'))
+                    return
+                body.append(field('Connect automatically', switch(d.get('connection.autoconnect') != 'no', 'connection.autoconnect', uuid), 22))
+                if vpn:
+                    return
+                metered = Gtk.Switch(active=d.get('connection.metered') == 'yes', valign=Gtk.Align.CENTER)
+                # "unknown" hands the decision back to NetworkManager (it guesses: a phone's hotspot is metered).
+                metered.connect('notify::active', lambda s, _p: bg(
+                    lambda: self.nm(['connection', 'modify', 'uuid', uuid, 'connection.metered',
+                                     'yes' if s.get_active() else 'unknown']), saved))
+                body.append(field('Metered connection', metered, 22))
+                body.append(note('Updates are not downloaded in the background on a metered connection (a phone hotspot, a data plan).'))
+                body.append(self.ipv4_editor(uuid, d, bg, result))
+
+            def opened(*_a):
+                if exp.get_expanded() and not loaded[0]:
+                    loaded[0] = True
+                    bg(lambda: self.nm_conn(uuid), fill)
+            exp.connect('notify::expanded', opened)
+            return exp
+
+        def show_lists(res):
+            nets, vpns, rows, off = res
+            show_details(rows)
+            for box, items, vpn in ((known, nets, False), (vpnbox, vpns, True)):
+                while box.get_first_child():
+                    box.remove(box.get_first_child())
+                if items is None:
+                    box.append(note('NetworkManager is not running, so connections cannot be shown.'))
+                    continue
+                for it in items:
+                    box.append(conn_row(it[0], it[1], it[2] if vpn else self.NM_TYPES[it[2]], it[3] if vpn else it[4], vpn))
+                if not items:
+                    box.append(note('No VPN yet. Import a file from your VPN provider.' if vpn else 'No saved networks yet.'))
+            hid.set_sensitive(nets is not None)
+            imp.set_sensitive(nets is not None)
+            quiet['n'] += 1
+            air.set_active(off)
+            quiet['n'] -= 1
+            return False
+
+        def read():
+            conns = self.nm_connections()
+            nets = [c for c in conns if c[2] in ('802-11-wireless', '802-3-ethernet')] if conns is not None else None
+            # A VPN row is (name, uuid, kind, active): 'active' is in the same slot as the others' autoconnect flag shifted by one.
+            vpns = [(c[0], c[1], self.NM_TYPES[c[2]], c[4]) for c in conns if c[2] in ('vpn', 'wireguard')] if conns is not None else None
+            rc, out, _e = self.nm(['-t', '-f', 'WIFI', 'radio'])
+            off = out.strip() == 'disabled' or 'Soft blocked: yes' in run(['rfkill', 'list', 'wifi'])
+            return nets, vpns, self.nm_details(), off
+
+        def reload():
+            bg(read, show_lists)
+
+        def show_password(name, uuid):
+            dlg = self.small_window('Wi-Fi password', 'settings')
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=16, margin_bottom=14,
+                          margin_start=18, margin_end=18)
+            box.append(Gtk.Label(label=f'Show the saved password of {name}?', xalign=0))
+            box.append(note('Anyone who can see your screen will be able to read it.'))
+            out = Gtk.Label(xalign=0, selectable=True)
+            msg = note('')
+            btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+            cancel, ok = Gtk.Button(label='Close'), Gtk.Button(label='Show password')
+            ok.add_css_class('suggested-action')
+            cancel.connect('clicked', lambda *_a: dlg.close())
+
+            def go(*_a):
+                ok.set_sensitive(False)
+
+                def done(res):
+                    if res[0] == 0 and res[1].strip():
+                        out.set_label(res[1].strip())
+                        msg.set_label('')
+                    else:
+                        msg.set_label('This network has no saved password.' if res[0] == 0 else self.clean_err(res[2]))
+                        ok.set_sensitive(True)
+                # --show-secrets works for the user's own connections; NetworkManager refuses it for anyone else's.
+                bg(lambda: self.nm(['--show-secrets', '-g', '802-11-wireless-security.psk', 'connection', 'show', 'uuid', uuid]), done)
+            ok.connect('clicked', go)
+            btns.append(cancel)
+            btns.append(ok)
+            for w in (out, msg, btns):
+                box.append(w)
+            dlg.set_child(box)
+            dlg.present()
+
+        def hidden(*_a):
+            dlg = self.small_window('Join a hidden network', 'settings')
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14,
+                          margin_start=18, margin_end=18)
+            ssid = Gtk.Entry(placeholder_text='Network name', width_chars=28)
+            sec = Gtk.DropDown.new_from_strings(['WPA / WPA2 / WPA3 (password)', 'No security'])
+            key = Gtk.PasswordEntry(show_peek_icon=True)
+            msg = note('')
+            box.append(field('Network name', ssid, 14))
+            box.append(field('Security', sec, 14))
+            box.append(field('Password', key, 14))
+            box.append(msg)
+            btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+            cancel, ok = Gtk.Button(label='Cancel'), Gtk.Button(label='Connect')
+            ok.add_css_class('suggested-action')
+            cancel.connect('clicked', lambda *_a: dlg.close())
+
+            def go(*_a):
+                name, pw = ssid.get_text().strip(), key.get_text()
+                secure = sec.get_selected() == 0
+                if not name or (secure and len(pw) < 8):
+                    msg.set_label('Type the network name' + (' and a password of at least 8 characters.' if secure else '.'))
+                    return
+                ok.set_sensitive(False)
+                msg.set_label('Connecting…')
+                cmd = ['device', 'wifi', 'connect', name, 'hidden', 'yes'] + (['password', pw] if secure else [])
+
+                def done(res):
+                    if res[0] == 0:
+                        dlg.close()
+                        result(res, f'Connected to {name}.')
+                    else:
+                        msg.set_label(self.clean_err(res[2]))
+                        ok.set_sensitive(True)
+                bg(lambda: self.nm(cmd, 60), done)
+            ok.connect('clicked', go)
+            btns.append(cancel)
+            btns.append(ok)
+            box.append(btns)
+            dlg.set_child(box)
+            dlg.present()
+        hid.connect('clicked', hidden)
+
+        def do_import(*_a):
+            fd = Gtk.FileDialog(title='Import a VPN file')
+            flt = Gtk.FileFilter(name='VPN files (.conf, .ovpn)')
+            for pat in ('*.conf', '*.ovpn'):
+                flt.add_pattern(pat)
+            store = Gio.ListStore.new(Gtk.FileFilter)
+            store.append(flt)
+            fd.set_filters(store)
+
+            def chosen(d, res):
+                try:
+                    path = d.open_finish(res).get_path()
+                except GLib.Error:
+                    return  # cancelled
+                kind = {'.conf': 'wireguard', '.ovpn': 'openvpn'}.get(os.path.splitext(path)[1].lower())
+                if not kind:
+                    status.set_label('Choose a WireGuard .conf or an OpenVPN .ovpn file.')
+                    return
+                bg(lambda: self.nm(['connection', 'import', 'type', kind, 'file', path]),
+                   lambda res: result(res, 'VPN imported.'), 'Importing…')
+            fd.open(self.get_active_window(), None, chosen)
+        imp.connect('clicked', do_import)
+        reload()
+        return p
+
+    def ipv4_editor(self, uuid, d, bg, result):
+        """Automatic or fixed IPv4 address, gateway and DNS of one connection (nmcli connection modify ipv4.*)."""
+        import ipaddress
+        v = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6)
+        v.append(Gtk.Label(label='IPv4', xalign=0, css_classes=['sec-title']))
+        manual = d.get('ipv4.method') == 'manual'
+        mode = Gtk.DropDown.new_from_strings(['Automatic (DHCP)', 'Manual'])
+        mode.set_selected(1 if manual else 0)
+        addr = Gtk.Entry(text=d.get('ipv4.addresses', '').split(',')[0].strip() if manual else '',
+                         placeholder_text='192.168.1.50/24', width_chars=24)
+        gw = Gtk.Entry(text=d.get('ipv4.gateway', '').replace('--', ''), placeholder_text='192.168.1.1', width_chars=24)
+        dns = Gtk.Entry(text=d.get('ipv4.dns', '').replace('--', '').replace(',', ', '), placeholder_text='1.1.1.1, 8.8.8.8',
+                        width_chars=24)
+        msg = note('')
+        for lab, w in (('Address mode', mode), ('IP address', addr), ('Gateway', gw), ('DNS servers', dns)):
+            v.append(field(lab, w, 22))
+
+        def sync(*_a):
+            addr.set_sensitive(mode.get_selected() == 1)
+            gw.set_sensitive(mode.get_selected() == 1)
+        mode.connect('notify::selected', sync)
+        sync()
+        save = Gtk.Button(label='Apply', halign=Gtk.Align.START)
+
+        def go(*_a):
+            try:
+                servers = [s for s in re.split(r'[,\s]+', dns.get_text().strip()) if s]
+                for s in servers:
+                    ipaddress.IPv4Address(s)
+                cmd = ['connection', 'modify', 'uuid', uuid, 'ipv4.dns', ' '.join(servers),
+                       'ipv4.ignore-auto-dns', 'yes' if servers and mode.get_selected() == 0 else 'no']
+                if mode.get_selected() == 1:
+                    text = addr.get_text().strip()
+                    iface = ipaddress.IPv4Interface(text if '/' in text else text + '/24')
+                    g = gw.get_text().strip()
+                    if g:
+                        ipaddress.IPv4Address(g)
+                    cmd += ['ipv4.method', 'manual', 'ipv4.addresses', str(iface), 'ipv4.gateway', g]
+                else:
+                    cmd += ['ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']
+            except ValueError:
+                msg.set_label('Check the addresses: they should look like 192.168.1.50 (add /24 for the subnet).')
+                return
+            msg.set_label('')
+            bg(lambda: self.nm_modify_and_up(uuid, cmd), lambda res: result(res, 'Saved.'))
+        save.connect('clicked', go)
+        v.append(save)
+        v.append(msg)
+        return v
 
     # ---- Printers ---------------------------------------------------------------------------------------------------
     PRINTER_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,39}\Z')
