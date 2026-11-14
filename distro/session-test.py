@@ -7,6 +7,7 @@ usage: session-test.py QMP_SOCKET SERIAL_LOG OUT_DIR [SCALE]   (SCALE multiplies
 """
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -67,6 +68,14 @@ class Qmp:
         self.pos = (x, y)
 
 
+def click(q, x, y, size):
+    q.move(x, y, size, steps=4)
+    time.sleep(0.3)
+    for down in (True, False):
+        q.cmd('input-send-event', events=[{'type': 'btn', 'data': {'button': 'left', 'down': down}}])
+        time.sleep(0.1)
+
+
 def read_ppm(path):
     with open(path, 'rb') as f:
         data = f.read()
@@ -119,28 +128,104 @@ def pixels(img, step=2):
 
 
 def find_lights(before, after):
-    """The window's traffic lights: saturated red/yellow/green blobs that were not in the frame before the app opened."""
+    """The window's traffic lights. Red is the topmost new red blob (nothing else red appears with a window). Yellow and green
+    are then searched only in the title bar row to the right of red: the busy widget background of the desktop (yellow and green
+    pixels all over it) confused a whole-screen search."""
     w, h, b = before
-    preds = {
-        'red': lambda r, g, bl: r > 190 and g < 100 and bl < 100,
-        'yellow': lambda r, g, bl: r > 200 and g > 160 and bl < 90,
-        'green': lambda r, g, bl: g > 150 and r < 110 and bl < 110,
-    }
+    red_p = lambda r, g, bl: r > 190 and g < 100 and bl < 100  # noqa: E731
+    xs, ys = [], []
+    for x, y, r, g, bl in pixels(after):
+        i = (y * w + x) * 3
+        if red_p(r, g, bl) and not red_p(b[i], b[i + 1], b[i + 2]) and y < h * 0.7:
+            xs.append(x)
+            ys.append(y)
     found = {}
+    log(f'traffic light red: {len(xs)} candidate pixels')
+    if len(xs) < 12:
+        return found
+    top = min(ys)
+    sel = [(x, y) for x, y in zip(xs, ys) if y < top + 30]
+    rx, ry = sum(x for x, _ in sel) // len(sel), sum(y for _, y in sel) // len(sel)
+    found['red'] = (rx, ry)
+    d = after[2]
+    preds = {'yellow': lambda r, g, bl: r > 200 and g > 160 and bl < 90,
+             'green': lambda r, g, bl: g > 150 and r < 110 and bl < 110}
     for name, p in preds.items():
-        xs, ys = [], []
-        for x, y, r, g, bl in pixels(after):
-            i = (y * w + x) * 3
-            if p(r, g, bl) and not p(b[i], b[i + 1], b[i + 2]) and y < h * 0.7:
-                xs.append(x)
-                ys.append(y)
-        if len(xs) >= 12:
-            # The topmost blob: a window's title bar is above anything else coloured that appeared with it.
-            top = min(ys)
-            sel = [(x, y) for x, y in zip(xs, ys) if y < top + 30]
-            found[name] = (sum(x for x, _ in sel) // len(sel), sum(y for _, y in sel) // len(sel))
-        log(f'traffic light {name}: {len(xs)} candidate pixels -> {found.get(name)}')
+        px, py = [], []
+        for y in range(max(0, ry - 8), ry + 9):
+            for x in range(rx + 6, min(w, rx + 90)):
+                i = (y * w + x) * 3
+                if p(d[i], d[i + 1], d[i + 2]):
+                    px.append(x)
+                    py.append(y)
+        if len(px) >= 12:
+            found[name] = (sum(px) // len(px), sum(py) // len(py))
+        log(f'traffic light {name}: {len(px)} candidate pixels in the title bar row -> {found.get(name)}')
     return found
+
+
+def states():
+    return [l for l in serial_text().split('\n') if l.startswith('MWX7-SESSION-STATE')]
+
+
+tb_seen = 0
+crashed = {}   # app -> first traceback lines
+shots = []     # (file, what)
+
+
+def traceback_excerpt():
+    lines = serial_text().split('\n')
+    idx = [i for i, l in enumerate(lines) if 'Traceback' in l]
+    if not idx:
+        return ''
+    return '\n'.join(lines[idx[-1]: idx[-1] + 14])
+
+
+def check_app(label, mark):
+    """After an app was open for a while: wait for the next session-marker report (every 10 s) and see whether the
+    traceback count in the shell/Wayfire logs grew; if so the app (or the shell reacting to it) crashed."""
+    global tb_seen
+    end = time.time() + 16 * SCALE
+    while time.time() < end and len(states()) <= mark:
+        time.sleep(1)
+    st = states()
+    if len(st) <= mark:
+        log(f'{label}: no marker report to check')
+        return
+    m = re.search(r'tracebacks=(\d+)', st[-1])
+    n = int(m.group(1)) if m else 0
+    if n > tb_seen:
+        crashed[label] = traceback_excerpt()
+        problems.append(f'{label}: a Python traceback appeared while it was open ({n - tb_seen} new)')
+        log(f'{label}: CRASH\n{crashed[label]}')
+    else:
+        log(f'{label}: no new traceback')
+    tb_seen = max(tb_seen, n)
+
+
+def open_app(q, label, query, name, wait=8):
+    """Start menu -> type the query -> Enter, one screenshot, check the logs, Alt+F4."""
+    q.key('meta_l')
+    time.sleep(2.5 * SCALE)
+    q.type(query)
+    time.sleep(1.5 * SCALE)
+    q.key('ret')
+    time.sleep(wait * SCALE)
+    shot(q, name)
+    shots.append((name + '.png', label))
+    check_app(label, len(states()))
+    q.key('alt', 'f4')
+    time.sleep(2 * SCALE)
+
+
+def flyout(q, label, x, y, name, size):
+    click(q, x, y, size)
+    time.sleep(2.5 * SCALE)
+    shot(q, name)
+    shots.append((name + '.png', label))
+    check_app(label, len(states()))
+    click(q, x, y, size)  # a second click on the same button closes the flyout
+    time.sleep(1.5 * SCALE)
 
 
 def main():
@@ -162,6 +247,10 @@ def main():
     q.key('alt', 'f4')
     time.sleep(3 * SCALE)
     desktop = shot(q, '01-desktop')
+    global tb_seen
+    st = states()
+    m = re.search(r'tracebacks=(\d+)', st[-1]) if st else None
+    tb_seen = int(m.group(1)) if m else 0  # what the shell logged before the tour is not an app's fault
     if desktop:
         q.move(desktop[0] // 2, desktop[1] // 2, size=(desktop[0], desktop[1]), steps=1)  # the pointer must exist for hovering
     q.key('meta_l')
@@ -186,8 +275,31 @@ def main():
             q.move(*lights[colour], size=(app[0], app[1]))
             time.sleep(1.5 * SCALE)
             shot(q, f'04-hover-{name}')
-    # Move away so the final state is quiet.
+    # Move away, close Notepad, then the tour of the main apps.
     q.move(app[0] // 2, app[1] // 2, size=(app[0], app[1]), steps=3)
+    for f, what in (('03-notepad.png', 'Notepad'), ('04-hover-close.png', 'Notepad close light'),
+                    ('04-hover-minimize.png', 'Notepad minimize light'), ('04-hover-maximize.png', 'Notepad maximize light')):
+        if os.path.exists(os.path.join(OUT, f)):
+            shots.append((f, what))
+    check_app('Notepad', len(states()))
+    q.key('alt', 'f4')
+    time.sleep(3 * SCALE)
+    size = (app[0], app[1])
+    # Apps by Start search; "display" and "updates" are Settings pages (search lists them under Settings).
+    for i, (label, query) in enumerate((
+            ('Settings', 'settings'), ('Settings: Display', 'display'), ('Settings: Updates', 'updates'),
+            ('My Computer', 'my computer'), ('Reader', 'reader'), ('Calendar', 'calendar'), ('Task Manager', 'task manager'),
+            ('Get Apps', 'get apps'), ('Paint', 'paint'), ('Snipping Tool', 'snipping tool'), ('Terminal', 'terminal')), 5):
+        open_app(q, label, query, f'{i:02d}-{re.sub("[^a-z]+", "-", label.lower()).strip("-")}')
+    # Snipping Tool may leave its capture overlay up (Escape ends it); make sure the bar is reachable.
+    q.key('esc')
+    time.sleep(1 * SCALE)
+    # The bar's clock flyout and the notification centre have no keyboard shortcut: click them (bar on top, right-aligned:
+    # ... clock, bell).
+    w = size[0]
+    flyout(q, 'Clock flyout', w - 95, 14, '16-clock-flyout', size)
+    flyout(q, 'Notification center', w - 18, 14, '17-notification-center', size)
+    q.move(w // 2, size[1] // 2, size=size, steps=3)
     time.sleep(10 * SCALE)  # the marker service reports the shell state every 10 s
 
 
@@ -212,6 +324,19 @@ finally:
                 problems.append(f'Python traceback in the session logs: {last}')
     if 'MWX7-SESSION-LOG' in text:
         problems.append('MWX7-SESSION-LOG: a log with a traceback was dumped to the serial console (see the serial log)')
+    with open(os.path.join(OUT, 'summary.md'), 'w') as f:
+        f.write('## MWX 7 desktop tour\n\n')
+        f.write('**Result: FAILED**\n\n' if problems else '**Result: passed**\n\n')
+        if crashed:
+            f.write('### Apps that produced a Python traceback\n\n')
+            for k, v in crashed.items():
+                f.write(f'- **{k}**\n\n```\n{v}\n```\n\n')
+        if problems:
+            f.write('### Problems\n\n' + ''.join(f'- {p}\n' for p in problems) + '\n')
+        f.write('### Screenshots (artifact `smoke-serial-logs`, folder `distro/out/session/`)\n\n')
+        f.write('- 00-logon.png: logon screen\n- 01-desktop.png: desktop\n- 02-start-menu.png, 02b-start-search.png: Start menu, search\n')
+        for fn, what in shots:
+            f.write(f'- {fn}: {what}\n')
     if problems:
         for p in problems:
             print(f'SESSION PROBLEM: {p}', file=sys.stderr)

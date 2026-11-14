@@ -80,6 +80,10 @@ jobs:
             build.log
           if-no-files-found: ignore
           retention-days: 14
+      - name: Desktop tour summary
+        if: always()
+        run: |
+          [ -f distro/out/session/summary.md ] && cat distro/out/session/summary.md >> "$GITHUB_STEP_SUMMARY" || true
       - name: Publish release
         # Only main, the iso branch and tags publish: test runs on feature branches must never replace a release's ISO.
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/iso' || startsWith(github.ref, 'refs/tags/')
