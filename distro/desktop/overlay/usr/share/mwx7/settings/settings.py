@@ -3,6 +3,9 @@
 Most settings live in the user's Wayfire config (~/.config/mwx7/wayfire.ini), which Wayfire reloads by itself, so
 changes apply immediately. The wallpaper is painted by the desktop layer, which follows the wallpaper file (swaybg is only the fallback).
 """
+import time
+T0 = time.monotonic()  # MWX7_PERF=1 prints start-to-first-frame timings to stderr
+
 import datetime
 import glob
 import grp
@@ -16,7 +19,6 @@ import struct
 import subprocess
 import sys
 import threading
-import time
 
 import gi
 
@@ -144,6 +146,44 @@ def run(cmd):
         return ''
 
 
+def perf(what):
+    if os.environ.get('MWX7_PERF'):
+        print(f'[settings perf] {(time.monotonic() - T0) * 1000:7.1f} ms  {what}', file=sys.stderr, flush=True)
+
+
+# Slow read-only probes (lspci, wpctl status, wlr-randr) are cached for a short while and warmed in a background thread, so a
+# page that needs one does not wait for the process to start. drop_cache() after anything that changes what they report.
+_cache = {}
+_cache_lock = threading.Lock()
+
+
+def run_cached(cmd, ttl=30):
+    key = tuple(cmd)
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+    out = run(cmd)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), out)
+    return out
+
+
+def drop_cache():
+    with _cache_lock:
+        _cache.clear()
+
+
+def prewarm():
+    """Fill the probe cache off the main thread (only tools that exist), once the first frame is up."""
+    def work():
+        for cmd, ttl in ((['lspci'], 3600),):
+            if shutil.which(cmd[0]):
+                run_cached(cmd, ttl)
+    threading.Thread(target=work, daemon=True).start()
+
+
 # ---- UI helpers ---------------------------------------------------------------------------------------------------
 def heading(text):
     l = Gtk.Label(label=text, xalign=0)
@@ -221,6 +261,7 @@ class Settings(Gtk.Application):
         nav.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=120)
         self.stack.set_hexpand(True)
+        self.sound_live = lambda on: None  # the Sound page replaces this when it is first built
         pages = [
             ('wallpapers', 'Wallpapers', 'image', self.page_wallpapers),
             ('wincolor', 'Window Color', 'paint', self.page_wincolor),
@@ -244,6 +285,29 @@ class Settings(Gtk.Application):
             ('backup', 'Backup', 'backup', self.page_backup),
             ('about', 'About', 'about', self.page_about),
         ]
+        # Pages are built when first shown (an empty scroller stands in until then): Settings opens at once and a page's
+        # probes and scans (Storage, Security, Display ...) run only when somebody looks at it.
+        scrolls = {}
+        builders = {}
+
+        def ensure_built(pid):
+            build = builders.pop(pid, None)
+            if build is None:
+                return
+            t = time.monotonic()
+            try:
+                scrolls[pid].set_child(build())
+            except Exception as e:  # one broken page must not take Settings down
+                print(f'settings: page {pid} failed: {e!r}', file=sys.stderr)
+                scrolls[pid].set_child(Gtk.Label(label='This page could not be loaded.', margin_top=20))
+            perf(f'built {pid} in {(time.monotonic() - t) * 1000:.1f} ms')
+            if pid in ('wallpapers', 'wincolor'):
+                self.sync_personalize()  # mark the current theme and wallpaper
+
+        def select(_l, r):
+            if r:
+                ensure_built(r.pid)
+                self.stack.set_visible_child_name(r.pid)
         for pid, label, icon, build in pages:
             row = Gtk.ListBoxRow()
             row.pid = pid
@@ -256,9 +320,10 @@ class Settings(Gtk.Application):
             nav.append(row)
             scroll = Gtk.ScrolledWindow()
             scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-            scroll.set_child(build())
+            scrolls[pid] = scroll
+            builders[pid] = build
             self.stack.add_named(scroll, pid)
-        nav.connect('row-selected', lambda _l, r: r and self.stack.set_visible_child_name(r.pid))
+        nav.connect('row-selected', select)
         # "--updates" (the update notification) opens straight at Updates; "--page <id>" at any page (the bar's clock
         # opens Date & time, the desktop's menu Personalize).
         want = 'updates' if '--updates' in sys.argv else (sys.argv[sys.argv.index('--page') + 1]
@@ -266,7 +331,6 @@ class Settings(Gtk.Application):
         want = {'personalize': 'wallpapers'}.get(want, want)  # the desktop menu's old "Personalize" page id
         start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
-        self.sync_personalize()  # mark the current theme and wallpaper
         root.append(nav)
         root.append(self.stack)
         # The Sound page polls (input meter, apps list): only while it is on screen and this window is in front.
@@ -276,6 +340,21 @@ class Settings(Gtk.Application):
         w.connect('notify::is-active', sound_sync)
         w.connect('close-request', lambda *_a: self.sound_live(False) and False)
         w.set_child(root)
+        perf('window built')
+        if os.environ.get('MWX7_PERF'):
+            # First frame = the surface's first paint; MWX7_PERF=quit then exits (for timing runs).
+            hid = [0]
+
+            def painted(clock):
+                perf('first frame')
+                clock.disconnect(hid[0])
+                prewarm()
+                if os.environ['MWX7_PERF'] == 'quit':
+                    self.quit()
+            w.connect('realize', lambda win: hid.__setitem__(
+                0, win.get_surface().get_frame_clock().connect('after-paint', painted)))
+        else:
+            GLib.idle_add(lambda: prewarm() and False)
         w.present()
 
     @staticmethod
@@ -582,13 +661,13 @@ class Settings(Gtk.Application):
         if not shutil.which('wlr-randr'):
             return []
         try:
-            data = json.loads(run(['wlr-randr', '--json']) or '[]')
+            data = json.loads(run_cached(['wlr-randr', '--json'], 3) or '[]')
             if isinstance(data, list) and data:
                 return data
         except ValueError:
             pass
         outs, cur = [], None
-        for line in run(['wlr-randr']).splitlines():
+        for line in run_cached(['wlr-randr'], 3).splitlines():
             if line and not line[0].isspace():
                 cur = {'name': line.split()[0], 'modes': [], 'scale': 1.0}
                 outs.append(cur)
@@ -625,6 +704,7 @@ class Settings(Gtk.Application):
     @staticmethod
     def randr(name, mode, scale):
         """Apply a mode and scale to one screen right now (wlr-randr); True when the compositor accepted it."""
+        drop_cache()
         w, h, r = mode
         arg = f'{w}x{h}' + (f'@{r:.3f}Hz' if r else '')
         try:
@@ -801,6 +881,7 @@ class Settings(Gtk.Application):
     @staticmethod
     def randr_pos(items):
         """Move screens right now: items is [(name, x, y)]. True when wlr-randr accepted it."""
+        drop_cache()
         cmd = ['wlr-randr']
         for name, x, y in items:
             cmd += ['--output', name, '--pos', f'{x},{y}']
@@ -1000,7 +1081,7 @@ class Settings(Gtk.Application):
 
     def graphics_driver(self, p):
         """Only on a PC with an NVIDIA graphics card: its driver is not in MWX 7 by default (it is not free software)."""
-        if not re.search(r'(VGA|3D|Display).*NVIDIA', run(['lspci'])):
+        if not re.search(r'(VGA|3D|Display).*NVIDIA', run_cached(['lspci'], 3600)):
             return
         p.append(section('Graphics driver'))
         have = 'install ok installed' in run(['dpkg-query', '-W', '-f=${Status}', 'nvidia-driver'])
@@ -1477,7 +1558,7 @@ class Settings(Gtk.Application):
     def page_sound(self):
         p = page('Sound', 'Volume, where sound plays and records, and MWX 7’s own sounds.')
         self.sound_live = lambda on: None  # replaced below when the sound server can be reached
-        status = run(['wpctl', 'status']) if shutil.which('wpctl') else ''
+        status = run_cached(['wpctl', 'status'], 2) if shutil.which('wpctl') else ''
         if not status.strip():
             p.append(note('The sound server is not running here, so volume and devices cannot be shown.'))
             self.sound_extras(p)
@@ -3427,7 +3508,7 @@ link, link:visited { color: #66ccff; }
         cpu = next((l.split(':', 1)[1].strip() for l in open('/proc/cpuinfo') if l.startswith('model name')), '?')
         mem_kb = next((int(l.split()[1]) for l in open('/proc/meminfo') if l.startswith('MemTotal')), 0)
         gpu = ''
-        for line in run(['lspci']).splitlines():
+        for line in run_cached(['lspci'], 3600).splitlines():
             if 'VGA' in line or '3D controller' in line or 'Display controller' in line:
                 gpu = line.split(': ', 1)[-1]
                 break
