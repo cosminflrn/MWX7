@@ -978,6 +978,21 @@ class StartMenu(Gtk.Popover):
             img = Gtk.Image.new_from_icon_name('accessories-calculator')
             img.set_pixel_size(24)
             add(self.result_row(img, '= ' + value, f'{raw}  —  press Enter to copy', lambda v=value: self.copy(v), big=True))
+        # Settings keywords match at the start of a word ("cal" finds Date & time's calendar, not Display's "scale").
+        pages = sorted(((-(2 if label.lower().startswith(q) else 1), label, pid) for pid, label, kw in SETTINGS_PAGES
+                        if all(any(t.startswith(w) for t in re.split(r'[\s&]+', (label + ' ' + kw).lower())) for w in words)))[:4]
+
+        def add_pages():
+            if pages:
+                self.results.append(self.group_row('Settings'))
+                for _sc, label, pid in pages:
+                    img = icon_image('settings')
+                    img.set_pixel_size(24)
+                    add(self.result_row(img, label, 'Settings', lambda pid=pid: self.shell.launch([SETTINGS, '--page', pid])))
+        # A page named by the query ("display") comes before the programs, so Enter opens that page, not just Settings.
+        pages_first = len(q) >= 4 and bool(pages) and pages[0][0] == -2
+        if pages_first:
+            add_pages()
         apps = []
         for n, d, desc, a in self.app_index:
             sc = self.rank(q, words, n) or (1 if self.rank(q, words, ' '.join((n, d, desc))) else 0)
@@ -988,15 +1003,8 @@ class StartMenu(Gtk.Popover):
             self.results.append(self.group_row('Programs'))
             for _sc, _n, a in apps[:6]:
                 add(self.result_row(app_icon_widget(a, 24), app_name(a), '', lambda a=a: self.shell.launch_app(a), app=a))
-        # Settings keywords match at the start of a word ("cal" finds Date & time's calendar, not Display's "scale").
-        pages = sorted(((-(2 if label.lower().startswith(q) else 1), label, pid) for pid, label, kw in SETTINGS_PAGES
-                        if all(any(t.startswith(w) for t in re.split(r'[\s&]+', (label + ' ' + kw).lower())) for w in words)))[:4]
-        if pages:
-            self.results.append(self.group_row('Settings'))
-            for _sc, label, pid in pages:
-                img = icon_image('settings')
-                img.set_pixel_size(24)
-                add(self.result_row(img, label, 'Settings', lambda pid=pid: self.shell.launch([SETTINGS, '--page', pid])))
+        if not pages_first:
+            add_pages()
         if len(q) >= 2:
             found = []
             for low, name, path, is_dir in self.index:
