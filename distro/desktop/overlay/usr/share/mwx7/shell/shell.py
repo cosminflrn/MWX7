@@ -2161,7 +2161,9 @@ class Shell(Gtk.Application):
         if not from_timer:
             GLib.source_remove(e['timer'])
         e['btn'].remove_css_class('launching')
-        if e['temp'] and not e.get('mapped'):
+        if e['temp']:
+            # Also once the window mapped: sync_running_apps gives the app its own icon, so this one would be a duplicate
+            # while the app is open and a leftover after it closed.
             self.dock_items = [(x, i) for x, i in self.dock_items if x is not e['btn']]
             self.dock_box.remove(e['btn'])
             self.dock.set_default_size(1, 1)  # a GTK 4 window never shrinks by itself

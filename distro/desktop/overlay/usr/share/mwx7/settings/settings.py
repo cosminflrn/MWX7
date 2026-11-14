@@ -237,8 +237,28 @@ def thumb(path, w, h):
 
 class Settings(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id='org.mwx7.settings')
+        super().__init__(application_id='org.mwx7.settings', flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         GLib.set_prgname('org.mwx7.settings')  # the window's app id without a session bus too (frames, dock, bar)
+
+    @staticmethod
+    def wanted_page(argv):
+        # "--updates" (the update notification) opens straight at Updates; "--page <id>" at any page (the bar's clock
+        # opens Date & time, the desktop's menu Personalize, Start's search any of them).
+        want = 'updates' if '--updates' in argv else (argv[argv.index('--page') + 1] if '--page' in argv[:-1] else '')
+        return {'personalize': 'wallpapers'}.get(want, want)  # the desktop menu's old "Personalize" page id
+
+    def do_command_line(self, cl):
+        # Also runs in the first instance when a second one is started: Settings is already open, so go to its page
+        # (it used to just raise the window, whatever page was asked for).
+        argv = list(cl.get_arguments())
+        self.activate()
+        want = self.wanted_page(argv)
+        nav = getattr(self, 'nav', None)
+        if want and nav is not None:
+            i = next((i for i, pid in enumerate(self.page_ids) if pid == want), None)
+            if i is not None:
+                nav.select_row(nav.get_row_at_index(i))
+        return 0
 
     def do_activate(self):
         if self.get_windows():
@@ -326,14 +346,16 @@ class Settings(Gtk.Application):
             builders[pid] = build
             self.stack.add_named(scroll, pid)
         nav.connect('row-selected', select)
-        # "--updates" (the update notification) opens straight at Updates; "--page <id>" at any page (the bar's clock
-        # opens Date & time, the desktop's menu Personalize).
-        want = 'updates' if '--updates' in sys.argv else (sys.argv[sys.argv.index('--page') + 1]
-                                                         if '--page' in sys.argv[:-1] else '')
-        want = {'personalize': 'wallpapers'}.get(want, want)  # the desktop menu's old "Personalize" page id
+        want = self.wanted_page(sys.argv)
+        self.nav, self.page_ids = nav, [pg[0] for pg in pages]
         start = next((i for i, pg in enumerate(pages) if pg[0] == want), 0)
         nav.select_row(nav.get_row_at_index(start))
-        root.append(nav)
+        # The sidebar scrolls: 22 rows are taller than a small screen, and a window taller than the work area is pushed
+        # up under the bar (and down behind the dock).
+        nav_scroll = Gtk.ScrolledWindow(vexpand=True)
+        nav_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        nav_scroll.set_child(nav)
+        root.append(nav_scroll)
         root.append(self.stack)
         # The Sound page polls (input meter, apps list): only while it is on screen and this window is in front.
         def sound_sync(*_a):
@@ -3548,6 +3570,10 @@ link, link:visited { color: #66ccff; }
             row.append(b)
         for w in (row, status, bar, detail, news):
             p.append(w)
+        # An empty line would still take its height and the box's spacing: a large gap under the button.
+        for lab in (status, detail):
+            lab.set_visible(bool(lab.get_label()))
+            lab.connect('notify::label', lambda l, _p: l.set_visible(bool(l.get_label())))
         show_news()
 
         def show_available(info):
