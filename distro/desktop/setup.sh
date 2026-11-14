@@ -32,7 +32,7 @@ KEEP_BUILD_DEPS=0 "$SRC/distro/desktop/build-deb.sh" /tmp/mwx7-deb
 # image, so what is here is what a bare-metal install gets. mokutil is for Secure Boot (NVIDIA driver signing).
 # --force-confold: our overlay's config files win over a package's own (greetd ships a config.toml).
 apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold /tmp/mwx7-deb/mwx7-desktop_*.deb \
-  google-chrome-stable firmware-amd-graphics firmware-intel-graphics firmware-misc-nonfree firmware-realtek \
+  google-chrome-stable firmware-amd-graphics firmware-intel-graphics firmware-misc-nonfree firmware-nvidia-graphics firmware-realtek \
   firmware-iwlwifi firmware-atheros firmware-mediatek firmware-brcm80211 firmware-linux-free firmware-sof-signed \
   amd64-microcode intel-microcode mokutil open-vm-tools spice-vdagent qemu-guest-agent cryptsetup cryptsetup-initramfs \
   live-boot squashfs-tools calamares qt6-wayland qml6-module-qtquick qml6-module-qtquick-window
