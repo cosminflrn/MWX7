@@ -97,6 +97,13 @@ void button_t::set_active(bool active)
 void button_t::render(const wf::render_target_t& fb, wf::geometry_t geometry,
     wf::geometry_t scissor)
 {
+    // The light is drawn on first paint, not on an idle that may run after it: a frame in between showed the title bar
+    // without its lights (a missing one until hover).
+    if (!current_texture)
+    {
+        update_texture();
+    }
+
     if (!current_texture)
     {
         return;
