@@ -98,6 +98,20 @@ def shell_conf():
         return {}
 
 
+def shell_conf_set(key, value):
+    """Changes one key of shell.json and keeps the others (Settings writes the same file); replaced atomically."""
+    conf = shell_conf()
+    conf[key] = value
+    try:
+        os.makedirs(os.path.dirname(SHELL_CONF), exist_ok=True)
+        tmp = SHELL_CONF + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(conf, f, indent=2)
+        os.replace(tmp, SHELL_CONF)
+    except OSError:
+        pass
+
+
 def goodbye(cmd):
     """Log Off, Restart and Shut Down as in the concept: the screen fades to MWX 7 blue with "Logging off…", the log-off
     chime plays, then the session ends. Anything else (Lock) just runs."""
@@ -423,6 +437,35 @@ SETTINGS_PAGES = [
     ('about', 'About', 'version system information computer specs'),
 ]
 SKIP_DIRS = {'node_modules', '__pycache__', 'venv', 'site-packages', 'snap'}
+# Content search: small text files only, and a hard time budget per query so typing never waits on the disk.
+TEXT_EXTS = ('.txt', '.md', '.py', '.json', '.csv', '.html', '.ini', '.conf', '.log')
+CONTENT_MAX_BYTES = 1024 * 1024
+CONTENT_BUDGET = 0.3
+CONTENT_MAX_HITS = 5
+RECENT_SHOWN = 12
+
+
+def content_snippet(path, needle):
+    """A one-line "…text around the first match…" of a small text file, or None (no match, binary, unreadable).
+    needle is lower case."""
+    try:
+        with open(path, 'rb') as f:
+            data = f.read(CONTENT_MAX_BYTES)
+    except OSError:
+        return None
+    if b'\0' in data[:1024]:
+        return None
+    text = data.decode('utf-8', 'ignore')
+    i = text.lower().find(needle)
+    if i < 0:
+        return None
+    # Short, and starting near the match: the row is narrow and an ellipsis at its end must not hide the match.
+    start = max(0, i - 14)
+    if start:
+        start = text.rfind(' ', 0, start + 6) + 1 or start  # begin on a word
+    snip = ' '.join(text[start:i + len(needle) + 40].split())
+    return ('…' if start else '') + snip + ('…' if i + len(needle) + 40 < len(text) else '')
+
 _CALC_OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv,
              ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod, ast.Pow: operator.pow}
 
@@ -538,6 +581,8 @@ class StartMenu(Gtk.Popover):
         list_keys.connect('key-pressed', self.on_list_key)
         self.listbox.add_controller(list_keys)
         self.index, self.index_at, self.index_busy = [], 0.0, False
+        self.search_gen, self.content_group, self.empty_row, self.shown_paths = 0, None, None, set()
+        self.pins = self.load_pins()
         left.append(self.search)
         body.append(left)
         # Right: the person's folders and the system's places.
@@ -546,8 +591,12 @@ class StartMenu(Gtk.Popover):
         right.append(self.place_row(user_display_name(), None, [APP, 'explorer', GLib.get_home_dir()], avatar=True))
         dirs = {'DOCUMENTS': GLib.UserDirectory.DIRECTORY_DOCUMENTS, 'PICTURES': GLib.UserDirectory.DIRECTORY_PICTURES,
                 'MUSIC': GLib.UserDirectory.DIRECTORY_MUSIC}
+        recent_added = False
         for entry in PLACES:
             if entry is None:
+                if not recent_added:
+                    right.append(self.recent_row())
+                    recent_added = True
                 sep = Gtk.Box()
                 sep.add_css_class('sm-sep')
                 right.append(sep)
@@ -587,6 +636,158 @@ class StartMenu(Gtk.Popover):
         self.monitor.connect('changed', lambda *_: self.fill())
         self.fill()
 
+    # ---- Recent items (Windows 7's flyout): what MWX 7 apps record with mwx7ui.remember and other GTK apps record ----
+
+    def recent_row(self):
+        b = Gtk.Button()
+        b.add_css_class('sm-place')
+        row = Gtk.Box(spacing=10)
+        img = icon_image('folder-recent')
+        img.set_pixel_size(22)
+        row.append(img)
+        row.append(Gtk.Label(label='Recent items', xalign=0, hexpand=True))
+        row.append(Gtk.Image.new_from_icon_name('pan-end-symbolic'))
+        b.set_child(row)
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.set_parent(b)
+        pop.set_position(Gtk.PositionType.RIGHT)
+        pop.set_has_arrow(False)
+        self.recent_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        pop.set_child(self.recent_col)
+        flyout_keys(pop)
+        pop.connect('show', lambda *_: self.recent_load())
+        b.connect('clicked', lambda *_: pop.popup())
+        # Hovering opens it after a moment, as in Windows 7; a timer that exists only while the pointer is on the row.
+        hover = Gtk.EventControllerMotion()
+        state = {'t': 0}
+
+        def fire():
+            state['t'] = 0
+            pop.popup()
+            return False
+
+        def enter(*_):
+            state['t'] = GLib.timeout_add(250, fire)
+
+        def leave(*_):
+            if state['t']:
+                GLib.source_remove(state['t'])
+                state['t'] = 0
+        hover.connect('enter', enter)
+        hover.connect('leave', leave)
+        b.add_controller(hover)
+        self.recent_pop, self.recent_btn = pop, b
+        return b
+
+    def recent_load(self):
+        """The recent list is read in memory; checking that each file still exists happens off the main thread."""
+        items = sorted(Gtk.RecentManager.get_default().get_items(), key=lambda r: -r.get_modified().to_unix())[:40]
+        snap = [(i.get_uri(), i.get_display_name(), i.get_mime_type() or '', i.get_gicon()) for i in items]
+        self.recent_gen = getattr(self, 'recent_gen', 0) + 1
+        gen = self.recent_gen
+
+        def work():
+            ok = []
+            for uri, name, mime, gicon in snap:
+                f = Gio.File.new_for_uri(uri)
+                if not f.has_uri_scheme('file') or f.query_exists(None):
+                    ok.append((uri, name, mime, gicon))
+                if len(ok) >= RECENT_SHOWN:
+                    break
+            GLib.idle_add(self.recent_fill, gen, ok)
+        threading.Thread(target=work, daemon=True).start()
+
+    def recent_fill(self, gen, items):
+        if gen != self.recent_gen:
+            return False
+        col = self.recent_col
+        while (c := col.get_first_child()) is not None:
+            col.remove(c)
+        if not items:
+            lab = Gtk.Label(label='(Empty)', xalign=0)
+            lab.add_css_class('sm-sub')
+            col.append(lab)
+        for uri, name, mime, gicon in items:
+            b = Gtk.Button()
+            b.add_css_class('menu-row')
+            row = Gtk.Box(spacing=8)
+            img = Gtk.Image.new_from_gicon(gicon) if gicon else Gtk.Image.new_from_icon_name('text-x-generic')
+            img.set_pixel_size(24)
+            row.append(img)
+            row.append(Gtk.Label(label=name, xalign=0, ellipsize=3, max_width_chars=34))
+            b.set_child(row)
+            b.set_tooltip_text(Gio.File.new_for_uri(uri).get_parse_name())
+            b.connect('clicked', lambda *_a, u=uri, m=mime: self.recent_open(u, m))
+            col.append(b)
+        sep = Gtk.Box()
+        sep.add_css_class('menu-sep')
+        col.append(sep)
+        clear = Gtk.Button(label='Clear recent items', sensitive=bool(items))
+        clear.add_css_class('menu-row')
+        clear.get_child().set_xalign(0)
+        clear.connect('clicked', lambda *_: (Gtk.RecentManager.get_default().purge_items(), self.recent_load()))
+        col.append(clear)
+        return False
+
+    def recent_open(self, uri, mime):
+        self.recent_pop.popdown()
+        self.popdown()
+        path = Gio.File.new_for_uri(uri).get_path()
+        try:
+            if mime == 'inode/directory' and path:
+                self.shell.launch([APP, 'explorer', path])  # folders open in MWX 7's Explorer, not whatever claims the mime
+            else:
+                Gio.AppInfo.launch_default_for_uri(uri, None)
+        except GLib.Error:
+            pass
+
+    # ---- pinned programs: stored in shell.json ("start_pinned": desktop ids) -----------------------------------------
+
+    @staticmethod
+    def load_pins():
+        pins = shell_conf().get('start_pinned')
+        return [p for p in pins if isinstance(p, str)] if isinstance(pins, list) else []
+
+    def is_pinned(self, app):
+        return (app.get_id() or '') in self.pins
+
+    def toggle_pin(self, app):
+        aid = app.get_id() or ''
+        if not aid:
+            return
+        was = self.load_pins()
+        self.pins = [p for p in was if p != aid]
+        if len(self.pins) == len(was):
+            self.pins.append(aid)
+        shell_conf_set('start_pinned', self.pins)
+        self.fill()
+        if self.search.get_text().strip():
+            self.update_results()
+
+    def app_menu(self, widget, app):
+        """Right-click on a program (Start list or search result): open it, pin it to the top of the list or unpin it."""
+        pop = Gtk.Popover()
+        pop.add_css_class('start')
+        pop.set_parent(widget)
+        pop.set_has_arrow(False)
+        pop.set_position(Gtk.PositionType.BOTTOM)
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+
+        def item(text, fn):
+            b = Gtk.Button(label=text)
+            b.add_css_class('menu-row')
+            b.get_child().set_xalign(0)
+            b.connect('clicked', lambda *_: (pop.popdown(), fn()))
+            col.append(b)
+        item('Open', lambda: (self.popdown(), self.shell.launch_app(app)))
+        item('Unpin from Start menu' if self.is_pinned(app) else 'Pin to Start menu',
+             lambda: GLib.idle_add(self.toggle_pin, app))  # after the popover is gone: the pinned list rebuilds its row
+        pop.set_child(col)
+        flyout_keys(pop)
+        pop.connect('closed', lambda p: GLib.idle_add(lambda: p.get_parent() is not None and p.unparent()))
+        pop.popup()
+
     def place_row(self, label, icon, cmd, avatar=False):
         b = Gtk.Button()
         b.add_css_class('sm-place')
@@ -623,13 +824,24 @@ class StartMenu(Gtk.Popover):
         return b
 
     def fill(self):
-        """Every installed program, A to Z, on the left (Cosmin: always all programs, no recent list). Searching
-        filters the same list."""
+        """Pinned programs, a separator, then every installed program A to Z, on the left. Searching filters the same list."""
         while (row := self.listbox.get_row_at_index(0)) is not None:
             self.listbox.remove(row)
         apps = [a for a in Gio.AppInfo.get_all() if a.should_show()
                 and not (a.get_id() or '').lower().startswith(HIDDEN_APPS)]
         apps.sort(key=lambda a: app_name(a).lower())
+        self.pins = self.load_pins()
+        by_id = {a.get_id(): a for a in apps}
+        pinned = [by_id[p] for p in self.pins if p in by_id]
+        for app in pinned:
+            self.listbox.append(self.app_row(app, 'pin', 24))
+        if pinned:
+            sep = Gtk.ListBoxRow(selectable=False, activatable=False)
+            sep.add_css_class('sm-pinsep')
+            line = Gtk.Box()
+            line.add_css_class('menu-sep')
+            sep.set_child(line)
+            self.listbox.append(sep)
         for app in apps:
             self.listbox.append(self.app_row(app, 'all', 24))
         self.app_index = [(app_name(a).lower(), (a.get_display_name() or '').lower(), (a.get_description() or '').lower(), a)
@@ -645,7 +857,14 @@ class StartMenu(Gtk.Popover):
         box.append(app_icon_widget(app, size))
         box.append(Gtk.Label(label=app_name(app), xalign=0))
         row.set_child(box)
+        self.on_right_click(row, app)
         return row
+
+    def on_right_click(self, widget, app):
+        click = Gtk.GestureClick(button=3)
+        click.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)  # the list's own click handling would swallow it
+        click.connect('pressed', lambda *_a: self.app_menu(widget, app))
+        widget.add_controller(click)
 
     # ---- search: programs, settings pages, files in the home folder, and a calculator -------------------------------
 
@@ -705,9 +924,11 @@ class StartMenu(Gtk.Popover):
         r.set_child(box)
         return r
 
-    def result_row(self, icon, title, sub, run, big=False):
+    def result_row(self, icon, title, sub, run, big=False, app=None):
         r = Gtk.ListBoxRow()
         r.run = run
+        if app is not None:
+            self.on_right_click(r, app)
         box = Gtk.Box(spacing=10)
         box.append(icon)
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER)
@@ -728,6 +949,8 @@ class StartMenu(Gtk.Popover):
         q = raw.lower()
         while (row := self.results.get_row_at_index(0)) is not None:
             self.results.remove(row)
+        self.search_gen += 1  # retires a content search still running for the previous text
+        self.content_group, self.empty_row, self.shown_paths = None, None, set()
         self.rscroll.get_vadjustment().set_value(0)
         if not q:
             self.stack.set_visible_child_name('all')
@@ -756,7 +979,7 @@ class StartMenu(Gtk.Popover):
         if apps:
             self.results.append(self.group_row('Programs'))
             for _sc, _n, a in apps[:6]:
-                add(self.result_row(app_icon_widget(a, 24), app_name(a), '', lambda a=a: self.shell.launch_app(a)))
+                add(self.result_row(app_icon_widget(a, 24), app_name(a), '', lambda a=a: self.shell.launch_app(a), app=a))
         # Settings keywords match at the start of a word ("cal" finds Date & time's calendar, not Display's "scale").
         pages = sorted(((-(2 if label.lower().startswith(q) else 1), label, pid) for pid, label, kw in SETTINGS_PAGES
                         if all(any(t.startswith(w) for t in re.split(r'[\s&]+', (label + ' ' + kw).lower())) for w in words)))[:4]
@@ -777,6 +1000,7 @@ class StartMenu(Gtk.Popover):
                 self.results.append(self.group_row('Files'))
                 home = GLib.get_home_dir()
                 for _sc, _d, _l, name, path, is_dir in found[:7]:
+                    self.shown_paths.add(path)
                     gicon = Gio.content_type_get_icon('inode/directory' if is_dir
                                                       else Gio.content_type_guess(name, None)[0])
                     img = Gtk.Image.new_from_gicon(gicon)
@@ -790,8 +1014,63 @@ class StartMenu(Gtk.Popover):
             lab.add_css_class('sm-empty')
             empty.set_child(lab)
             self.results.append(empty)
+            self.empty_row = empty
         else:
             self.results.select_row(first)
+        if len(raw) >= 3:
+            GLib.timeout_add(150, self.content_search, self.search_gen, q)  # after the typing pause: names stay first
+
+    # ---- file contents: small text files in Documents and Desktop, in a worker with a time budget, results streamed ----
+
+    def content_search(self, gen, q):
+        if gen != self.search_gen:
+            return False
+        home = GLib.get_home_dir()
+        # GLib answers with the home folder itself when no user-dirs.dirs says otherwise: then the plain names.
+        roots = tuple(os.path.join(d if d and d != home else os.path.join(home, name), '') for d, name in
+                      ((GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS), 'Documents'),
+                       (GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP), 'Desktop')))
+        index, skip = self.index, set(self.shown_paths)
+
+        def work():
+            t0, hits = time.monotonic(), 0
+            cands = sorted((p for low, _n, p, is_dir in index if not is_dir and low.endswith(TEXT_EXTS)
+                            and p.startswith(roots) and p not in skip), key=lambda p: p.count(os.sep))
+            for path in cands:
+                if gen != self.search_gen or time.monotonic() - t0 > CONTENT_BUDGET or hits >= CONTENT_MAX_HITS:
+                    return
+                try:
+                    if os.stat(path).st_size > CONTENT_MAX_BYTES:
+                        continue
+                except OSError:
+                    continue
+                snip = content_snippet(path, q)
+                if snip:
+                    hits += 1
+                    GLib.idle_add(self.content_hit, gen, path, snip)
+        threading.Thread(target=work, daemon=True).start()
+        return False
+
+    def content_hit(self, gen, path, snip):
+        if gen != self.search_gen or path in self.shown_paths:
+            return False
+        self.shown_paths.add(path)
+        if self.empty_row is not None:
+            self.results.remove(self.empty_row)
+            self.empty_row = None
+        if self.content_group is None:
+            self.content_group = self.group_row('In file contents')
+            self.results.append(self.content_group)
+        name = os.path.basename(path)
+        img = Gtk.Image.new_from_gicon(Gio.content_type_get_icon(Gio.content_type_guess(name, None)[0]))
+        img.set_pixel_size(24)
+        row = self.result_row(img, name, f'Contains: {snip}',
+                              lambda u=Gio.File.new_for_path(path).get_uri(): Gio.AppInfo.launch_default_for_uri(u, None))
+        row.set_tooltip_text(path.replace(GLib.get_home_dir(), '~', 1))
+        self.results.append(row)
+        if self.results.get_selected_row() is None:
+            self.results.select_row(row)
+        return False
 
     def copy(self, text):
         self.get_clipboard().set(text)
@@ -865,6 +1144,8 @@ class StartMenu(Gtk.Popover):
             pass
 
     def on_show(self, *_):
+        if self.load_pins() != self.pins:
+            self.fill()  # Settings or another session changed shell.json
         self.search.set_text('')
         self.update_results()
         self.build_index()
@@ -1932,6 +2213,9 @@ class Shell(Gtk.Application):
             col.append(sep)
         if launch:
             item('New window', launch)
+        if app:
+            item('Unpin from Start menu' if self.start_menu.is_pinned(app) else 'Pin to Start menu',
+                 lambda: self.start_menu.toggle_pin(app))
         wins = self.windows_of(ids)
         if wins:
             item('Close window' if len(wins) == 1 else f'Close all {len(wins)} windows',

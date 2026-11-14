@@ -326,3 +326,8 @@ window entry:focus-within, popover entry:focus-within, window searchentry:focus-
   outline: none;
   box-shadow: 0 0 0 2px #3d85e0, 0 0 6px 1px rgba(90, 170, 255, 0.85);
 }
+
+/* Menus opened from inside the Start menu (Recent items, right-click on a program) inherit its white text. */
+popover.start button.menu-row label { color: #1a1a1a; text-shadow: none; }
+popover.start .sm-sub { color: #6a7a90; text-shadow: none; }
+row.sm-pinsep, list.sm-list row.sm-pinsep:hover { background: none; box-shadow: none; padding: 0 8px; }
