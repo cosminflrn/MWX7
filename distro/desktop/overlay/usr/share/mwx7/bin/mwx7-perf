@@ -23,12 +23,28 @@ try:
 except (OSError, ValueError):
     saved = None
 blur = base.ini_get('blur', 'blur_by_default')
-if soft and saved is None and blur and blur != 'none':
-    with open(STATE, 'w') as f:
-        json.dump({'blur_by_default': blur}, f)
-    base.ini_set('blur', 'blur_by_default', 'none')
-elif not soft and saved is not None:
-    if base.ini_get('blur', 'blur_by_default') == 'none':
+plugins = base.ini_get('core', 'plugins').split()
+if soft:
+    # Every sign-in: mwx7-config-merge puts the default blur back before Wayfire starts, so checking only the first
+    # time (as before) left VMware blurred from the second sign-in on.
+    state = dict(saved or {})
+    if blur and blur != 'none':
+        state.setdefault('blur_by_default', blur)
+        base.ini_set('blur', 'blur_by_default', 'none')
+    # Unloaded, not just idle: Wayfire's blur grows the damage of every repaint by its radius (21 px each side here)
+    # even when it blurs nothing, so hovering a traffic light redrew ten times its area; and windows mapped before
+    # this runs (the bar, the dock) keep their blur until the plugin goes.
+    if 'blur' in plugins:
+        state['blur_plugin'] = True
+        base.ini_set('core', 'plugins', ' '.join(p for p in plugins if p != 'blur'))
+    if state != saved:
+        with open(STATE, 'w') as f:
+            json.dump(state, f)
+elif saved is not None:
+    if saved.get('blur_plugin') and plugins and 'blur' not in plugins:
+        at = plugins.index('autostart') + 1 if 'autostart' in plugins else len(plugins)  # where the defaults have it
+        base.ini_set('core', 'plugins', ' '.join(plugins[:at] + ['blur'] + plugins[at:]))
+    if saved.get('blur_by_default') and base.ini_get('blur', 'blur_by_default') == 'none':
         base.ini_set('blur', 'blur_by_default', saved['blur_by_default'])
     os.unlink(STATE)
 

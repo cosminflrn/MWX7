@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include <memory>
 #include <string>
 #include <wayfire/util.hpp>
 #include <wayfire/option-wrapper.hpp>
@@ -83,7 +85,12 @@ class button_t
 
     /* Whether the button needs repaint */
     button_type_t type;
-    wf::simple_texture_t button_texture;
+    // Resting looks (normal, hovered, pressed; focused or not) are drawn once and kept, so pointing at a light and
+    // away again only switches textures: no cairo drawing, no upload (a new GL surface on VMware's virtual GPU).
+    // The frames in between of the hover fade share one texture, redrawn as the fade moves on.
+    std::map<int, std::unique_ptr<wf::simple_texture_t>> rest_textures;
+    wf::simple_texture_t fade_texture;
+    wf::simple_texture_t *current_texture = nullptr;
     int last_texture_key = -1;
 
     /* Whether the button is currently being hovered */
