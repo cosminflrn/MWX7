@@ -172,7 +172,7 @@ def rsync_backup(dest, stamp, fs):
     # but only the changes take room.
     olds = sorted(d for d in os.listdir(dest) if re.fullmatch(r'\d{4}-\d\d-\d\d_\d{4}', d) and d != stamp)
     posix = fs in POSIX_FS
-    cmd = ['rsync', '-aHAX' if posix else '-rt', '--delete', '--exclude=.cache/', '--exclude=.local/share/Trash/']
+    cmd = ['rsync', '-aHAX' if posix else '-rt', '--delete', '--exclude=.cache/', '--exclude=/.mwx7-snapshots/','--exclude=.local/share/Trash/']
     if not posix:
         cmd += ['--modify-window=2', '--no-perms', '--no-owner', '--no-group']
     elif olds:

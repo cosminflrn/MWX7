@@ -25,7 +25,9 @@
   mwx7-admin backup run UUID       Settings -> Backup: back up /home to the external drive with that file system UUID
   mwx7-admin backup schedule off|daily|weekly [UUID]   the automatic backup (a systemd timer)
   mwx7-admin backup drives         the drives a backup can go to (UUID, device, size, file system, name)
-  mwx7-admin flatpak setup         adds the Flathub remote (system-wide) if it is missing and makes Flatpak apps use the MWX7 theme
+  mwx7-admin versions on|off|delete-all   Settings -> Backup: keep previous versions of my files (hourly btrfs snapshots of
+                                   /home), or delete them all
+  mwx7-admin flatpak setup       adds the Flathub remote (system-wide) if it is missing and makes Flatpak apps use the MWX7 theme
   mwx7-admin flatpak install REF   Get Apps: installs a Flathub app for everyone (REF is a plain Flatpak app id, from flathub only)
   mwx7-admin flatpak remove REF    removes it again
   mwx7-admin flatpak update        updates every installed Flatpak app and runtime
@@ -112,6 +114,8 @@ def main():
     elif cmd[:1] == ['backup'] and len(cmd) >= 2 and os.path.exists('/etc/mwx7/installed'):
         # mwx7-backup checks every argument itself (a drive's UUID only, never a path).
         os.execv('/usr/share/mwx7/bin/mwx7-backup', ['mwx7-backup'] + cmd[1:])
+    elif cmd[:1] == ['versions'] and len(cmd) == 2 and cmd[1] in ('on', 'off', 'delete-all') and os.path.exists('/etc/mwx7/installed'):
+        os.execv('/usr/share/mwx7/bin/mwx7-snapshots', ['mwx7-snapshots', cmd[1]])
     elif cmd[:1] == ['flatpak'] and (cmd[1:] in (['setup'], ['update']) or (len(cmd) == 3 and cmd[1] in ('install', 'remove'))):
         flatpak(cmd[1], cmd[2] if len(cmd) == 3 else None)
     elif cmd[:1] == ['power'] and len(cmd) == 3 and cmd[1] in POWER_KEYS and cmd[2] in POWER_KEYS[cmd[1]][1]:

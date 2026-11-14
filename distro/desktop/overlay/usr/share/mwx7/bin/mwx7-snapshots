@@ -1,0 +1,104 @@
+#!/usr/bin/python3
+"""Previous versions of files, as root: hourly read-only btrfs snapshots of /home (the @home subvolume) in /home/.mwx7-snapshots.
+Run by mwx7-snapshots.timer, and through mwx7-admin (Settings -> Backup). Takes nothing from the caller but a command word.
+  mwx7-snapshots take        snapshot now (unless turned off, /home is not btrfs @home, or the disk is more than 90% full), then prune
+  mwx7-snapshots prune       delete our snapshots beyond 24 hourly, 7 daily and 4 weekly ones
+  mwx7-snapshots on|off      "Keep previous versions of my files" (off keeps what exists; the timer then does nothing)
+  mwx7-snapshots delete-all  delete every previous version
+It only ever deletes subvolumes that are directly inside /home/.mwx7-snapshots, are named like our snapshots and really are
+snapshots (a subvolume root, not a link or a folder): nothing else on the disk can be removed through it."""
+import datetime
+import os
+import shutil
+import stat
+import subprocess
+import sys
+
+sys.path.insert(0, '/usr/share/mwx7/lib')
+import mwx7versions as v  # noqa: E402
+
+FULL = 0.90  # no new snapshot while the disk is fuller than this: they only ever hold what was deleted or changed, but not now
+
+
+def btrfs(*args):
+    return subprocess.run(['btrfs', '-q', *args], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+
+
+def is_snapshot(name):
+    """Only a directly-contained, correctly named, real subvolume root (btrfs gives every one inode 256)."""
+    p = os.path.join(v.SNAPDIR, name)
+    try:
+        st = os.lstat(p)
+    except OSError:
+        return False
+    return v.parse(name) is not None and stat_is_subvol(st) and not os.path.islink(p) and os.path.dirname(os.path.realpath(p)) == \
+        os.path.realpath(v.SNAPDIR)
+
+
+def stat_is_subvol(st):
+    return stat.S_ISDIR(st.st_mode) and st.st_ino == 256
+
+
+def remove(name):
+    if not is_snapshot(name):
+        return False
+    return btrfs('subvolume', 'delete', os.path.join(v.SNAPDIR, name)).returncode == 0
+
+
+def ours():
+    return [n for n, _ in v.snapshots() if is_snapshot(n)]
+
+
+def prune():
+    names = ours()
+    keep = v.keep_set(names)
+    for n in names:
+        if n not in keep:
+            remove(n)
+
+
+def take(now=None):
+    if not v.enabled() or not v.on_btrfs_home():
+        return
+    prune()  # also makes room when the disk is nearly full
+    u = shutil.disk_usage(v.HOME)
+    if u.used / u.total > FULL:
+        print('The disk is more than 90% full: no snapshot this time.')
+        return
+    os.makedirs(v.SNAPDIR, exist_ok=True)
+    os.chmod(v.SNAPDIR, 0o755)  # snapshots keep the files' own modes; the folder only lists their names
+    name = (now or datetime.datetime.now()).strftime(v.STAMP)
+    if os.path.exists(os.path.join(v.SNAPDIR, name)):
+        return
+    r = btrfs('subvolume', 'snapshot', '-r', v.HOME, os.path.join(v.SNAPDIR, name))
+    if r.returncode != 0:
+        sys.exit('The snapshot failed: ' + r.stderr.strip()[-200:])
+
+
+def main():
+    cmd = sys.argv[1:]
+    if os.geteuid() != 0:
+        sys.exit('run as root')
+    if cmd == ['take']:
+        take()
+    elif cmd == ['prune']:
+        prune()
+    elif cmd == ['on'] and v.on_btrfs_home():
+        try:
+            os.unlink(v.OFF_FLAG)
+        except OSError:
+            pass
+        take()
+    elif cmd == ['off'] and v.on_btrfs_home():
+        os.makedirs(os.path.dirname(v.OFF_FLAG), exist_ok=True)
+        open(v.OFF_FLAG, 'w').close()
+    elif cmd == ['delete-all'] and v.on_btrfs_home():
+        failed = [n for n in ours() if not remove(n)]
+        if failed:
+            sys.exit(f'{len(failed)} previous version(s) could not be deleted.')
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == '__main__':
+    main()

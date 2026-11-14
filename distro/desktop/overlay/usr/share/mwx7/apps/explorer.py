@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
 import mwx7drives as drives  # noqa: E402
+import mwx7versions as versions  # noqa: E402
 import mwx7ui  # noqa: E402
 from mwx7ui import Gdk, Gio, GLib, Gtk  # noqa: E402
 import gi  # noqa: E402
@@ -131,6 +132,9 @@ flowbox.ex-items flowboxchild:selected { background: linear-gradient(180deg, #dc
 .ex-preview { border-left: 1px solid #c8d8ea; background: #f7fafe; padding: 10px; }
 .ex-preview textview, .ex-preview text { background: #ffffff; color: #1c2530; font-family: monospace; font-size: 11px; }
 .ex-progress-title { font-size: 14px; color: #1c3150; }
+.ex-ver { border: 1px solid #a9c1de; background: #ffffff; }
+.ex-ver row { padding: 5px 10px; color: #1c3150; border-bottom: 1px solid #e6eef8; }
+.ex-ver row:selected { background: linear-gradient(180deg, #e2efff, #c9e0fb); box-shadow: inset 0 0 0 1px #84acdd; color: #0b2440; }
 .ex-progress-from { color: #1e3f66; font-weight: 600; }
 .ex-cmd button.ex-on { border-color: #7da2ce; background: linear-gradient(180deg, #dcebfc, #c1dcfc); }
 .ex-group { padding: 12px 14px 4px; font-weight: 600; color: #1e3f66; }
@@ -2184,6 +2188,7 @@ class Explorer:
         {'open': lambda: [self.open_item(p) for p in self.selected()[:1]], 'cut': lambda: self.copy(True),
          'copy': lambda: self.copy(False), 'rename': self.rename, 'delete': self.delete, 'props': self.properties,
          'paste': self.paste, 'newdir': self.new_folder, 'refresh': self.fill, 'restore': self.restore,
+         'versions': self.previous_versions,
          'empty': self.empty_trash, 'undo': self.undo, 'zip': self.compress_selection, 'extract': self.extract_selected,
          'extractall': self.extract_here}[name]()
 
@@ -2273,6 +2278,117 @@ class Explorer:
         job.start(finished)
         # Quick jobs finish before this fires, so they never flash a window.
         state['timer'] = GLib.timeout_add(500, show)
+
+    # ---- previous versions (hourly btrfs snapshots of /home; see lib/mwx7versions.py) -----------------------------------------
+    def has_versions(self, paths):
+        """Offered only inside /home on a PC that keeps snapshots (btrfs); the check is one directory listing."""
+        return bool(paths) and not is_uri(paths[0]) and paths[0].startswith(versions.HOME + '/') and bool(versions.snapshots())
+
+    def previous_versions(self, path=None):
+        sel = self.selected()[:1] or [self.loc]
+        path = (path or sel[0]).rstrip('/')
+        found = versions.versions_of(path)
+        w = mwx7ui.dialog(self.win, 'Previous Versions', '16/properties')
+        col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=14, margin_start=18, margin_end=18)
+        col.append(Gtk.Label(label=f'Previous versions of \u201c{os.path.basename(path)}\u201d', xalign=0, wrap=True, max_width_chars=52,
+                             css_classes=['ex-progress-title']))
+        col.append(Gtk.Label(label='Versions come from the copies MWX 7 keeps of your files, hourly at first, then daily and weekly. '
+                                   'Only versions that differ from the current one are listed.', xalign=0, wrap=True,
+                             max_width_chars=60, css_classes=['ex-meta']))
+        box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE, css_classes=['ex-ver'])
+        for v in found:
+            when = v['when'].strftime('%d %B %Y, %H:%M')
+            what = 'File folder' if v['isdir'] else human(v['size'])
+            mod = datetime.datetime.fromtimestamp(v['mtime']).strftime('%d/%m/%Y %H:%M')
+            row = Gtk.Box(spacing=12)
+            row.append(Gtk.Label(label=when, xalign=0, hexpand=True))
+            row.append(Gtk.Label(label=f'{what}, modified {mod}', xalign=1, css_classes=['ex-meta']))
+            box.append(row)
+        if not found:
+            box.append(Gtk.Label(label='There are no previous versions of this yet.', xalign=0, css_classes=['ex-meta'],
+                                 margin_top=6, margin_bottom=6))
+            box.set_selection_mode(Gtk.SelectionMode.NONE)
+        scroll = Gtk.ScrolledWindow(min_content_height=190, max_content_height=260, min_content_width=520, child=box,
+                                    propagate_natural_height=True)
+        col.append(scroll)
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END, margin_top=4)
+        openb, copyb, restoreb = Gtk.Button(label='Open'), Gtk.Button(label='Copy to\u2026'), Gtk.Button(label='Restore')
+        restoreb.add_css_class('suggested-action')
+        for b in (openb, copyb, restoreb):
+            b.set_sensitive(False)
+            btns.append(b)
+        col.append(btns)
+
+        def chosen():
+            r = box.get_selected_row()
+            return found[r.get_index()] if r is not None and found else None
+
+        def sel_changed(*_):
+            for b in (openb, copyb, restoreb):
+                b.set_sensitive(chosen() is not None)
+        box.connect('row-selected', sel_changed)
+
+        def do_open(*_):
+            v = chosen()
+            if not v:
+                return
+            if v['isdir']:
+                subprocess.Popen([sys.executable, os.path.abspath(__file__), v['path']])  # a folder opens in a window of its own
+            else:
+                self.open_item(v['path'])  # the snapshot is read-only: nothing can be saved over the old version
+
+        def do_copy(*_):
+            v = chosen()
+            if not v:
+                return
+
+            def picked(dlg, res):
+                try:
+                    dest = dlg.select_folder_finish(res).get_path()
+                except GLib.Error:
+                    return
+                self.run_job(Job('copy', [v['path']], dest))  # a name clash asks Replace / Skip / Keep both
+            Gtk.FileDialog(title='Copy to', initial_folder=Gio.File.new_for_path(os.path.dirname(path))).select_folder(
+                w, None, picked)
+
+        def do_restore(*_):
+            v = chosen()
+            if not v:
+                return
+            when = v['when'].strftime('%d %B %Y, %H:%M')
+            exists = os.path.lexists(path)
+            if exists and not v['isdir']:
+                detail = f'The current file goes to the Trash and the version from {when} takes its place.'
+            elif exists:
+                detail = f'Files in the folder that have the same name as ones from {when} are replaced; newer files stay.'
+            else:
+                detail = f'It is copied back from {when}.'
+            dlg = Gtk.AlertDialog(message=f'Restore \u201c{os.path.basename(path)}\u201d?', detail=detail,
+                                  buttons=['Restore', 'Cancel'], default_button=1, cancel_button=1)
+
+            def answered(d, res):
+                try:
+                    if d.choose_finish(res) != 0:
+                        return
+                except GLib.Error:
+                    return
+                try:
+                    if exists and not v['isdir']:
+                        Gio.File.new_for_path(path).trash(None)  # so "restore" can be undone from the Trash
+                except GLib.Error as e:
+                    self.alert('The current version could not be moved to the Trash.', e.message)
+                    return
+                job = Job('copy', [v['path']], os.path.dirname(path))
+                job.apply_all = 'replace'  # already asked
+                self.run_job(job)
+                w.close()
+            dlg.choose(w, None, answered)
+        openb.connect('clicked', do_open)
+        copyb.connect('clicked', do_copy)
+        restoreb.connect('clicked', do_restore)
+        box.connect('row-activated', do_open)
+        w.set_child(col)
+        w.present()
 
     def conflict_dialog(self, job, src, dst, answer):
         """Windows 7's 'Copy File' question: Replace / Skip / Keep both, optionally for every other conflict."""
@@ -2452,6 +2568,8 @@ class Explorer:
                 menu.append('Copy', 'win.ctx::copy')
                 menu.append('Rename', 'win.ctx::rename')
                 menu.append('Move to Trash', 'win.ctx::delete')
+                if self.has_versions(self.selected()[:1]):
+                    menu.append('Restore previous versions', 'win.ctx::versions')
                 menu.append('Properties', 'win.ctx::props')
         elif z:
             menu.append('Extract All…', 'win.ctx::extractall')
@@ -2460,6 +2578,8 @@ class Explorer:
             menu.append('Paste', 'win.ctx::paste')
             menu.append('New folder', 'win.ctx::newdir')
             menu.append('Refresh', 'win.ctx::refresh')
+            if self.has_versions([self.loc]):
+                menu.append('Restore previous versions', 'win.ctx::versions')
             menu.append('Properties', 'win.ctx::props')
         elif self.loc == TRASH:
             menu.append('Empty the Trash', 'win.ctx::empty')

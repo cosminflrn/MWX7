@@ -1,0 +1,10 @@
+[Unit]
+Description=MWX 7: hourly previous versions of files
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
