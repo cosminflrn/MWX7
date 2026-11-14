@@ -42,7 +42,7 @@ cp "$REPO/CHANGELOG.md" "$ROOT/tmp/mwx7-src/"
 # The built web apps (npx vite build); without them the image gets no Notepad, Paint, ...
 [ -d "$REPO/dist" ] && cp -a "$REPO/dist" "$ROOT/tmp/mwx7-src/dist" || echo "warning: no dist/ (run 'npx vite build'): the image ships without the web apps" >&2
 cp -a "$REPO/public/media/icons" "$REPO/public/media/avatars" "$REPO/public/media/pictures" "$ROOT/tmp/mwx7-src/public/media/"
-cp "$REPO/public/media/wallpapers/meadow.jpg" "$REPO/public/media/wallpapers/sierra.jpg" "$ROOT/tmp/mwx7-src/public/media/wallpapers/"
+cp "$REPO/public/media/wallpapers/"{meadow,sierra}.{jpg,mp4} "$ROOT/tmp/mwx7-src/public/media/wallpapers/"
 # Owned by root whoever checked the repo out (on GitHub the files belong to the runner user, uid 1001, and sudo
 # ignores a sudoers file it does not own: the setup could not get root and never appeared).
 cp -a --no-preserve=ownership "$HERE/desktop/live/." "$ROOT/"
