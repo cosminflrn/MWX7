@@ -1,0 +1,32 @@
+#!/bin/sh
+# Run by mwx7-session-marker.service (only in the smoke test's VM, see there). Read-only: writes to the serial port and
+# never executes anything it reads. Waits up to 10 minutes for someone to sign in; the shell must still run 8 s after it
+# appeared (not crash-looping). Then reports every 10 s whether the shell and Wayfire live, and shows the log tails when a
+# Python traceback appears in them, so the test can fail on a crashed shell without needing a shell on the VM.
+TTY=/dev/ttyS0
+say() { printf '%s\n' "$*" > "$TTY"; }
+for _ in $(seq 300); do
+  if pgrep -f shell/shell.py >/dev/null; then
+    sleep 8
+    pgrep -f shell/shell.py >/dev/null && break
+  fi
+  sleep 2
+done
+pgrep -f shell/shell.py >/dev/null || exit 0
+say MWX7-SESSION-READY
+seen=0
+while :; do
+  sleep 10
+  n=0
+  for f in /run/user/*/wayfire.log /run/user/*/mwx7-shell.log; do
+    [ -f "$f" ] || continue
+    c=$(grep -c Traceback "$f")
+    n=$((n + c))
+    if [ "$c" -gt 0 ] && [ "$n" -ne "$seen" ]; then say "MWX7-SESSION-LOG $f"; tail -n 60 "$f" > "$TTY"; fi
+  done
+  seen=$n
+  s=0; w=0
+  pgrep -f shell/shell.py >/dev/null && s=1
+  pgrep -x wayfire >/dev/null && w=1
+  say "MWX7-SESSION-STATE shell=$s wayfire=$w tracebacks=$n"
+done

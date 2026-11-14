@@ -1,0 +1,15 @@
+[Unit]
+Description=MWX 7: tell the serial console the desktop shell is up, and report crashes (session smoke test only)
+After=greetd.service
+ConditionPathExists=/etc/mwx7/installed
+ConditionPathExists=/dev/ttyS0
+# Only when the VM was started with -smbios type=11,value=io.systemd.credential:mwx7.test=1 (distro/smoke-test.sh "session").
+# A normal PC never has this credential, so nothing is ever written to its serial port.
+ConditionCredential=mwx7.test
+
+[Service]
+ExecStart=/usr/share/mwx7/bin/mwx7-session-marker
+Restart=no
+
+[Install]
+WantedBy=graphical.target
