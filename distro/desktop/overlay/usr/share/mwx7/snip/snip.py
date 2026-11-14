@@ -6,6 +6,7 @@ a highlighter, an eraser and crop; Copy puts the picture on the clipboard (wl-co
                                    snips at once (Print, Shift+Print, Alt+Print): a dragged rectangle, the focused window
                                    (from Wayfire's IPC) or the whole screen. N is 0-5 seconds.
   snip.py --open FILE              edits a picture
+  snip.py --record                 starts a screen recording (see record.py; Shift+Super+R does it from the keyboard)
 
 Every snip is also copied to the clipboard and announced in a notification, as Windows 7 did."""
 import json
@@ -19,6 +20,7 @@ import tempfile
 import time
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mwx7ui  # noqa: E402
 from mwx7ui import FileDialog, Gdk, Gio, GLib, Gtk  # noqa: E402
 import cairo  # noqa: E402
@@ -41,6 +43,8 @@ window.mwx7-snip .snip-bar button:disabled { opacity: .45; }
 window.mwx7-snip .snip-bar button.snip-swatch { padding: 0; min-width: 14px; min-height: 18px; border-radius: 9px;
   border: 1px solid #6c7f9c; margin: 0 1px; }
 window.mwx7-snip .snip-bar button.snip-swatch:checked { border: 2px solid #1c3150; }
+window.mwx7-snip .snip-bar.rec { border-top: 0; padding-top: 4px; }
+window.mwx7-snip .snip-bar button.snip-record { color: #8f1410; font-weight: 600; }
 window.mwx7-snip .snip-stage { background: #eef2f7; }
 window.mwx7-snip .snip-empty { color: #5a6f8d; }
 window.mwx7-snip .snip-empty-title { font-weight: 700; font-size: 15px; color: #1c3150; }
@@ -144,6 +148,10 @@ class Snip(mwx7ui.App):
             elif a == '--open' and nxt is not None:
                 open_file = nxt
             i += 2 if a in ('--capture', '--delay', '--open') and nxt is not None else 1
+        if '--record' in argv:
+            self.activate()
+            self.record()
+            return 0
         if capture is not None and capture not in CLI_MODES:
             cl.printerr(f'snip: unknown capture "{capture}" (region, window or full)\n')
             return 2
@@ -232,6 +240,7 @@ class Snip(mwx7ui.App):
             b.set_sensitive(False)
             bar.append(b)
         root.append(bar)
+        root.append(self.record_bar())
 
         self.stage = Gtk.Stack(vexpand=True)
         self.stage.add_css_class('snip-stage')
@@ -262,6 +271,35 @@ class Snip(mwx7ui.App):
         root.append(self.status)
         self.say('Click New to snip, or press Print. The arrow picks rectangle, window or full screen.')
         return root
+
+    def record_bar(self):
+        """Record mode, as Windows 11's: what to film, which sound to take along, and the Record button."""
+        import record  # the same module Shift+Super+R runs, so the saved choices are shared
+        prefs = record.load_prefs()
+        bar = Gtk.Box(spacing=6)
+        bar.add_css_class('snip-bar')
+        bar.add_css_class('rec')
+        self.rec_area = Gtk.DropDown.new_from_strings(['Region', 'Full screen'])
+        self.rec_area.set_selected(0 if prefs['mode'] == 'region' else 1)
+        self.rec_area.set_tooltip_text('What to record')
+        self.rec_audio = Gtk.DropDown.new_from_strings(['No audio', 'Microphone', 'System audio'])
+        self.rec_audio.set_selected(['none', 'mic', 'system'].index(prefs['audio']))
+        self.rec_audio.set_tooltip_text('Sound to record with the screen')
+        btn = self.button('Record', 'media-record-symbolic', self.record)
+        btn.add_css_class('snip-record')
+        for c in (btn, self.rec_area, self.rec_audio):
+            bar.append(c)
+        hint = Gtk.Label(label='Shift+Super+R starts and stops', hexpand=True, xalign=1)
+        hint.add_css_class('snip-empty')
+        bar.append(hint)
+        return bar
+
+    def record(self):
+        mode = 'region' if self.rec_area.get_selected() == 0 else 'full'
+        audio = ['none', 'mic', 'system'][self.rec_audio.get_selected()]
+        subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'record.py'), 'start',
+                          '--' + mode, '--audio', audio], start_new_session=True, stdin=subprocess.DEVNULL)
+        self.win.close()  # out of the picture; the pill takes over
 
     def divider(self):
         sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
