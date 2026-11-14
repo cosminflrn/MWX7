@@ -17,7 +17,8 @@ OUT="${MWX7_OUT:-$HERE/out}"; ISO="$OUT/mwx7.iso"; WANT='MWX7-SETUP-READY'
 LIMIT="${1:-900}"; shift || true
 TESTS=("${@:-bios uefi secureboot}"); read -r -a TESTS <<< "${TESTS[*]}"
 [ -f "$ISO" ] || { echo "No ISO at $ISO (run build-iso.sh first)" >&2; exit 1; }
-if [ -w /dev/kvm ]; then ACCEL=kvm; CPU=host; else ACCEL=tcg; CPU=Nehalem; fi
+# A character device only: a leftover plain file must not select KVM.
+if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then ACCEL=kvm; CPU=host; else ACCEL=tcg; CPU=Nehalem; fi
 
 ovmf() {  # $1 = plain | ms (Microsoft keys enrolled, Secure Boot enforced)
   local code=/usr/share/OVMF/OVMF_CODE_4M.fd vars=/usr/share/OVMF/OVMF_VARS_4M.fd
