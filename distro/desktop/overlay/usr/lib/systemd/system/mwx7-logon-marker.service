@@ -1,0 +1,13 @@
+[Unit]
+Description=MWX 7: tell the serial console the logon screen started (for the automated install test)
+After=greetd.service
+ConditionPathExists=/etc/mwx7/installed
+ConditionPathExists=/dev/ttyS0
+
+[Service]
+Type=oneshot
+# Waits up to 10 minutes for the greeter; silent on a PC where nothing listens on the serial port.
+ExecStart=/bin/sh -c 'for i in $(seq 300); do pgrep -f mwx7/greeter/greeter.py >/dev/null && { echo MWX7-LOGON-READY > /dev/ttyS0; exit 0; }; sleep 2; done; exit 0'
+
+[Install]
+WantedBy=graphical.target

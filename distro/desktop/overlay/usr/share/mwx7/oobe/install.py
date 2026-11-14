@@ -18,6 +18,8 @@
   install.py keep-previous          Settings -> Updates "Keep the previous version" (only while running from @previous, after
                                     the boot menu fell back to it): @previous becomes @, the one that failed is deleted
   install.py update check|install   after a reset, before the setup's pages: what is new, then (if wanted) install
+  install.py autoinstall            test hook (ISO only, mwx7-autoinstall.service): kernel option mwx7.autoinstall=DISK installs
+                                    onto DISK like "erase", but only if it is completely empty, as user test/test, then powers off
   install.py ready                  tells the serial console the setup is on screen (for the automated boot tests)
 
 Reset: the system is unpacked again from the newest MWX 7 ISO published on GitHub into a new subvolume, brought to the
@@ -33,6 +35,7 @@ import os
 import re
 import shutil
 import subprocess
+import stat
 import sys
 import tempfile
 import time
@@ -1266,6 +1269,59 @@ def ready():
             continue
 
 
+def serial(text):
+    """Progress markers for the automated tests, on the serial console (and the journal)."""
+    print(text, flush=True)
+    for tty in ('/dev/ttyS0', '/dev/console'):
+        try:
+            with open(tty, 'w') as f:
+                f.write(f'\n{text}\n')
+            return
+        except OSError:
+            continue
+
+
+def autoinstall_disk():
+    """The disk named by mwx7.autoinstall= on the kernel command line, or None."""
+    for word in open('/proc/cmdline').read().split():
+        if word.startswith('mwx7.autoinstall='):
+            return word.split('=', 1)[1]
+    return None
+
+
+def autoinstall():
+    """Test hook, so the whole install can run without a person. Honoured only when booted from the live ISO and only
+    when the disk has no partition table and no signature at all: a typo or a stray option can never erase real data."""
+    disk = autoinstall_disk()
+    if not disk:
+        return
+    serial('MWX7-INSTALL-START ' + disk)
+    try:
+        if not os.path.isfile(SQUASHFS) or os.path.exists('/etc/mwx7/installed'):
+            raise RuntimeError('not running from the live ISO')
+        if not re.fullmatch(r'/dev/[A-Za-z0-9_/-]+', disk) or not os.path.exists(disk) \
+                or not stat.S_ISBLK(os.stat(disk).st_mode):
+            raise RuntimeError(f'{disk} is not a block device')
+        if sh('lsblk', '-dno', 'TYPE', disk).strip() != 'disk':
+            raise RuntimeError(f'{disk} is not a whole disk')
+        if sh('lsblk', '-no', 'NAME', disk).split()[1:]:
+            raise RuntimeError(f'{disk} has partitions: refusing to erase it')
+        if sh('wipefs', '--no-act', '--parsable', disk).strip() or subprocess.run(['blkid', '-p', disk], capture_output=True).returncode != 2:
+            raise RuntimeError(f'{disk} has a partition table or signatures: refusing to erase it')
+        copy('erase', disk)
+        fd, path = tempfile.mkstemp(prefix='mwx7-answers-', suffix='.json')
+        with os.fdopen(fd, 'w') as f:
+            json.dump({'fullname': 'Test', 'login': 'test', 'password': 'test', 'hostname': 'test-pc', 'language': 'en_US.UTF-8',
+                       'layout': 'us', 'variant': '', 'timezone': 'UTC', 'picture': None}, f)
+        finish(path)
+    except (RuntimeError, StopIteration, OSError, SystemExit) as e:
+        reason = ' '.join(str(e).split()) or type(e).__name__
+        serial('MWX7-INSTALL-FAILED ' + reason)
+        raise SystemExit(1)
+    serial('MWX7-INSTALL-DONE')
+    subprocess.run(['systemctl', 'poweroff'])
+
+
 if __name__ == '__main__':
     cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ''), sys.argv[2:]
     if os.geteuid() != 0 and cmd != 'survey':  # survey also works unprivileged (the setup's preview), minus free space
@@ -1293,6 +1349,8 @@ if __name__ == '__main__':
             update(args[0])
         elif cmd == 'ready':
             ready()
+        elif cmd == 'autoinstall':
+            autoinstall()
         else:
             raise SystemExit(__doc__)
     except (RuntimeError, StopIteration, OSError) as e:

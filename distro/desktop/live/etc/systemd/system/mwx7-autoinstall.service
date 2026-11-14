@@ -1,0 +1,14 @@
+[Unit]
+Description=MWX 7 automated install (test hook: kernel option mwx7.autoinstall=DISK, live ISO only)
+After=local-fs.target systemd-udev-settle.service
+ConditionKernelCommandLine=mwx7.autoinstall
+ConditionPathExists=/run/live/medium/live/filesystem.squashfs
+ConditionPathExists=!/etc/mwx7/installed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/mwx7/oobe/install.py autoinstall
+TimeoutSec=infinity
+
+[Install]
+WantedBy=multi-user.target
