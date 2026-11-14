@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import threading
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, '/usr/share/mwx7/lib')
@@ -36,11 +37,12 @@ CATALOG = [
     ('org.telegram.desktop', 'Telegram', 'Fast, secure messaging.', 'Communication'),
     ('com.spotify.Client', 'Spotify', 'Stream music and podcasts.', 'Media'),
     ('us.zoom.Zoom', 'Zoom', 'Video meetings and calls.', 'Communication'),
+    ('com.usebottles.bottles', 'Bottles', 'Run Windows programs (.exe and .msi) on this PC, each in its own tidy bottle.', 'Windows apps'),
 ]
 # Sidebar: label -> how to ask Flathub for more apps of it (a Flathub category, or a search for Communication).
 CATEGORIES = [('Internet', ('collection', 'Network')), ('Media', ('collection', 'AudioVideo')), ('Graphics', ('collection', 'Graphics')),
               ('Office', ('collection', 'Office')), ('Games', ('collection', 'Game')), ('Development', ('collection', 'Development')),
-              ('Communication', ('search', 'chat'))]
+              ('Communication', ('search', 'chat')), ('Windows apps', ('search', 'wine'))]
 CSS = """
 window.mwx7-store > box { background: #f4f7fc; }
 .st-bar { padding: 8px 10px; background: linear-gradient(180deg, #fbfdff, #e9f0f9); border-bottom: 1px solid #c9d6e8; }
@@ -316,7 +318,28 @@ class Store:
         win.set_default_size(860, 580)
         self.side.select_row(self.side_rows['featured'])
         self.refresh()
+        app.on_open = self.on_open
+        if app.files:
+            GLib.idle_add(lambda: self.on_open(app.files) and False)
         return root
+
+    def on_open(self, files):
+        """Deep links from other apps (the .exe dialog): `store:app/<flatpak id>` opens that app's page, `store:search/<text>`
+        searches. Arguments arrive as Gio files, so the link is kept in the URI form."""
+        for f in files:
+            link = urllib.parse.unquote(f.get_uri() or '')
+            if link.startswith('store:app/'):
+                ref = link[len('store:app/'):]
+                entry = next(((r, n, d, None) for r, n, d, _c in CATALOG if r == ref), None)
+                if entry:
+                    self.show_detail(entry)
+                elif APP_ID.match(ref):
+                    self.search.set_text(ref)
+            elif link.startswith('store:search/'):
+                self.search.set_text(link[len('store:search/'):].strip()[:100])
+            else:
+                continue
+            break
 
     # ---- navigation -------------------------------------------------------------------------------------------------
     def go(self, page, from_side=False):

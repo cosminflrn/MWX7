@@ -1384,7 +1384,8 @@ class Desktop(Gtk.Application):
                 kind = 'folder'
             else:
                 mime = Gio.content_type_get_mime_type(Gio.content_type_guess(path, None)[0]) or ''
-                kind = next((k for k, test in (('image', mime.startswith('image/')), ('audio', mime.startswith('audio/')),
+                kind = next((k for k, test in (('exe', name.lower().endswith(('.exe', '.msi'))),
+                                               ('image', mime.startswith('image/')), ('audio', mime.startswith('audio/')),
                                                ('video', mime.startswith('video/')), ('text', mime.startswith('text/')),
                                                ('archive', any(z in mime for z in ('zip', 'tar', 'compressed', '7z'))))
                              if test), 'file')
