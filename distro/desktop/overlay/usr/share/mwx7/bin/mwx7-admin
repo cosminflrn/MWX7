@@ -33,6 +33,8 @@
   mwx7-admin power lid ACTION      what closing the lid does (suspend, poweroff, lock, ignore)
   mwx7-admin firewall on|off       Settings -> Security: the firewall (ufw: nothing unasked comes in, everything goes out)
   mwx7-admin autoupdates on|off    install security updates by themselves
+  mwx7-admin locale set|add LOCALE  Settings -> Language & region: set the system language, or only make that locale
+                                   available (LOCALE like ro_RO.UTF-8; must be one glibc supports; generated if missing)
   mwx7-admin cleanup apt|flatpak   Settings -> Storage: empty the package cache / remove Flatpak runtimes nothing uses
 """
 import ctypes
@@ -121,6 +123,8 @@ def main():
         with open(AUTOUPDATES + '.tmp', 'w') as f:
             f.write(f'// Written by Settings -> Security.\nAPT::Periodic::Unattended-Upgrade "{1 if cmd[1] == "on" else 0}";\n')
         os.replace(AUTOUPDATES + '.tmp', AUTOUPDATES)
+    elif cmd[:1] == ['locale'] and len(cmd) == 3 and cmd[1] in ('set', 'add'):
+        locale_cmd(cmd[1], cmd[2])
     elif cmd in (['cleanup', 'apt'], ['cleanup', 'flatpak']):
         if cmd[1] == 'apt':
             subprocess.run(['apt-get', 'clean'], check=True)
@@ -128,6 +132,41 @@ def main():
             flatpak('unused', None)
     else:
         sys.exit(__doc__)
+
+
+# Settings -> Language & region. The locale name is checked twice: against a strict pattern, then against the list glibc
+# ships (SUPPORTED), so nothing but a line of that list can ever reach /etc/locale.gen.
+LOCALE_NAME = re.compile(r'[a-z]{2,3}_[A-Z]{2}\.UTF-8\Z')
+
+
+def locale_cmd(action, name):
+    if not LOCALE_NAME.match(name):
+        sys.exit('not a locale name')
+    wanted = f'{name} UTF-8'
+    try:
+        supported = {l.split('#')[0].strip() for l in open('/usr/share/i18n/SUPPORTED', encoding='utf-8')}
+    except OSError:
+        supported = set()
+    if wanted not in supported:
+        sys.exit('this language is not supported')
+    norm = name.replace('.UTF-8', '.utf8')
+    have = subprocess.run(['locale', '-a'], capture_output=True, text=True).stdout.split()
+    if norm not in have:
+        gen = '/etc/locale.gen'
+        lines = open(gen, encoding='utf-8').read().splitlines() if os.path.exists(gen) else []
+        # Uncomment the exact line if it is there, else add it; every other line stays as it was.
+        if not any(l.strip() == wanted for l in lines):
+            hit = [i for i, l in enumerate(lines) if re.fullmatch(r'#\s*' + re.escape(wanted), l.strip())]
+            if hit:
+                lines[hit[0]] = wanted
+            else:
+                lines.append(wanted)
+            with open(gen + '.tmp', 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines) + '\n')
+            os.replace(gen + '.tmp', gen)
+        subprocess.run(['locale-gen'], check=True, stdout=subprocess.DEVNULL)
+    if action == 'set':
+        subprocess.run(['update-locale', f'LANG={name}'], check=True)
 
 
 # Settings -> Power: logind reads a drop-in of ours, so the vendor files are never edited. Each setting is a fixed key with a

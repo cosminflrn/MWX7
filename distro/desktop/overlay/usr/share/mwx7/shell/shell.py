@@ -403,6 +403,8 @@ SETTINGS_PAGES = [
     ('sound', 'Sound', 'volume audio speaker microphone output input sounds'),
     ('keyboard', 'Keyboard', 'layout language typing repeat keys'),
     ('mouse', 'Mouse', 'pointer touchpad scroll speed buttons cursor'),
+    ('access', 'Ease of Access', 'accessibility text size bigger larger high contrast cursor pointer size magnifier zoom reduce motion animations sticky keys'),
+    ('language', 'Language & region', 'language locale region format country keyboard layout input romanian english date number currency switch'),
     ('bluetooth', 'Bluetooth', 'wireless headphones speakers devices pair'),
     ('printers', 'Printers', 'print printing scanner test page'),
     ('account', 'User account', 'name password picture avatar login profile'),

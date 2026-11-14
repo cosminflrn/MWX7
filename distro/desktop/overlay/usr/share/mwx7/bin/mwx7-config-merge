@@ -13,7 +13,8 @@ STAMP = '# mwx7-defaults:'
 # What MWX 7 Settings changes, so what a person can have chosen. Every [output:...] section is theirs too.
 KEPT = {'decoration': ('active_color', 'inactive_color'),
         'input': ('xkb_layout', 'xkb_variant', 'kb_repeat_delay', 'kb_repeat_rate', 'mouse_cursor_speed',
-                  'mouse_natural_scroll', 'left_handed_mode')}
+                  'mouse_natural_scroll', 'left_handed_mode', 'cursor_size'),
+        'zoom': ('modifier',)}
 
 
 # Window colours MWX 7 Settings offered before 1.9.0.209 (opaque pastel frames).
@@ -60,6 +61,10 @@ def main(user):
         new = old
     else:
         new = merged(stamp + system, old)
+        # Settings -> Ease of Access adds the magnifier (zoom) to the plugin list; keep it across a rebuild.
+        mine, theirs = get(sections(old or '').get('core', ''), 'plugins'), get(sections(new).get('core', ''), 'plugins')
+        if mine and theirs and 'zoom' in mine.split() and 'zoom' not in theirs.split():
+            new = put(new, 'core', 'plugins', theirs + ' zoom')
     new = for_this_machine(new, system)
     if new == old:
         return
