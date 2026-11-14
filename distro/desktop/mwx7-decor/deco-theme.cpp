@@ -132,6 +132,33 @@ void decoration_theme_t::update_band(int width, int height, int band, bool activ
     cairo_surface_destroy(surface);
 }
 
+/** Whether Wayfire's blur runs: mwx7-perf unloads it without 3D acceleration (VMs, software drawing). */
+static bool blur_active()
+{
+    auto& cfg = wf::get_core().config;
+    auto plugins = cfg.get_option("core/plugins");
+    if (!plugins)
+    {
+        return false;
+    }
+
+    std::istringstream in(plugins->get_value_str());
+    std::string name;
+    bool loaded = false;
+    while (in >> name)
+    {
+        loaded |= (name == "blur");
+    }
+
+    if (!loaded)
+    {
+        return false;
+    }
+
+    auto by_default = cfg.get_option("blur/blur_by_default");
+    return by_default && (by_default->get_value_str() != "none");
+}
+
 /**
  * Fill the given rectangle with MWX 7's Aero glass: the chosen colour at the chosen intensity over Wayfire's blur, the
  * cached sheen and streaks on the title band, and the frame's rings (a dark outer line, a bright inner one).
@@ -156,6 +183,14 @@ void decoration_theme_t::render_background(const wf::render_target_t& fb,
     OpenGL::render_begin(fb);
     fb.logic_scissor(scissor);
     const auto proj = fb.get_orthographic_projection();
+    if (!blur_active())
+    {
+        // No blur behind the glass: at the default intensity it is almost clear, so a desktop widget (or anything else)
+        // behind the window showed through the title bar as a sharp rectangle, lights and all. A frosted veil takes
+        // the blur's place.
+        OpenGL::render_rectangle(rectangle, pm({0.62, 0.78, 0.96, active ? 0.62 : 0.5}), proj);
+    }
+
     if (active)
     {
         OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, c.a}), proj);
