@@ -2,6 +2,12 @@
 
 Derived from the git history. Newest first.
 
+## v1.19.0
+- **Start menu**: Recent items flyout (opens on hover), pin programs to the top of the list (right-click), and search
+  now finds text inside your documents ("In file contents")
+- **Repair**: a clearer Repair screen at boot whose tools work on their own, and safe-boot fixes
+- Installer: a fully automated install test (install, then the logon screen) checks every image
+
 ## v1.18.0
 - **USB drives**: plug in a stick and it opens like Windows' AutoPlay; "Safely remove hardware" in the bar
 - **Network**: My Computer browses Windows shares (Map network drive…); Settings → Network with known Wi-Fi networks,
