@@ -2310,6 +2310,9 @@ class Shell(Gtk.Application):
         col.append(head)
         self.net_now = Gtk.Label(label='\u2026', xalign=0, margin_start=10, margin_bottom=6)
         col.append(self.net_now)
+        self.vpn_now = Gtk.Label(xalign=0, margin_start=10, margin_bottom=6)
+        self.vpn_now.set_visible(False)
+        col.append(self.vpn_now)
         self.wifi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
         col.append(self.wifi_box)
         sep = Gtk.Box()
@@ -2318,7 +2321,7 @@ class Shell(Gtk.Application):
         more = Gtk.Button(label='Open Network Settings')
         more.add_css_class('menu-row')
         more.get_child().set_xalign(0)
-        more.connect('clicked', lambda *_: (pop.popdown(), self.launch(['nm-connection-editor'])))
+        more.connect('clicked', lambda *_: (pop.popdown(), self.launch(['/usr/share/mwx7/settings/mwx7-settings', '--page', 'network'])))
         col.append(more)
         pop.set_child(col)
 
@@ -2332,6 +2335,9 @@ class Shell(Gtk.Application):
     def show_network(self, pop, dev, wifi):
         conns = [l.split(':', 2)[2] for l in dev.splitlines() if l.count(':') >= 2 and l.split(':')[1] == 'connected']
         self.net_now.set_label(', '.join(c for c in conns if c) or 'Not connected')
+        vpns = getattr(self, 'vpn_active', [])
+        self.vpn_now.set_visible(bool(vpns))
+        self.vpn_now.set_label('VPN: ' + ', '.join(vpns))
         nets, seen = [], set()
         for line in wifi.splitlines():
             parts = line.replace('\\:', '\0').split(':')
@@ -3091,11 +3097,13 @@ class Shell(Gtk.Application):
         def work():
             vol = self.capture(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
             net = self.capture(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device'])
-            GLib.idle_add(self.apply_status, vol, net)
+            # Active VPNs ride along in the same worker (NAME:TYPE per active connection), so the flyout needs no polling of its own.
+            vpn = self.capture(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show', '--active']) if net else net
+            GLib.idle_add(self.apply_status, vol, net, vpn)
         threading.Thread(target=work, daemon=True).start()
         return True
 
-    def apply_status(self, vol, net):
+    def apply_status(self, vol, net, vpn=''):
         self.status_busy = False
         count, version = pending_updates()
         self.upd_btn.set_visible(count > 0)
@@ -3141,6 +3149,11 @@ class Shell(Gtk.Application):
                     break
                 if parts[0] == 'ethernet':
                     icon, tip = 'network-wired-symbolic', f'Connected: {parts[2]}'
+        # NAME:TYPE; a ':' in a name is escaped, so the type is what follows the last unescaped ':'.
+        self.vpn_active = [l.replace('\\:', ':').rsplit(':', 1)[0] for l in (vpn or '').splitlines()
+                           if l.rsplit(':', 1)[-1] in ('vpn', 'wireguard')] if vpn is not None else getattr(self, 'vpn_active', [])
+        if self.vpn_active and icon != 'network-offline-symbolic':
+            icon, tip = 'network-vpn-symbolic', f'{tip}, VPN: {", ".join(self.vpn_active)}'
         self.set_icon(self.net, icon)
         self.net_btn.set_tooltip_text(tip)
         return False
