@@ -1220,8 +1220,9 @@ class Desktop(Gtk.Application):
         self.icons_on = on
 
     def widget_side(self):
-        """Side of a widget: the two-by-two cell block, squared off to its shorter side (cells are a few px wider than tall)."""
-        return 2 * min(self.cell_w, self.cell_h)
+        """Side of a widget: it snaps to a two-by-two cell block but fills only about three quarters of it, centred; the
+        full block read as too big next to the icons."""
+        return round(2 * min(self.cell_w, self.cell_h) * 0.74)
 
     def widget_x(self, c):
         """Left edge of a widget in slot column c (0 = rightmost). A slot is one widget block (2x2 icon cells), so columns are
@@ -1229,7 +1230,7 @@ class Desktop(Gtk.Application):
         return self.width - GADGET_RIGHT - (2 * c + 2) * self.cell_w + (2 * self.cell_w - self.widget_side()) // 2
 
     def widget_y(self, r):
-        return ORIGIN + r * 2 * self.cell_h
+        return ORIGIN + r * 2 * self.cell_h + (2 * self.cell_h - self.widget_side()) // 2
 
     def widget_saved(self, c, r):
         """gadgets_at keeps the distance from the right edge to the widget's left edge and the top y, as older versions did."""
