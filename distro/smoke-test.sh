@@ -8,6 +8,10 @@
 #   install     UEFI, a blank 24 GB disk: boots the ISO with mwx7.autoinstall=/dev/vda (install.py's test hook: the same
 #               "erase disk" code as the setup, user test/test), waits for MWX7-INSTALL-DONE, then boots the installed
 #               disk alone and waits for MWX7-LOGON-READY (mwx7-logon-marker.service). Slow without KVM (up to an hour).
+#   session     continues from the installed disk (the install test's, or installs first): boots it with an SMBIOS credential
+#               that turns on mwx7-session-marker.service, signs in as test over QMP (distro/session-test.py), waits for
+#               MWX7-SESSION-READY, takes PNG screenshots (desktop, Start menu, Notepad, traffic-light hover) into out/session/
+#               and fails when the shell or Wayfire logged a Python traceback. SESSION_SCALE (default 6 without KVM) stretches waits.
 # QEMU's VMware SVGA model is not tested: vmwgfx refuses it ("unsupported hypervisor"), and Debian's kernel has no
 # simpledrm fallback, so there is no display by design. Real VMware/VirtualBox and real GPUs all have drivers.
 # Needs: qemu-system-x86, ovmf. Usage: ./distro/smoke-test.sh [timeout-seconds per boot, default 900] [tests...]
@@ -113,6 +117,28 @@ install_test() {
   echo "FAIL install: no MWX7-LOGON-READY within ${LIMIT}s" >&2; tail -c 3000 "$blog" >&2; return 1
 }
 
+session_test() {
+  # Continues from the installed disk of the install test (installs first when it is not there): signs in as test, then
+  # session-test.py takes screenshots over QMP into $OUT/session/ and fails when the shell logged a traceback.
+  local disk="$OUT/smoke-install.qcow2" slog="$OUT/smoke-session.log" scale=1 pid rc
+  [ -f "$disk" ] || install_test || return 1
+  [ "$ACCEL" = kvm ] || scale="${SESSION_SCALE:-6}"
+  rm -rf "$OUT/session" "$slog" "$OUT/session.qmp"; mkdir -p "$OUT/session"
+  # SMBIOS credential: lets mwx7-session-marker.service (root, serial marker + crash report) run; absent on every real PC.
+  # shellcheck disable=SC2046
+  qemu-system-x86_64 -machine q35,accel=$ACCEL -cpu $CPU -smp 2 -m "${MWX7_MEM:-3072}" -display none -device virtio-vga $(ovmf plain) \
+    -device qemu-xhci -device usb-tablet \
+    -drive if=none,id=d0,file="$disk",format=qcow2 -device virtio-blk-pci,drive=d0 \
+    -smbios type=11,value=io.systemd.credential:mwx7.test=1 \
+    -qmp unix:"$OUT/session.qmp",server=on,wait=off \
+    -chardev socket,id=s0,path="$OUT/smoke-session.sock",server=on,wait=off,logfile="$slog" -serial chardev:s0 -no-reboot &
+  pid=$!
+  python3 "$HERE/session-test.py" "$OUT/session.qmp" "$slog" "$OUT/session" "$scale"; rc=$?
+  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  if [ $rc -eq 0 ]; then echo "PASS session: signed in, shell up, screenshots in $OUT/session"; return 0; fi
+  echo "FAIL session (screenshots and logs in $OUT/session and $slog)" >&2; tail -c 3000 "$slog" >&2; return 1
+}
+
 rc=0
 for t in "${TESTS[@]}"; do
   case "$t" in
@@ -123,6 +149,7 @@ for t in "${TESTS[@]}"; do
     secureboot) boot secureboot "q35,smm=on" "-device virtio-vga" -global driver=cfi.pflash01,property=secure,value=on \
       $(ovmf ms) || rc=1 ;;
     install) install_test || rc=1 ;;
+    session) session_test || rc=1 ;;
     *) echo "unknown test $t" >&2; rc=1 ;;
   esac
 done

@@ -58,22 +58,24 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm || echo "::warning::no /dev/kvm, the boot tests run without acceleration (slow)"
-      - name: Boot tests in QEMU (BIOS, UEFI, Secure Boot, install + first logon screen)
+      - name: Boot tests in QEMU (BIOS, UEFI, Secure Boot, install + first logon screen, signed-in desktop screenshots)
         run: |
           # Failures are also reported as annotations (readable without the job log).
-          sudo env INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install > smoke.log 2>&1 || { cat smoke.log
+          sudo env INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install session > smoke.log 2>&1 || { cat smoke.log
             echo "::error::Boot test failed: $(tr -d '\r' < smoke.log | grep -av '^\s*$' | tail -90 | tr '\n' '|' | tail -c 9000)"
-            for t in bios uefi secureboot install install-boot; do
+            for t in bios uefi secureboot install install-boot session; do
               [ -f distro/out/smoke-$t.log ] && echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
             done; exit 1; }
           cat smoke.log
-      - name: Upload serial logs
-        if: failure()
+      - name: Upload serial logs and desktop screenshots
+        # Always: the session test's PNGs (desktop, Start menu, Notepad, traffic-light hover) are the way to see the real desktop.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-serial-logs
           path: |
             distro/out/smoke-*.log
+            distro/out/session/
             smoke.log
             build.log
           if-no-files-found: ignore

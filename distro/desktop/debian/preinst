@@ -2,6 +2,6 @@
 # MWX 7's own versions of files other Debian packages ship: the originals move aside (".debian"), so both packages
 # install cleanly and Debian's updates never put theirs back over ours.
 set -e
-for f in /etc/nftables.conf /etc/xdg/user-dirs.defaults; do
+for f in /etc/nftables.conf /etc/xdg/user-dirs.defaults /etc/xdg/foot/foot.ini; do
   dpkg-divert --package mwx7-desktop --add --rename --divert "$f.debian" "$f" >/dev/null
 done

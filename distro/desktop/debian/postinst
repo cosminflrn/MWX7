@@ -66,6 +66,7 @@ if [ -f /etc/mwx7/installed ] && [ ! -f /var/lib/mwx7/boot-art-2 ] && command -v
 fi
 systemctl enable mwx7-boot-ok.service >/dev/null 2>&1 || true  # resets the start counter (safe boot)
 systemctl enable mwx7-logon-marker.service >/dev/null 2>&1 || true  # serial marker for the automated install test
+systemctl enable mwx7-session-marker.service >/dev/null 2>&1 || true  # only runs in the session smoke test's VM
 # Finishes an update that was cut short (next start); checks for updates daily and downloads them quietly.
 systemctl enable mwx7-update-recover.service mwx7-update-auto.timer >/dev/null 2>&1 || true
 # Previous versions of files: an hourly snapshot of /home (the script does nothing when /home is not btrfs @home).
