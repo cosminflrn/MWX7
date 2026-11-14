@@ -1,37 +1,107 @@
-/* MWX 7 for GTK 4: Adwaita (light) underneath. Only dialogs are restyled here (Open/Save, messages, colours, fonts):
-   MWX 7's shell and apps style themselves, and a global rule here would leak into them. */
+/* MWX 7 for GTK 4 apps (GIMP 3, Files dialogs, anything installed with Get Apps): Adwaita (light) underneath, MWX 7's
+   Aero look on top, the same colours as the GTK 3 theme next to it. MWX 7's own apps draw themselves with user-level
+   style sheets, which win over this theme, so what is set here is what they leave alone.
+   libadwaita apps (GNOME's) ignore GTK themes by design; they follow the accent colour set in GSettings instead. */
 @import url("resource:///org/gtk/libgtk/theme/Default/Default-light.css");
 
-window.dialog { font-family: Selawik, "DejaVu Sans", sans-serif; background-color: #f3f7fc; color: #1c3150; }
-window.dialog headerbar {
+@define-color accent_bg_color #3a8ee6;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #1f6fc6;
+@define-color window_bg_color #f3f7fc;
+@define-color window_fg_color #1c3150;
+@define-color view_bg_color #ffffff;
+@define-color view_fg_color #1c3150;
+@define-color headerbar_bg_color #e3eefb;
+@define-color headerbar_fg_color #1c3150;
+@define-color card_bg_color #ffffff;
+@define-color popover_bg_color #fbfdff;
+@define-color sidebar_bg_color #f1f6fd;
+
+* { font-family: Selawik, "Noto Sans", "DejaVu Sans", sans-serif; }
+window, window.background, dialog.background { background-color: #f3f7fc; color: #1c3150; }
+
+/* Title bars and command bars: the light Aero gradient. */
+headerbar:not(.mwx7-titlebar), toolbar, actionbar, .toolbar {
   background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(240, 247, 255, 0.9) 48%,
                                     rgba(214, 231, 250, 0.9) 52%, rgba(226, 238, 252, 0.95) 100%);
-  border-bottom: 1px solid #b4c6dc; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9); color: #1c3150;
+  background-color: #e3eefb; border-bottom: 1px solid #b4c6dc; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9); color: #1c3150;
 }
-/* Buttons: glossy two-tone like Windows 7, blue glow on hover. */
-window.dialog button {
+headerbar:not(.mwx7-titlebar):backdrop { background-image: linear-gradient(to bottom, #f7faff, #e9f0f9); }
+popover.menu modelbutton:hover, popover.menu modelbutton:focus { background-image: linear-gradient(to bottom, #eaf4ff, #cfe6fd); color: #0b2440; }
+popovermenubar { background-image: linear-gradient(to bottom, #fbfdff, #edf2f9); }
+popovermenubar > item:hover, popovermenubar > item:selected {
+  background-image: linear-gradient(to bottom, #fdfeff, #dcebf9); box-shadow: inset 0 0 0 1px #a9c6e4; border-radius: 3px;
+}
+
+/* Buttons: glossy two-tone like Windows 7, blue glow on hover; the main action is a glossy blue. */
+button {
   background-image: linear-gradient(to bottom, #f6f6f6 0%, #e8e8e8 49%, #dddddd 50%, #cfcfcf 100%);
-  border: 1px solid #8e8f8f; border-radius: 3px; color: #1c1c1c; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  border: 1px solid #8e8f8f; border-radius: 3px; color: #1c1c1c; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7); text-shadow: none;
 }
-window.dialog button:hover {
-  background-image: linear-gradient(to bottom, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%); border-color: #3c7fb1;
+button:hover { background-image: linear-gradient(to bottom, #eaf6fd 0%, #d9f0fc 49%, #bee6fd 50%, #a7d9f5 100%); border-color: #3c7fb1; }
+button:active, button:checked { background-image: linear-gradient(to bottom, #e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%); border-color: #2c628b; }
+button:disabled { background-image: none; background-color: #f4f4f4; border-color: #bdbdbd; color: #8b8b8b; box-shadow: none; }
+button.suggested-action, button.default {
+  background-image: linear-gradient(to bottom, #9bd0ff 0%, #4a95ee 50%, #2a72d6 51%, #5aa6f8 100%); border-color: #1d5aa8; color: #ffffff;
+  text-shadow: 0 -1px rgba(0, 40, 90, 0.4);
 }
-window.dialog button:active, window.dialog button:checked {
-  background-image: linear-gradient(to bottom, #e5f4fc 0%, #c4e5f6 49%, #98d1ef 50%, #68b3db 100%); border-color: #2c628b;
+button.suggested-action:hover, button.default:hover { background-image: linear-gradient(to bottom, #b4dcff 0%, #66a8f2 50%, #3a82e0 51%, #72b4fa 100%); }
+button.destructive-action {
+  background-image: linear-gradient(to bottom, #f6a79c 0%, #e0553f 50%, #c63a24 51%, #e3705a 100%); border-color: #962a1a; color: #ffffff;
 }
-window.dialog button.suggested-action {
-  background-image: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); border-color: #1d5aa8; color: #ffffff;
+button.flat, .path-bar button, headerbar button.flat, toolbar button {
+  background-image: none; border-color: transparent; box-shadow: none; color: inherit;
 }
-window.dialog button.flat, window.dialog .path-bar button { background-image: none; border-color: transparent; box-shadow: none; }
-window.dialog .path-bar button:hover, window.dialog button.flat:hover {
+button.flat:hover, .path-bar button:hover, headerbar button:hover, toolbar button:hover {
   background-image: linear-gradient(to bottom, #fdfeff, #dcebf9); border-color: #a9c6e4;
 }
-/* Selection: Explorer's pale blue with a crisp border. */
-window.dialog row:selected, window.dialog .view:selected, window.dialog columnview row:selected {
+button.flat:checked, .path-bar button:checked { background-image: linear-gradient(to bottom, #fdfeff, #e3effb); border-color: #b5cde6; }
+
+/* Selection: Explorer's pale blue with a crisp border, readable dark text. */
+row:selected, .view:selected, listview > row:selected, columnview > listview > row:selected, gridview > child:selected,
+treeview.view:selected, textview text selection, entry selection, label selection, calendar:selected, flowboxchild:selected {
   background-color: #cce8ff; color: #0b2440; box-shadow: inset 0 0 0 1px #99d1ff;
 }
-window.dialog placessidebar, window.dialog .sidebar-pane { background-color: #f1f6fd; }
-window.dialog entry { border: 1px solid #9fb6d1; border-radius: 3px; background-color: #ffffff; color: #1c3150; }
-window.dialog entry:focus-within { border-color: #3a8ee6; outline: none; box-shadow: 0 0 0 1px rgba(58, 142, 230, 0.35); }
-window.dialog scrollbar slider { background-color: #c2cfdf; border: 1px solid #aab9cc; border-radius: 6px; }
-window.dialog scrollbar slider:hover { background-color: #98c3ec; border-color: #5f9bd6; }
+row:selected:focus, .view:selected:focus { background-color: #cce8ff; color: #0b2440; }
+listview > row:hover { background-color: rgba(204, 232, 255, 0.45); }
+placessidebar, .sidebar, .navigation-sidebar, .sidebar-pane, stacksidebar { background-color: #f1f6fd; }
+placessidebar row:selected, .navigation-sidebar row:selected, stacksidebar row:selected {
+  background-image: linear-gradient(to bottom, #eaf4ff, #cfe6fd); box-shadow: inset 0 0 0 1px #9cc8ef; color: #0b2440;
+}
+
+/* Entries and lists */
+entry, spinbutton, textview.view, textview text, .view, treeview.view, listview, columnview, gridview { background-color: #ffffff; color: #1c3150; }
+entry, spinbutton { border: 1px solid #9fb6d1; border-radius: 3px; box-shadow: none; background-image: none; }
+entry:focus-within, spinbutton:focus-within { border-color: #3a8ee6; outline: none; box-shadow: 0 0 0 1px rgba(58, 142, 230, 0.35); }
+columnview > header > button, treeview.view header button { background-image: linear-gradient(to bottom, #ffffff, #e9f0fa); border-radius: 0; border-color: #d3deec; }
+
+/* Checks, radios, switches, scales, progress bars: Aero's blue. */
+check:checked, radio:checked, check:indeterminate, radio:indeterminate {
+  background-image: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); border-color: #1d5aa8; color: #ffffff;
+}
+switch:checked { background-image: linear-gradient(to bottom, #4a95ee, #2a72d6); border-color: #1d5aa8; }
+switch slider { background-image: linear-gradient(to bottom, #ffffff, #dddddd); border: 1px solid #8e8f8f; }
+scale trough { background-color: #cfdceb; border-radius: 3px; }
+scale highlight, progressbar progress, levelbar block.filled {
+  background-image: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); background-color: #3a8ee6; border-color: #1d5aa8; border-radius: 3px;
+}
+progressbar trough { background-color: #e1e9f3; border: 1px solid #a9bdd5; border-radius: 3px; }
+scale slider { background-image: linear-gradient(to bottom, #ffffff, #d9e4f1); border: 1px solid #7e97b6; }
+scale slider:hover { background-image: linear-gradient(to bottom, #eaf6fd, #a7d9f5); border-color: #3c7fb1; }
+
+/* Tabs */
+notebook > header { background-color: #e9f0fa; border-color: #b4c6dc; }
+notebook > header > tabs > tab { background-image: linear-gradient(to bottom, #f6f9fd, #e1ebf7); border-color: #b4c6dc; }
+notebook > header > tabs > tab:checked { background-image: linear-gradient(to bottom, #ffffff, #f3f7fc); color: #0b2440; }
+
+/* Scrollbars: slim light thumbs that turn blue under the pointer. */
+scrollbar slider { background-color: #c2cfdf; border: 1px solid #aab9cc; border-radius: 6px; min-width: 7px; min-height: 7px; }
+scrollbar slider:hover { background-color: #98c3ec; border-color: #5f9bd6; }
+scrollbar slider:active { background-color: #6fa8e2; border-color: #3c7fb1; }
+
+/* Menus, popovers, tooltips */
+popover.background > contents, popover > contents { background-color: #fbfdff; border: 1px solid #a7bcd6; border-radius: 6px; color: #1c3150; }
+tooltip.background { background-color: #fdfdf0; color: #1c3150; border: 1px solid #a7a78f; border-radius: 3px; }
+statusbar, .statusbar { background-image: linear-gradient(to bottom, #f4f8fd, #e3ecf7); border-top: 1px solid #c5d4e6; color: #3a4f69; }
+infobar, .infobar { background-color: #fff6d1; color: #5a4a10; }
+separator { background-color: #d3deec; }

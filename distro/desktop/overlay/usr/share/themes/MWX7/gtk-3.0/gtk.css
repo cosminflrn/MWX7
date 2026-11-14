@@ -82,3 +82,35 @@ treeview.view:selected:focus, iconview:selected:focus { box-shadow: inset 0 0 0 
 /* The breadcrumb location bar as on the web: a white field with light separators. */
 .path-bar button { padding: 2px 8px; color: #1c3150; }
 .path-bar button:checked { background-image: linear-gradient(to bottom, #fdfeff, #e3effb); border-color: #b5cde6; }
+
+/* Accent: libadwaita-style names for apps that ask, and Aero's glossy blue for the main action and for checked things. */
+@define-color accent_bg_color #3a8ee6;
+@define-color accent_fg_color #ffffff;
+@define-color theme_unfocused_selected_bg_color #cce8ff;
+button.suggested-action, button.default, button.text-button.suggested-action {
+  background-image: linear-gradient(to bottom, #9bd0ff 0%, #4a95ee 50%, #2a72d6 51%, #5aa6f8 100%); border-color: #1d5aa8; color: #ffffff;
+  text-shadow: 0 -1px rgba(0, 40, 90, 0.4);
+}
+button.suggested-action:hover, button.default:hover { background-image: linear-gradient(to bottom, #b4dcff 0%, #66a8f2 50%, #3a82e0 51%, #72b4fa 100%); }
+button.destructive-action {
+  background-image: linear-gradient(to bottom, #f6a79c 0%, #e0553f 50%, #c63a24 51%, #e3705a 100%); border-color: #962a1a; color: #ffffff;
+}
+button:disabled { background-image: none; background-color: #f4f4f4; border-color: #bdbdbd; color: #8b8b8b; box-shadow: none; }
+check:checked, radio:checked, check:indeterminate, radio:indeterminate {
+  background-image: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); border-color: #1d5aa8; color: #ffffff;
+}
+switch:checked { background-image: linear-gradient(to bottom, #4a95ee, #2a72d6); border-color: #1d5aa8; }
+switch slider { background-image: linear-gradient(to bottom, #ffffff, #dddddd); border: 1px solid #8e8f8f; }
+scale trough { background-color: #cfdceb; }
+scale highlight, progressbar progress, levelbar block.filled {
+  background-image: linear-gradient(to bottom, #9bd0ff, #4a95ee 50%, #2a72d6 51%, #5aa6f8); background-color: #3a8ee6; border-color: #1d5aa8;
+}
+progressbar trough { background-color: #e1e9f3; border: 1px solid #a9bdd5; }
+scale slider { background-image: linear-gradient(to bottom, #ffffff, #d9e4f1); border: 1px solid #7e97b6; }
+scale slider:hover { background-image: linear-gradient(to bottom, #eaf6fd, #a7d9f5); border-color: #3c7fb1; }
+notebook > header { background-color: #e9f0fa; border-color: #b4c6dc; }
+notebook > header > tabs > tab { background-image: linear-gradient(to bottom, #f6f9fd, #e1ebf7); }
+notebook > header > tabs > tab:checked { background-image: linear-gradient(to bottom, #ffffff, #f3f7fc); color: #0b2440; }
+treeview.view header button { background-image: linear-gradient(to bottom, #ffffff, #e9f0fa); border-radius: 0; border-color: #d3deec; }
+tooltip.background { background-color: #fdfdf0; color: #1c3150; border: 1px solid #a7a78f; border-radius: 3px; }
+infobar { background-color: #fff6d1; color: #5a4a10; }

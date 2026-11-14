@@ -7,9 +7,17 @@ export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM='wayland;xcb'
 export GDK_BACKEND='wayland,x11'
 # Software rendering is allowed so a VM without 3D still gets a desktop (slower, but never a black screen).
-# GTK 3 apps under Wayland don't reliably pick the theme up from GSettings (no GNOME settings daemon here), so name it
-# directly. GTK 4 apps find no gtk-4.0 folder in it and keep their default look.
+# GTK apps under Wayland don't reliably pick the theme up from GSettings (no GNOME settings daemon here), so name it
+# directly. The MWX7 theme has gtk-3.0 and gtk-4.0 parts, so GTK 3 and GTK 4 apps (GIMP, LibreOffice, Firefox) match.
 export GTK_THEME=MWX7
+# Qt apps (VLC, OBS) take their colours, fonts and look from GTK through qt5/qt6-gtk-platformtheme.
+export QT_QPA_PLATFORMTHEME=gtk3
+# Flatpak sandboxes cannot see /usr/share/themes, but they can see ~/.themes (mwx7-admin flatpak setup lets them); keep a
+# copy of the theme there, refreshed when an update changes it.
+if ! cmp -s /usr/share/themes/MWX7/gtk-4.0/gtk.css "$HOME/.themes/MWX7/gtk-4.0/gtk.css" 2>/dev/null ||
+   ! cmp -s /usr/share/themes/MWX7/gtk-3.0/gtk.css "$HOME/.themes/MWX7/gtk-3.0/gtk.css" 2>/dev/null; then
+  mkdir -p "$HOME/.themes" && rm -rf "$HOME/.themes/MWX7" && cp -r /usr/share/themes/MWX7 "$HOME/.themes/MWX7" || true
+fi
 export WLR_RENDERER_ALLOW_SOFTWARE=1
 # Apps installed with Get Apps (Flatpak) put their menu entries and icons here; without it they never show up in Start.
 # (Spelled out with the defaults, since naming the variable at all replaces them.)
