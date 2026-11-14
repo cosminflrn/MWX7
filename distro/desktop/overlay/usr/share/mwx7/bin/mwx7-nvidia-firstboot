@@ -14,6 +14,9 @@ if not os.path.exists(FLAG):
 if not nv.gpu_present():
     os.unlink(FLAG)
     sys.exit(0)
+if nv.secure_boot_on():  # Secure Boot turned on since the setup: never queue a firmware key screen unasked
+    os.unlink(FLAG)
+    sys.exit(0)
 if not nv.online():
     sys.exit(1)
 try:
