@@ -650,6 +650,11 @@ def nvidia_driver():
     internet (or when apt fails) a flag makes mwx7-nvidia-firstboot.service retry in the background at the first start."""
     if not nvidia.gpu_present():
         return
+    if nvidia.secure_boot_on():
+        # With Secure Boot on, a driver built on this PC only loads after a key is enrolled at a firmware screen at
+        # restart. No surprise screens: the built-in driver stays, and Settings -> Display explains the choice.
+        say('STEP', 'NVIDIA card: the built-in driver is used (Secure Boot is on)')
+        return
     flag = os.path.join(TARGET, nvidia.FLAG)
 
     def later():

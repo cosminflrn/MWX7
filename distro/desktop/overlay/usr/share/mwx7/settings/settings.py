@@ -1123,9 +1123,12 @@ class Settings(Gtk.Application):
         btn = Gtk.Button(label='Remove the NVIDIA driver' if have else 'Use the NVIDIA driver')
         btn.set_halign(Gtk.Align.START)
         sb = 'enabled' in run(['mokutil', '--sb-state']).lower()
+        btn.set_sensitive(have or not sb)  # with Secure Boot on it would need a firmware key screen: off in the BIOS first
         status.set_label('The NVIDIA driver is installed.' if have else
                          'This PC has an NVIDIA graphics card. The driver that comes with MWX 7 works, but NVIDIA\u2019s own '
-                         'driver is faster in games and 3D apps. It comes from Debian (non-free) and needs the internet.')
+                         'driver is faster in games and 3D apps. It comes from Debian (non-free) and needs the internet.'
+                         + (' Secure Boot is on in this PC\u2019s firmware: turn it off in the PC\u2019s setup (BIOS) first, '
+                            'then MWX 7 installs the driver with nothing else to do.' if sb else ''))
 
         def go(_b):
             install = not have

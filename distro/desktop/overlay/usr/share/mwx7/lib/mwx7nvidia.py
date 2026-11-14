@@ -37,8 +37,12 @@ def online(timeout=6):
 
 def secure_boot_on():
     # Always asked of the running firmware (also while installing into a target: same PC).
-    r = subprocess.run(['mokutil', '--sb-state'], capture_output=True, text=True)
-    return 'enabled' in r.stdout.lower()
+    # The firmware's own SecureBoot variable (last byte 1 = on); no mokutil needed, never raises.
+    try:
+        with open('/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c', 'rb') as f:
+            return f.read()[-1:] == b'\x01'
+    except OSError:
+        return False
 
 
 def mok_pending():
