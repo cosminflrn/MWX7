@@ -341,9 +341,9 @@ class Ipc:
 
     # The events the bar and the dock react to. Wayfire only hooks the signals some client asked for: watching all of
     # them (no list) made it build and send a JSON copy of the window for every pointer motion of a drag
-    # (view-geometry-changed), only for the shell to drop it. Unknown names are ignored, hence both fullscreen names.
+    # (view-geometry-changed), only for the shell to drop it. Only names Wayfire 0.9 knows.
     WATCHED_EVENTS = ['view-mapped', 'view-unmapped', 'view-focused', 'view-title-changed', 'view-app-id-changed',
-                      'view-tiled', 'view-minimized', 'view-fullscreen', 'view-fullscreened', 'view-sticky',
+                      'view-tiled', 'view-minimized', 'view-fullscreen', 'view-sticky',
                       'output-wset-changed', 'wset-workspace-changed']
 
     def watch(self, on_event):
