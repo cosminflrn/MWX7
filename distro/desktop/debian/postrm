@@ -2,7 +2,7 @@
 # Removing MWX 7 gives the diverted files back to their Debian packages.
 set -e
 if [ "$1" = remove ] || [ "$1" = purge ]; then
-  for f in /etc/nftables.conf /etc/xdg/user-dirs.defaults; do
+  for f in /etc/nftables.conf /etc/xdg/user-dirs.defaults /etc/xdg/foot/foot.ini; do
     dpkg-divert --package mwx7-desktop --remove --rename --divert "$f.debian" "$f" >/dev/null || true
   done
 fi
