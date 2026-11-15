@@ -2,6 +2,15 @@
 
 Derived from the git history. Newest first.
 
+## v1.21.0
+- **NVIDIA graphics**: the image now carries NVIDIA's firmware, so the built-in driver is accelerated on GTX 10xx and
+  newer; with Secure Boot off, setup installs NVIDIA's own driver by itself; with Secure Boot on it's one click in
+  Settings → Display (one key screen at the next restart, ever), and if that's skipped the desktop still starts
+- Settings opens fully between the bar and the dock; searching a Settings page in Start opens that page
+- Dock no longer shows a second icon for each open app; the bar's icons stay put when the calendar opens
+- Widgets are smaller; title bars stay legible without blur
+- Every build is now tested by opening each main app in a real signed-in session (screenshots, crash check)
+
 ## v1.20.0
 - **Smoother in VMware and on PCs without a 3D driver**: dragging a window no longer redraws its title bar on every
   mouse move, hovering the window buttons swaps ready-made images, and blur is now really off without acceleration
