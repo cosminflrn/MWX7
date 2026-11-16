@@ -883,13 +883,35 @@ def recovery_prepare():
     recovery_sync(fetch=True)
 
 
+def iso_size(dev):
+    """The ISO's own length, read from its volume descriptor. On a USB stick the medium is the whole stick (live-boot
+    mounts the disk itself), so the device size would copy every byte of a 64 GB stick instead of the 1.2 GB ISO."""
+    sizes = []
+    with open(dev, 'rb') as f:
+        # The image's GPT (xorriso writes one) puts its backup header in the image's last sector: that end includes the
+        # EFI partition appended after the ISO 9660 volume, so the copy is the whole, byte-identical ISO file.
+        f.seek(512)
+        gpt = f.read(512)
+        if gpt[:8] == b'EFI PART':
+            sizes.append((int.from_bytes(gpt[32:40], 'little') + 1) * 512)
+        f.seek(16 * 2048)
+        pvd = f.read(2048)
+        if pvd[1:6] == b'CD001':
+            sizes.append(int.from_bytes(pvd[80:84], 'little') * (int.from_bytes(pvd[128:130], 'little') or 2048))
+    sizes = [n for n in sizes if 0 < n <= 16 << 30]
+    if sizes:
+        return max(sizes)
+    return int(sh('blockdev', '--getsize64', dev)) if dev.startswith('/dev/') else os.path.getsize(dev)
+
+
 def store_install_medium(root):
     """At setup: the ISO MWX 7 was installed from becomes the recovery copy (no download ever needed)."""
     dev = sh('findmnt', '-no', 'SOURCE', MEDIUM).strip()
     if not dev:
         return
     with Recovery(root) as rec:
-        size = int(sh('blockdev', '--getsize64', dev)) if dev.startswith('/dev/') else os.path.getsize(dev)
+        size = iso_size(dev)
+        done, shown = 0, -1
         with open(dev, 'rb') as src, open(rec + '/mwx7.iso.part', 'wb') as out:
             left = size
             while left > 0:
@@ -898,6 +920,11 @@ def store_install_medium(root):
                     break
                 out.write(block)
                 left -= len(block)
+                done += len(block)
+                mb = done >> 20
+                if mb // 50 != shown:  # a step that takes minutes must show it is moving
+                    shown = mb // 50
+                    say('STEP', f'Keeping a recovery copy ({mb:,} of {size >> 20:,} MB)')
         os.replace(rec + '/mwx7.iso.part', rec + '/mwx7.iso')
         with open(rec + '/manifest.json', 'w') as f:
             json.dump(iso_manifest(rec + '/mwx7.iso'), f)

@@ -158,7 +158,10 @@ free_test() {
   local dr="-drive if=none,id=w,file=$disks/win.img,format=raw -device virtio-blk-pci,drive=w -drive if=none,id=h,file=$disks/hdd.img,format=raw -device virtio-blk-pci,drive=h"
   # 1. the ISO as a PC starts it from a stick (its own boot menu), both disks attached, no autoinstall.
   # shellcheck disable=SC2086
-  qemu-system-x86_64 $hw $fw $dr -cdrom "$ISO" -boot d -qmp unix:"$d/qmp.sock",server=on,wait=off \
+  # On a USB stick, like on the real PC (written in DD mode, a 16 GB stick): live-boot then mounts the whole stick, which
+  # is what the recovery copy must not copy byte for byte (a CD drive hides that).
+  cp --sparse=always "$ISO" "$disks/stick.img"; truncate -s 16G "$disks/stick.img"
+  qemu-system-x86_64 $hw $fw $dr -drive if=none,id=u,file="$disks/stick.img",format=raw -device usb-storage,drive=u,bootindex=0 -qmp unix:"$d/qmp.sock",server=on,wait=off \
     -chardev socket,id=s0,path="$d/serial.sock",server=on,wait=off,logfile="$d/serial-setup.log" -serial chardev:s0 -no-reboot &
   pid=$!
   python3 "$HERE/free-test.py" drive "$d/qmp.sock" "$d/serial-setup.log" "$d/shots" "$scale" > "$d/drive.log" 2>&1 &
@@ -177,7 +180,7 @@ free_test() {
   kill -9 $dpid 2>/dev/null
   wait $dpid || { echo "FAIL free: the keyboard-driven setup reported problems:" >&2; grep -a 'PROBLEM\|Traceback\|Error' "$d/drive.log" >&2; rc=1; }
   tail -5 "$d/drive.log"
-  python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-setup.log" >&2
+  MWX7_ISO="$ISO" python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-setup.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: the disks are not as they must be after the install" >&2; rc=1; }
   [ $rc -eq 0 ] || { cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; chmod -R a+rX "$d" 2>/dev/null; rm -rf "$disks"; return 1; }
   # 2. the installed disk, alone: MWX 7's own boot entry (from the UEFI variables) must start it.
@@ -197,7 +200,7 @@ free_test() {
     python3 "$HERE/free-test.py" shot "$d/qmp2.sock" "$d/shots/boot-failed.png" || true
   fi
   kill $pid 2>/dev/null; sleep 5; kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
-  python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
+  MWX7_ISO="$ISO" python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: after booting MWX 7 the disks are not as they must be" >&2; rc=1; }
   cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; chmod -R a+rX "$d" 2>/dev/null
   rm -rf "$disks"

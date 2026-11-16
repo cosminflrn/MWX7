@@ -2,6 +2,11 @@
 
 Derived from the git history. Newest first.
 
+## v1.21.3
+- Setup from a USB stick: the recovery copy is now just the 1.2 GB ISO, not the whole stick (a 64 GB stick took many
+  minutes at "Keeping a recovery copy · 90%"), and that step shows how many MB are copied
+- CI: the install-next-to-Windows test now boots from a USB stick image, like a real PC, and checks the recovery copy
+
 ## v1.21.2
 - Setup next to Windows: tested end to end on a copy of a real Windows PC's layout (EFI, Windows, recovery, data disk).
   Every existing partition stays byte-identical, the boot menu lists Windows, and MWX 7 starts afterwards
