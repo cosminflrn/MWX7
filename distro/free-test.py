@@ -256,11 +256,19 @@ class Qmp:
                 time.sleep(1)
         else:
             raise RuntimeError('QMP socket never appeared')
+        # A QEMU stuck in its own reset must not hang the driver (and so the CI job) forever.
+        self.s.settimeout(60)
         self.f = self.s.makefile('rw')
         self.f.readline()
         self.cmd('qmp_capabilities')
 
     def cmd(self, name, **args):
+        try:
+            return self._cmd(name, **args)
+        except OSError as e:  # broken pipe, timeout: the VM is gone or no longer answers
+            raise EOFError(f'the VM is gone ({e})') from e
+
+    def _cmd(self, name, **args):
         self.f.write(json.dumps({'execute': name, 'arguments': args}) + '\n')
         self.f.flush()
         while True:
@@ -397,6 +405,9 @@ def drive(qmp, serial, shots, scale):
     try:
         while True:
             time.sleep(10)
+            if 'reboot: Restarting system' in serial_text() or 'reboot: Power down' in serial_text():
+                log('the setup restarted the VM')
+                break
             text = shot('last') if time.time() - last_shot > 20 else ''
             last_shot = time.time()
             if have_ocr and ('could not be put' in text or 'went wrong' in text or 'could not be saved' in text):

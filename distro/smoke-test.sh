@@ -163,9 +163,18 @@ free_test() {
   pid=$!
   python3 "$HERE/free-test.py" drive "$d/qmp.sock" "$d/serial-setup.log" "$d/shots" "$scale" > "$d/drive.log" 2>&1 &
   dpid=$!
-  for ((t = 0; t < limit; t += 5)); do kill -0 $pid 2>/dev/null || break; sleep 5; done
-  if kill -0 $pid 2>/dev/null; then kill $pid; echo "FAIL free: the setup did not finish and power off within ${limit}s" >&2; rc=1; fi
-  wait $pid 2>/dev/null
+  for ((t = 0; t < limit; t += 5)); do
+    kill -0 $pid 2>/dev/null || break
+    grep -aq 'reboot: \(Restarting system\|Power down\)' "$d/serial-setup.log" 2>/dev/null && break
+    sleep 5
+  done
+  if ! grep -aq 'reboot: \(Restarting system\|Power down\)' "$d/serial-setup.log" 2>/dev/null; then
+    echo "FAIL free: the setup did not finish and restart within ${limit}s" >&2; rc=1
+  fi
+  # -no-reboot should end QEMU at the restart; if it hangs in its own reset, it must not hang the job: TERM, then KILL.
+  sleep 5; kill $pid 2>/dev/null; sleep 5; kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
+  for ((t = 0; t < 90; t += 5)); do kill -0 $dpid 2>/dev/null || break; sleep 5; done
+  kill -9 $dpid 2>/dev/null
   wait $dpid || { echo "FAIL free: the keyboard-driven setup reported problems:" >&2; grep -a 'PROBLEM\|Traceback\|Error' "$d/drive.log" >&2; rc=1; }
   tail -5 "$d/drive.log"
   python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-setup.log" >&2
@@ -187,7 +196,7 @@ free_test() {
     echo "FAIL free: the installed system never reached MWX7-LOGON-READY" >&2; rc=1
     python3 "$HERE/free-test.py" shot "$d/qmp2.sock" "$d/shots/boot-failed.png" || true
   fi
-  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  kill $pid 2>/dev/null; sleep 5; kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
   python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: after booting MWX 7 the disks are not as they must be" >&2; rc=1; }
   cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null
