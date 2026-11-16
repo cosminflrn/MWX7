@@ -42,7 +42,7 @@ jobs:
           for i in 1 2 3; do
             sudo apt-get update -qq -o Acquire::Retries=3 &&
               sudo apt-get install -y -qq -o Acquire::Retries=3 debootstrap squashfs-tools xorriso mtools dosfstools \
-                grub-pc-bin qemu-system-x86 ovmf ntfs-3g tesseract-ocr && break
+                grub-pc-bin qemu-system-x86 ovmf ntfs-3g tesseract-ocr imagemagick && break
             sudo sed -i 's#azure.archive.ubuntu.com#archive.ubuntu.com#g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
             sleep 30
           done

@@ -286,7 +286,7 @@ def drive(qmp, serial, shots, scale):
     os.makedirs(shots, exist_ok=True)
     q = Qmp(qmp)
     problems = []
-    have_ocr = bool(shutil.which('tesseract'))
+    have_ocr = bool(shutil.which('tesseract') and shutil.which('convert'))
     log(f'OCR {"on" if have_ocr else "OFF (first key sequence is used blindly)"}')
 
     def serial_text():
@@ -307,7 +307,13 @@ def drive(qmp, serial, shots, scale):
         log(f'screenshot {name}.png')
         if not have_ocr:
             return ''
-        r = subprocess.run(['tesseract', path, 'stdout', '--psm', '11'], capture_output=True, text=True)
+        # The card is a light, translucent panel over a photo: crop to it, grey, enlarge and stretch the contrast, or the text is garbled.
+        small = path[:-4] + '.ocr.png'
+        c = subprocess.run(['convert', path, '-crop', '760x560+260+110', '+repage', '-colorspace', 'Gray', '-resize', '200%', '-normalize', small],
+                           capture_output=True)
+        r = subprocess.run(['tesseract', small if c.returncode == 0 else path, 'stdout', '--psm', '6'], capture_output=True, text=True)
+        if c.returncode == 0:
+            os.unlink(small)
         text = ' '.join(r.stdout.lower().split())
         with open(path[:-4] + '.txt', 'w') as f:
             f.write(text)
