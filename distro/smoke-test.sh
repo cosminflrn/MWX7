@@ -179,7 +179,7 @@ free_test() {
   tail -5 "$d/drive.log"
   python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-setup.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: the disks are not as they must be after the install" >&2; rc=1; }
-  [ $rc -eq 0 ] || { cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; rm -rf "$disks"; return 1; }
+  [ $rc -eq 0 ] || { cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; chmod -R a+rX "$d" 2>/dev/null; rm -rf "$disks"; return 1; }
   # 2. the installed disk, alone: MWX 7's own boot entry (from the UEFI variables) must start it.
   # shellcheck disable=SC2086
   qemu-system-x86_64 $hw $fw $dr -qmp unix:"$d/qmp2.sock",server=on,wait=off \
@@ -199,7 +199,7 @@ free_test() {
   kill $pid 2>/dev/null; sleep 5; kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
   python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: after booting MWX 7 the disks are not as they must be" >&2; rc=1; }
-  cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null
+  cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; chmod -R a+rX "$d" 2>/dev/null
   rm -rf "$disks"
   [ $rc -eq 0 ] && echo "PASS free: installed next to Windows through the real setup; Windows, recovery, EFI files and the data disk untouched"
   return $rc

@@ -2,6 +2,11 @@
 
 Derived from the git history. Newest first.
 
+## v1.21.2
+- Setup next to Windows: tested end to end on a copy of a real Windows PC's layout (EFI, Windows, recovery, data disk).
+  Every existing partition stays byte-identical, the boot menu lists Windows, and MWX 7 starts afterwards
+- Setup: a step that hangs now stops with its reason instead of waiting forever
+
 ## v1.21.1
 - Setup: the "Last check before anything changes" confirmation now appears inside the setup window; on a real PC the
   separate dialog never showed, so Next seemed to do nothing after "Checking the disk…"
