@@ -80,9 +80,15 @@ jobs:
           sudo env FREE_LIMIT=2400 ./distro/smoke-test.sh 600 free > smoke-free.log 2>&1 || { cat smoke-free.log
             echo "::error::Free-space install test failed: $(tr -d '\r' < smoke-free.log | grep -av '^\s*$' | tail -60 | tr '\n' '|' | tail -c 6000)"; exit 1; }
           cat smoke-free.log
+      - name: Make the test logs readable for upload
+        # The tests run as root; a root-only file once made the upload (and so the whole run) fail.
+        if: always()
+        run: sudo chmod -R a+rX distro/out 2>/dev/null || true
       - name: Upload serial logs and desktop screenshots
         # Always: the session test's PNGs (desktop, Start menu, Notepad, traffic-light hover) are the way to see the real desktop.
+        # Logs are a convenience: an upload problem must never mark a passing run as failed (and email about it).
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: smoke-serial-logs
