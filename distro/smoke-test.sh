@@ -12,6 +12,13 @@
 #               that turns on mwx7-session-marker.service, signs in as test over QMP (distro/session-test.py), waits for
 #               MWX7-SESSION-READY, takes PNG screenshots (desktop, Start menu, Notepad, traffic-light hover) into out/session/
 #               and fails when the shell or Wayfire logged a Python traceback. SESSION_SCALE (default 6 without KVM) stretches waits.
+#   free        the REAL, interactive setup (no autoinstall) on a copy of a real PC's layout: GPT disk with a 200 MB EFI partition (fake
+#               EFI/Microsoft/Boot/bootmgfw.efi), NTFS "Windows" (Windows/System32/ntoskrnl.exe, data), ~24 GiB unallocated and a 900 MB
+#               recovery partition, plus an NTFS data disk. distro/free-test.py drives the setup with keyboard input only (language page,
+#               disk page, "use the free space", the in-window "Last check", Install MWX 7, account test/test) and afterwards proves that
+#               every old partition is byte-identical (EFI: every old file), the data disk untouched, the new partitions lie in the free
+#               space, MWX 7's boot files are on the EFI partition and the installed boot menu lists Windows. Then the installed disk is
+#               booted once (same UEFI variables, so its boot entry is used) and must reach MWX7-LOGON-READY. Screenshots: out/free/.
 # QEMU's VMware SVGA model is not tested: vmwgfx refuses it ("unsupported hypervisor"), and Debian's kernel has no
 # simpledrm fallback, so there is no display by design. Real VMware/VirtualBox and real GPUs all have drivers.
 # Needs: qemu-system-x86, ovmf. Usage: ./distro/smoke-test.sh [timeout-seconds per boot, default 900] [tests...]
@@ -139,6 +146,56 @@ session_test() {
   echo "FAIL session (screenshots and logs in $OUT/session and $slog)" >&2; tail -c 3000 "$slog" >&2; return 1
 }
 
+free_test() {
+  local d="$OUT/free" disks="$OUT/free-disks" limit="${FREE_LIMIT:-3000}" scale=1 pid dpid t rc=0
+  [ "$ACCEL" = kvm ] || { scale="${SESSION_SCALE:-6}"; limit=$((limit * 4)); }
+  rm -rf "$d" "$disks"; mkdir -p "$d" "$disks"
+  python3 "$HERE/free-test.py" build "$disks" > "$d/build.log" 2>&1 || { echo "FAIL free: building the test disks" >&2; tail -20 "$d/build.log" >&2; return 1; }
+  # One copy of the UEFI variables for both boots: the installer's boot entry lives in it, like on a real PC.
+  cp /usr/share/OVMF/OVMF_VARS_4M.fd "$disks/vars.fd"
+  local fw="-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=$disks/vars.fd"
+  local hw="-machine q35,accel=$ACCEL -cpu $CPU -smp 2 -m ${MWX7_MEM:-3072} -display none -device virtio-vga -device qemu-xhci -device usb-kbd"
+  local dr="-drive if=none,id=w,file=$disks/win.img,format=raw -device virtio-blk-pci,drive=w -drive if=none,id=h,file=$disks/hdd.img,format=raw -device virtio-blk-pci,drive=h"
+  # 1. the ISO as a PC starts it from a stick (its own boot menu), both disks attached, no autoinstall.
+  # shellcheck disable=SC2086
+  qemu-system-x86_64 $hw $fw $dr -cdrom "$ISO" -boot d -qmp unix:"$d/qmp.sock",server=on,wait=off \
+    -chardev socket,id=s0,path="$d/serial.sock",server=on,wait=off,logfile="$d/serial-setup.log" -serial chardev:s0 -no-reboot &
+  pid=$!
+  python3 "$HERE/free-test.py" drive "$d/qmp.sock" "$d/serial-setup.log" "$d/shots" "$scale" > "$d/drive.log" 2>&1 &
+  dpid=$!
+  for ((t = 0; t < limit; t += 5)); do kill -0 $pid 2>/dev/null || break; sleep 5; done
+  if kill -0 $pid 2>/dev/null; then kill $pid; echo "FAIL free: the setup did not finish and power off within ${limit}s" >&2; rc=1; fi
+  wait $pid 2>/dev/null
+  wait $dpid || { echo "FAIL free: the keyboard-driven setup reported problems:" >&2; grep -a 'PROBLEM\|Traceback\|Error' "$d/drive.log" >&2; rc=1; }
+  tail -5 "$d/drive.log"
+  python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-setup.log" >&2
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: the disks are not as they must be after the install" >&2; rc=1; }
+  [ $rc -eq 0 ] || { cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; rm -rf "$disks"; return 1; }
+  # 2. the installed disk, alone: MWX 7's own boot entry (from the UEFI variables) must start it.
+  # shellcheck disable=SC2086
+  qemu-system-x86_64 $hw $fw $dr -qmp unix:"$d/qmp2.sock",server=on,wait=off \
+    -chardev socket,id=s0,path="$d/serial2.sock",server=on,wait=off,logfile="$d/serial-boot.log" -serial chardev:s0 -no-reboot &
+  pid=$!
+  for ((t = 0; t < LIMIT; t += 5)); do
+    grep -aq 'MWX7-LOGON-READY' "$d/serial-boot.log" 2>/dev/null && break
+    kill -0 $pid 2>/dev/null || break
+    sleep 5
+  done
+  if grep -aq 'MWX7-LOGON-READY' "$d/serial-boot.log" 2>/dev/null; then
+    echo "PASS free: installed system reached MWX7-LOGON-READY after ${t}s"
+  else
+    echo "FAIL free: the installed system never reached MWX7-LOGON-READY" >&2; rc=1
+    python3 "$HERE/free-test.py" shot "$d/qmp2.sock" "$d/shots/boot-failed.png" || true
+  fi
+  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
+  [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: after booting MWX 7 the disks are not as they must be" >&2; rc=1; }
+  cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null
+  rm -rf "$disks"
+  [ $rc -eq 0 ] && echo "PASS free: installed next to Windows through the real setup; Windows, recovery, EFI files and the data disk untouched"
+  return $rc
+}
+
 rc=0
 for t in "${TESTS[@]}"; do
   case "$t" in
@@ -150,6 +207,7 @@ for t in "${TESTS[@]}"; do
       $(ovmf ms) || rc=1 ;;
     install) install_test || rc=1 ;;
     session) session_test || rc=1 ;;
+    free) free_test || rc=1 ;;
     *) echo "unknown test $t" >&2; rc=1 ;;
   esac
 done

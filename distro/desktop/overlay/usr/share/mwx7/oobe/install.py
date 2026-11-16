@@ -635,7 +635,10 @@ def copy(mode, disk, gib=None):
     else:
         chroot('grub-install', '--target=i386-pc', disk)
     chroot('update-grub')
-    if mode == 'alongside':
+    # "Use the free space" next to an existing Windows (its EFI partition is reused) needs the same safety net as "alongside": the boot
+    # menu must offer Windows even when os-prober did not find it.
+    if mode == 'alongside' or (mode == 'free' and esp and not own_esp and
+                               os.path.exists(f'{TARGET}/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi')):
         ensure_windows_entry(esp)
     say('STEP', 'Keeping a recovery copy')
     store_install_medium(root)

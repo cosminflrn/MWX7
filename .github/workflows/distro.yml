@@ -8,6 +8,11 @@ on:
     branches: [iso]
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      free_only:
+        description: 'Run only the "free" test (interactive install next to Windows), not the other boot tests'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -37,7 +42,7 @@ jobs:
           for i in 1 2 3; do
             sudo apt-get update -qq -o Acquire::Retries=3 &&
               sudo apt-get install -y -qq -o Acquire::Retries=3 debootstrap squashfs-tools xorriso mtools dosfstools \
-                grub-pc-bin qemu-system-x86 ovmf && break
+                grub-pc-bin qemu-system-x86 ovmf ntfs-3g tesseract-ocr && break
             sudo sed -i 's#azure.archive.ubuntu.com#archive.ubuntu.com#g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
             sleep 30
           done
@@ -59,6 +64,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm || echo "::warning::no /dev/kvm, the boot tests run without acceleration (slow)"
       - name: Boot tests in QEMU (BIOS, UEFI, Secure Boot, install + first logon screen, signed-in desktop screenshots)
+        if: ${{ !inputs.free_only }}
         run: |
           # Failures are also reported as annotations (readable without the job log).
           sudo env INSTALL_LIMIT=2400 ./distro/smoke-test.sh 600 bios uefi secureboot install session > smoke.log 2>&1 || { cat smoke.log
@@ -67,6 +73,13 @@ jobs:
               [ -f distro/out/smoke-$t.log ] && echo "::error::serial $t: $(tr -d '\r\0' < distro/out/smoke-$t.log | grep -av '^\s*$' | tail -25 | tr '\n' '|' | tail -c 2500)"
             done; exit 1; }
           cat smoke.log
+      - name: Interactive install next to Windows (keyboard-driven setup, free space, nothing existing may change)
+        # The real setup, not the autoinstall hook: this is the path a person takes on a PC that already has Windows. Its screenshots
+        # (distro/out/free/shots) show every page, including the in-window "Last check".
+        run: |
+          sudo env FREE_LIMIT=2400 ./distro/smoke-test.sh 600 free > smoke-free.log 2>&1 || { cat smoke-free.log
+            echo "::error::Free-space install test failed: $(tr -d '\r' < smoke-free.log | grep -av '^\s*$' | tail -60 | tr '\n' '|' | tail -c 6000)"; exit 1; }
+          cat smoke-free.log
       - name: Upload serial logs and desktop screenshots
         # Always: the session test's PNGs (desktop, Start menu, Notepad, traffic-light hover) are the way to see the real desktop.
         if: always()
@@ -76,7 +89,9 @@ jobs:
           path: |
             distro/out/smoke-*.log
             distro/out/session/
+            distro/out/free/
             smoke.log
+            smoke-free.log
             build.log
           if-no-files-found: ignore
           retention-days: 14
