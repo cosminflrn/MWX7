@@ -2,6 +2,10 @@
 
 Derived from the git history. Newest first.
 
+## v1.21.1
+- Setup: the "Last check before anything changes" confirmation now appears inside the setup window; on a real PC the
+  separate dialog never showed, so Next seemed to do nothing after "Checking the disk…"
+
 ## v1.21.0
 - **NVIDIA graphics**: the image now carries NVIDIA's firmware, so the built-in driver is accelerated on GTX 10xx and
   newer; with Secure Boot off, setup installs NVIDIA's own driver by itself; with Secure Boot on it's one click in

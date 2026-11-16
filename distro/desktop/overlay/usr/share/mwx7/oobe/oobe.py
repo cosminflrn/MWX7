@@ -203,6 +203,34 @@ class Setup(Gtk.Application):
         win.set_default_widget(self.next)  # Enter in the name field and the like presses Next (while it is enabled)
         card.append(bottom)
         overlay.add_overlay(card)
+        # The last-check panel lives inside this window: a separate dialog window was never shown by cage in front of
+        # the full-screen setup on a real PC, so Next looked dead.
+        self.confirm_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, visible=False)
+        self.confirm_panel.add_css_class('card')
+        self.confirm_panel.set_halign(Gtk.Align.CENTER)
+        self.confirm_panel.set_valign(Gtk.Align.CENTER)
+        self.confirm_panel.set_size_request(640, -1)
+        self.confirm_title = Gtk.Label(xalign=0)
+        self.confirm_title.add_css_class('title')
+        self.confirm_text = Gtk.Label(xalign=0, wrap=True, selectable=False)
+        self.confirm_text.set_margin_start(24)
+        self.confirm_text.set_margin_end(24)
+        self.confirm_title.set_margin_start(24)
+        self.confirm_title.set_margin_top(20)
+        row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        row.set_margin_end(24)
+        row.set_margin_bottom(20)
+        self.confirm_no = Gtk.Button(label='Go back')
+        self.confirm_no.connect('clicked', lambda *_: self.close_confirm(False))
+        self.confirm_yes = Gtk.Button(label='Install MWX 7')
+        self.confirm_yes.add_css_class('primary')
+        self.confirm_yes.connect('clicked', lambda *_: self.close_confirm(True))
+        row.append(self.confirm_no)
+        row.append(self.confirm_yes)
+        for w in (self.confirm_title, self.confirm_text, row):
+            self.confirm_panel.append(w)
+        overlay.add_overlay(self.confirm_panel)
+        self.card = card
         win.set_child(overlay)
 
         first = (('update', 'Updates', self.page_update),) if FIRSTBOOT else ()
@@ -616,25 +644,23 @@ class Setup(Gtk.Application):
     def show_confirm(self, data, err):
         self.status.set_label('')
         self.validate()
-        dlg = Gtk.AlertDialog()
         if err:
-            dlg.set_message('Nothing was changed')
-            dlg.set_detail(err)
-            dlg.set_buttons(['OK'])
-            dlg.show(self.win)
-            return
-        dlg.set_message('Last check before anything changes')
-        dlg.set_detail('This is exactly what will happen:\n\n' + '\n\n'.join(data['lines']) + '\n\nThere is no undo.')
-        dlg.set_buttons(['Go back', 'Install MWX 7'])
-        dlg.set_cancel_button(0)
-        dlg.set_default_button(0)
-        dlg.choose(self.win, None, self.confirmed)
+            self.confirm_title.set_label('Nothing was changed')
+            self.confirm_text.set_label(err)
+            self.confirm_no.set_label('OK')
+            self.confirm_yes.set_visible(False)
+        else:
+            self.confirm_title.set_label('Last check before anything changes')
+            self.confirm_text.set_label('This is exactly what will happen:\n\n' + '\n\n'.join(data['lines']) + '\n\nThere is no undo.')
+            self.confirm_no.set_label('Go back')
+            self.confirm_yes.set_visible(True)
+        self.card.set_sensitive(False)
+        self.confirm_panel.set_visible(True)
+        self.confirm_no.grab_focus()  # Enter must never start an install by accident
 
-    def confirmed(self, dlg, res):
-        try:
-            yes = dlg.choose_finish(res) == 1
-        except GLib.Error:
-            yes = False
+    def close_confirm(self, yes):
+        self.confirm_panel.set_visible(False)
+        self.card.set_sensitive(True)
         if yes:
             self.move(1)
 
