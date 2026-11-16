@@ -69,7 +69,13 @@ GROUPS = ('cdrom', 'sudo', 'audio', 'dip', 'video', 'render', 'input', 'plugdev'
 def sh(*cmd, quiet=True, **kw):
     if 'input' not in kw:
         kw['stdin'] = subprocess.DEVNULL  # nothing here may ever wait for the keyboard (apt, dpkg)
-    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    except subprocess.TimeoutExpired as e:
+        # A hung step must end the setup with a reason, never leave it at a frozen percentage.
+        out = (e.stdout or b'')[-600:] if isinstance(e.stdout, bytes) else (e.stdout or '')[-600:]
+        ps = subprocess.run(['ps', '-eo', 'pid,etime,args', '--sort=start_time'], capture_output=True, text=True).stdout
+        raise RuntimeError(f"{' '.join(cmd[:4])} took too long. Last output: {out!s} Processes: {ps[-900:]}")
     if r.returncode != 0:
         raise RuntimeError(f"{' '.join(cmd)} failed: {(r.stderr or r.stdout).strip()[-400:]}")
     return r.stdout
@@ -610,7 +616,8 @@ def copy(mode, disk, gib=None):
     # live-boot and the advanced installer only make sense on the ISO. Removing live-boot also rebuilds the start-up
     # files (initramfs) for this PC.
     chroot('apt-get', 'purge', '-y', '-qq', '--autoremove', '-o', 'Dpkg::Use-Pty=0', 'live-boot',
-           'live-boot-initramfs-tools', 'calamares', 'qt6-wayland', 'qml6-module-qtquick', 'qml6-module-qtquick-window')
+           'live-boot-initramfs-tools', 'calamares', 'qt6-wayland', 'qml6-module-qtquick', 'qml6-module-qtquick-window',
+           timeout=900)
     say('PROGRESS', 90)
     nvidia_driver()
 
