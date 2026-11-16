@@ -238,6 +238,24 @@ def verify(d):
                     break
     finally:
         os.rmdir(mnt)
+    # 6. the recovery copy is exactly the ISO (from a USB stick it once copied the whole stick)
+    iso = os.environ.get('MWX7_ISO')
+    if iso and new:
+        mnt = tempfile.mkdtemp(prefix='mwx7-rec-')
+        got = None
+        try:
+            with Loop(win, new[0], ro=True) as dev:
+                if any(subprocess.run(['mount', '-t', 'btrfs', '-o', o, dev, mnt], capture_output=True).returncode == 0
+                       for o in ('ro,subvol=@recovery,rescue=nologreplay', 'ro,subvol=@recovery,norecovery', 'ro,subvol=@recovery')):
+                    try:
+                        if os.path.exists(f'{mnt}/mwx7.iso'):
+                            got = (os.path.getsize(f'{mnt}/mwx7.iso'), sha(f'{mnt}/mwx7.iso'))
+                    finally:
+                        subprocess.run(['umount', mnt])
+        finally:
+            os.rmdir(mnt)
+        want = (os.path.getsize(iso), sha(iso))
+        check('recovery copy is the ISO, byte for byte', got == want, f'{got[0] if got else "missing"} bytes, ISO {want[0]}')
     entries = re.findall(r'^\s*menuentry\s+[\'"]([^\'"]+)', cfg, re.M)
     check('boot menu (grub.cfg of the installed system) lists Windows', any('windows' in e.lower() for e in entries),
           '; '.join(entries[:8]))
