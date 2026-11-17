@@ -22,7 +22,8 @@ export WLR_RENDERER_ALLOW_SOFTWARE=1
 # Apps installed with Get Apps (Flatpak) put their menu entries and icons here; without it they never show up in Start.
 # (Spelled out with the defaults, since naming the variable at all replaces them.)
 export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share"
-export WLR_NO_HARDWARE_CURSORS=1
+# The pointer uses the GPU's cursor plane (a software cursor is drawn into every frame: it lags behind the mouse and
+# makes a 144 Hz screen feel like 60 Hz). Only VMware below still needs the software cursor.
 # Settings -> Language & region writes date/number formats (LC_TIME=ro_RO.UTF-8 ...) to an environment.d drop-in. The session
 # is not started by systemd's user manager, so read it here; only plain LC_* lines are taken, nothing else is evaluated.
 REGION="${XDG_CONFIG_HOME:-$HOME/.config}/environment.d/50-mwx7-region.conf"
@@ -63,10 +64,10 @@ for drv in /sys/class/drm/card*/device/driver; do
     # same on wlroots): draw the cursor ourselves and use legacy modesetting. Hovering and dragging felt slow here.
     export WLR_NO_HARDWARE_CURSORS=1 WLR_DRM_NO_ATOMIC=1
   fi
-  # NVIDIA's own driver (Settings -> Display -> Use the NVIDIA driver): wlroots needs its GBM backend and GLX vendor
-  # named, and its hardware cursor plane flickers or vanishes with this driver generation, so the cursor is drawn by us.
+  # NVIDIA's own driver (Settings -> Display -> Use the NVIDIA driver): wlroots needs its GBM backend and GLX vendor named.
+  # Debian 13's driver (550) handles the hardware cursor plane; the older ones that made it flicker are not shipped.
   if [ "$(basename "$(readlink -f "$drv")")" = nvidia ]; then
-    export GBM_BACKEND=nvidia-drm __GLX_VENDOR_LIBRARY_NAME=nvidia WLR_NO_HARDWARE_CURSORS=1
+    export GBM_BACKEND=nvidia-drm __GLX_VENDOR_LIBRARY_NAME=nvidia
   fi
 done
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then

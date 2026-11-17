@@ -2,6 +2,12 @@
 
 Derived from the git history. Newest first.
 
+## v1.21.4
+- The mouse pointer is drawn by the graphics card again (it was drawn into every frame, which lagged behind the mouse and
+  made 144 Hz feel like 60 Hz); only VMware keeps the drawn pointer
+- NVIDIA cards on the built-in driver (nouveau) stay at 60 Hz: above that the screen flickered (GTX 1070 at 144 Hz);
+  with the NVIDIA driver the highest refresh rate is used as before
+
 ## v1.21.3
 - Setup from a USB stick: the recovery copy is now just the 1.2 GB ISO, not the whole stick (a 64 GB stick took many
   minutes at "Keeping a recovery copy · 90%"), and that step shows how many MB are copied

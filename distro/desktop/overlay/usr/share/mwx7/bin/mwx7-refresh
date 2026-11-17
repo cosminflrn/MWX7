@@ -22,7 +22,18 @@ def chosen_outputs():
     return names
 
 
+def nouveau():
+    """nouveau cannot raise an NVIDIA card's memory clock (GTX 900 and newer stay at boot clocks): above 60 Hz the screen
+    flickers (seen at 144 Hz on a GTX 1070). There the monitor keeps 60 Hz until the NVIDIA driver is in use."""
+    for drv in os.listdir('/sys/class/drm'):
+        link = f'/sys/class/drm/{drv}/device/driver'
+        if os.path.exists(link) and os.path.basename(os.path.realpath(link)) == 'nouveau':
+            return True
+    return False
+
+
 def main():
+    cap = 61.0 if nouveau() else 1e9
     try:
         skip = chosen_outputs()
     except OSError:
@@ -35,9 +46,11 @@ def main():
         cur = next((m for m in modes if m.get('current')), None)
         if not cur:
             continue
-        same = [m for m in modes if m['width'] == cur['width'] and m['height'] == cur['height']]
+        same = [m for m in modes if m['width'] == cur['width'] and m['height'] == cur['height'] and m['refresh'] <= cap]
+        if not same:
+            continue
         best = max(same, key=lambda m: m['refresh'])
-        if best['refresh'] > cur['refresh'] + 0.01:
+        if cur['refresh'] > cap or best['refresh'] > cur['refresh'] + 0.01:
             subprocess.run(['wlr-randr', '--output', o['name'], '--mode',
                             f"{best['width']}x{best['height']}@{best['refresh']:.3f}Hz"],
                            capture_output=True, timeout=10)
