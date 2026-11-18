@@ -18,7 +18,7 @@ Current: v1.21.4 (update channel); last ISO mwx7-1.21.3.339.iso.
 - USB stick looks nice in Windows: give the ISO's FAT boot partition the label "MWX 7" + autorun.inf with our own .ico.
   (The ISO 9660 part always shows RAW in Windows — document "click Cancel if Windows offers to format it".)
 - USB boot prints a harmless "file boot not found" GRUB message — silence it.
-- Title bars stay translucent when blur is off (VMware/software rendering): blur_active() suspected wrong (#217 held).
+- Title bars stay translucent when blur is off (VMware/software rendering): blur_active() suspected wrong (#217 held; its patch: `docs/history/held-217-frosted-titlebar.patch`).
 
 ## Real PC
 - Gigabyte B450M DS3H (F12 boot menu), Ryzen 2600, GTX 1070, Win11 on a 256 GB SSD + 1 TB HDD, Secure Boot ON

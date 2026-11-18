@@ -1,0 +1,90 @@
+From 69defe00c7e60e009be109da1b9a4dcab4dec03a Mon Sep 17 00:00:00 2001
+From: Cosmin <cosmin@dazoot.ro>
+Date: Sat, 14 Nov 2026 12:21:12 +0200
+Subject: [PATCH] Title bar: frosted veil when blur is off; traffic lights
+ paint on first frame
+
+Without blur (CI, VMs, software drawing) the nearly clear glass showed desktop widgets behind the window sharply
+through the title bar. Lights were created on an idle after the first paint, so a frame could lack one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UCCWDLN8G263EmL8hBVNet
+---
+ distro/desktop/mwx7-decor/deco-button.cpp |  7 +++++
+ distro/desktop/mwx7-decor/deco-theme.cpp  | 35 +++++++++++++++++++++++
+ 2 files changed, 42 insertions(+)
+
+diff --git a/distro/desktop/mwx7-decor/deco-button.cpp b/distro/desktop/mwx7-decor/deco-button.cpp
+index d7a70a0..eae4f21 100644
+--- a/distro/desktop/mwx7-decor/deco-button.cpp
++++ b/distro/desktop/mwx7-decor/deco-button.cpp
+@@ -97,6 +97,13 @@ void button_t::set_active(bool active)
+ void button_t::render(const wf::render_target_t& fb, wf::geometry_t geometry,
+     wf::geometry_t scissor)
+ {
++    // The light is drawn on first paint, not on an idle that may run after it: a frame in between showed the title bar
++    // without its lights (a missing one until hover).
++    if (!current_texture)
++    {
++        update_texture();
++    }
++
+     if (!current_texture)
+     {
+         return;
+diff --git a/distro/desktop/mwx7-decor/deco-theme.cpp b/distro/desktop/mwx7-decor/deco-theme.cpp
+index 4bba1a3..88a955c 100644
+--- a/distro/desktop/mwx7-decor/deco-theme.cpp
++++ b/distro/desktop/mwx7-decor/deco-theme.cpp
+@@ -132,6 +132,33 @@ void decoration_theme_t::update_band(int width, int height, int band, bool activ
+     cairo_surface_destroy(surface);
+ }
+ 
++/** Whether Wayfire's blur runs: mwx7-perf unloads it without 3D acceleration (VMs, software drawing). */
++static bool blur_active()
++{
++    auto& cfg = wf::get_core().config;
++    auto plugins = cfg.get_option("core/plugins");
++    if (!plugins)
++    {
++        return false;
++    }
++
++    std::istringstream in(plugins->get_value_str());
++    std::string name;
++    bool loaded = false;
++    while (in >> name)
++    {
++        loaded |= (name == "blur");
++    }
++
++    if (!loaded)
++    {
++        return false;
++    }
++
++    auto by_default = cfg.get_option("blur/blur_by_default");
++    return by_default && (by_default->get_value_str() != "none");
++}
++
+ /**
+  * Fill the given rectangle with MWX 7's Aero glass: the chosen colour at the chosen intensity over Wayfire's blur, the
+  * cached sheen and streaks on the title band, and the frame's rings (a dark outer line, a bright inner one).
+@@ -156,6 +183,14 @@ void decoration_theme_t::render_background(const wf::render_target_t& fb,
+     OpenGL::render_begin(fb);
+     fb.logic_scissor(scissor);
+     const auto proj = fb.get_orthographic_projection();
++    if (!blur_active())
++    {
++        // No blur behind the glass: at the default intensity it is almost clear, so a desktop widget (or anything else)
++        // behind the window showed through the title bar as a sharp rectangle, lights and all. A frosted veil takes
++        // the blur's place.
++        OpenGL::render_rectangle(rectangle, pm({0.62, 0.78, 0.96, active ? 0.62 : 0.5}), proj);
++    }
++
+     if (active)
+     {
+         OpenGL::render_rectangle(rectangle, pm({c.r, c.g, c.b, c.a}), proj);
+-- 
+2.43.0
+
