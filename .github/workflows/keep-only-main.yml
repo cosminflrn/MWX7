@@ -1,6 +1,7 @@
 name: Keep only main
 
-# The repo has one branch, main: every other branch is deleted, and so are leftover archive/* tags.
+# The repo has one branch, main: every other branch is deleted, and so are leftover archive/* tags, open pull requests
+# (everything goes straight to main) and old deployment records (only the newest per environment stays).
 # Runs when this file changes, every Monday, and by hand (Actions tab).
 on:
   push:
@@ -12,6 +13,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  deployments: write
 
 jobs:
   prune:
@@ -25,4 +28,22 @@ jobs:
           done
           for tag in $(git ls-remote --tags origin 'refs/tags/archive/*' | sed 's#.*refs/tags/##' | grep -v '\^{}$'); do
             git push origin --delete "refs/tags/$tag" && echo "deleted tag $tag" || echo "::warning::could not delete $tag"
+          done
+      - name: Close open pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh pr list --state open --limit 200 --json number -q '.[].number'); do
+            gh pr close "$n" --comment "Closed automatically: this repo works on main only." || echo "::warning::could not close #$n"
+          done
+      - name: Remove old deployment records
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          seen=" "
+          gh api --paginate "repos/$GITHUB_REPOSITORY/deployments?per_page=100" -q '.[] | "\(.id) \(.environment)"' |
+          while read -r id env; do
+            case "$seen" in *" $env "*) ;; *) seen="$seen$env "; continue ;; esac
+            gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=inactive >/dev/null 2>&1 || true
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/deployments/$id" >/dev/null 2>&1 || echo "::warning::could not remove deployment $id"
           done
