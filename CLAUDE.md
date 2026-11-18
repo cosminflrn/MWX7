@@ -27,8 +27,8 @@ the docs or in the code is outdated or there's a better way, change it and updat
 - Fast and token-efficient; short messages; say expected durations before long steps. Suggest improvements proactively.
 - One branch: commit straight to `main` (author Cosmin Florian <cosmin@dazoot.ro>). Run `npm run build` / `npm test` for
   web changes; add a test for every bug you fix. Avoid CI runs that fail for non-issues (he gets the emails).
-- Merges to main ship to installed systems through the update channel (`updates.yml`); a new ISO only for new installs
-  (`distro.yml`, run by hand or for a version tag).
+- Every distro change on main ships to installed systems through the update channel (`updates.yml`). Bumping the
+  version in `package.json` builds, tests and publishes the ISO by itself (`distro.yml`); only the newest release is kept.
 
 ## Where things are
 - `docs/STATUS.md`: current version, backlog, real PC, ops. Keep it current.

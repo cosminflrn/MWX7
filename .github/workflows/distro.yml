@@ -1,11 +1,13 @@
 name: Live ISO
 
 # Builds the bootable MWX 7 ISO, boot-tests it in QEMU and attaches it to a GitHub release.
-# Only by hand (Actions tab) or for a version tag: installed systems get changes
-# through the update channel (updates.yml), so a new ISO is only needed for new installs.
+# Runs by itself when a new version lands on main (the version in package.json changes) or when this file changes;
+# also by hand (Actions tab). Installed systems get every change through the update channel (updates.yml); the ISO is
+# for new installs. Only the newest version keeps a release: older v* releases and their tags are removed after publishing.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json', '.github/workflows/distro.yml']
   workflow_dispatch:
     inputs:
       free_only:
@@ -15,6 +17,11 @@ on:
 
 permissions:
   contents: write
+
+
+concurrency:
+  group: iso
+  cancel-in-progress: false
 
 jobs:
   iso:
@@ -137,3 +144,10 @@ jobs:
             gh release create "$TAG" "$F" "$F.sha256" $SIG latest.json --target "$GITHUB_SHA" \
               --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md
           fi
+          # Keep only this version's release (plus the "updates" channel release, which is not a v* tag).
+          for old in $(gh release list --limit 200 --json tagName -q '.[].tagName' | grep -E '^v[0-9]' | grep -vx "$TAG"); do
+            gh release delete "$old" -y --cleanup-tag || echo "::warning::could not remove $old"
+          done
+          for old in $(git ls-remote --tags origin 'refs/tags/v*' | sed 's#.*refs/tags/##' | grep -v '\^{}$' | grep -vx "$TAG"); do
+            git push origin --delete "refs/tags/$old" || echo "::warning::could not remove tag $old"
+          done

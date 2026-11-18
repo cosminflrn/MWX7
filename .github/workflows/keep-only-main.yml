@@ -1,7 +1,6 @@
 name: Keep only main
 
-# The repo has one branch: main. This deletes every other branch. A branch with commits that are not in main is first
-# kept as an "archive/<branch>" tag, so nothing is ever lost (restore: create a branch from that tag).
+# The repo has one branch, main: every other branch is deleted, and so are leftover archive/* tags.
 # Runs when this file changes, every Monday, and by hand (Actions tab).
 on:
   push:
@@ -14,27 +13,16 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: keep-only-main
-  cancel-in-progress: false
-
 jobs:
   prune:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - name: Delete every branch except main
         run: |
-          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
-          for ref in $(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin); do
-            case "$ref" in main|HEAD) continue ;; esac
-            if ! git merge-base --is-ancestor "origin/$ref" origin/main; then
-              tag="archive/$ref"
-              if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then tag="$tag-$(date +%Y%m%d%H%M)"; fi
-              git push origin "origin/$ref:refs/tags/$tag" && echo "kept $ref as tag $tag" \
-                || { echo "::warning::could not archive $ref, left it in place"; continue; }
-            fi
-            git push origin --delete "$ref" && echo "deleted $ref" || echo "::warning::could not delete $ref"
+          for ref in $(git ls-remote --heads origin | sed 's#.*refs/heads/##' | grep -vx main); do
+            git push origin --delete "refs/heads/$ref" && echo "deleted branch $ref" || echo "::warning::could not delete $ref"
+          done
+          for tag in $(git ls-remote --tags origin 'refs/tags/archive/*' | sed 's#.*refs/tags/##' | grep -v '\^{}$'); do
+            git push origin --delete "refs/tags/$tag" && echo "deleted tag $tag" || echo "::warning::could not delete $tag"
           done

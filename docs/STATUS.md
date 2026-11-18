@@ -1,6 +1,6 @@
 # MWX 7 — project status
 
-Current: v1.21.4 (update channel); last ISO mwx7-1.21.3.339.iso.
+Current: v1.21.4 (update channel and ISO).
 17 Nov 2026: installed on Cosmin's real work PC next to Windows 11 (GTX 1070, 144 Hz monitor) — works; NVIDIA driver in use.
 
 ## Backlog (next, in priority order)
@@ -36,6 +36,6 @@ Display: hardware cursor everywhere except VMware; mwx7-refresh picks the highes
 nouveau (no Pascal reclocking → flicker above 60).
 
 ## Ops
-- Releases: `gh api repos/cosminflrn/MWX7/actions/workflows/distro.yml/dispatches -X POST -f ref=main` (only main and
-  tags publish). Merges to main ship through the Updates workflow.
+- New ISO: bump `version` in `package.json` on main; `distro.yml` builds, tests and publishes it and removes older
+  releases. Every distro change on main ships through the Updates workflow.
 - Writing the stick: Rufus DD mode; on "Write error", diskpart `clean` on the stick first.
