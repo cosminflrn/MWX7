@@ -133,17 +133,26 @@ jobs:
           fi
           # Reset MWX 7 finds the newest ISO through this small file (releases/latest/download/latest.json).
           printf '{"iso": "%s", "sha256": "%s"}\n' "$F" "$(cut -d' ' -f1 "$F.sha256")" > latest.json
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # One ISO per release: a rebuild replaces the previous one.
-            for old in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -E '\.iso(\.sha256|\.sig)?$'); do
-              gh release delete-asset "$TAG" "$old" -y
-            done
-            gh release upload "$TAG" "$F" "$F.sha256" $SIG latest.json --clobber
-            gh release edit "$TAG" --notes-file distro/RELEASE_NOTES.md
-          else
-            gh release create "$TAG" "$F" "$F.sha256" $SIG latest.json --target "$GITHUB_SHA" \
-              --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md
-          fi
+          # GitHub sometimes drops a large upload: publish is retried (an existing release is reused, its ISO replaced).
+          trap - ERR
+          publish() {
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              # One ISO per release: a rebuild replaces the previous one.
+              for old in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -E '\.iso(\.sha256|\.sig)?$'); do
+                gh release delete-asset "$TAG" "$old" -y || return 1
+              done
+              gh release upload "$TAG" "$F" "$F.sha256" $SIG latest.json --clobber || return 1
+              gh release edit "$TAG" --notes-file distro/RELEASE_NOTES.md || return 1
+            else
+              gh release create "$TAG" "$F" "$F.sha256" $SIG latest.json --target "$GITHUB_SHA" \
+                --title "MWX 7 $V" --notes-file distro/RELEASE_NOTES.md || return 1
+            fi
+          }
+          for try in 1 2 3 4; do
+            publish && break
+            [ "$try" = 4 ] && { echo "::error::Publishing failed 4 times"; exit 1; }
+            echo "::warning::publish attempt $try failed, retrying in 60 s"; sleep 60
+          done
           # Keep only this version's release (plus the "updates" channel release, which is not a v* tag).
           for old in $(gh release list --limit 200 --json tagName -q '.[].tagName' | grep -E '^v[0-9]' | grep -vx "$TAG"); do
             gh release delete "$old" -y --cleanup-tag || echo "::warning::could not remove $old"
