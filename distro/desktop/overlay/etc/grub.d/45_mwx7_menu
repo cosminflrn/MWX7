@@ -1,0 +1,17 @@
+#!/bin/sh
+# How long the boot menu shows, after 30_os-prober has set its own time (it runs before this one). Uses what
+# 01_mwx7_safe decided; without it (no EFI partition, BIOS) nothing here changes anything.
+#   a start told where to go (mwx7_next: a restart from MWX 7, Restart to Windows): straight there, the menu hidden
+#     (holding Esc during that one second still shows it, with Repair MWX 7 and the previous version)
+#   next to Windows otherwise: the menu for 10 seconds. A monitor can need a few of them to show a picture after it
+#     wakes up, and the countdown stops at the first key.
+set -e
+cat <<'ENTRY'
+if [ "$mwx7_quick" = 1 ]; then
+  set timeout_style=hidden
+  set timeout=1
+elif [ "$mwx7_windows" = 1 ]; then
+  set timeout_style=menu
+  set timeout=10
+fi
+ENTRY

@@ -1,0 +1,18 @@
+[Unit]
+Description=MWX 7: restart or shut down by itself once the logon screen is up (boot menu test only)
+After=greetd.service mwx7-logon-marker.service
+ConditionPathExists=/etc/mwx7/installed
+# Only when the VM was started with -smbios type=11,value=io.systemd.credential:mwx7.test-power=reboot|poweroff|windows
+# (distro/smoke-test.sh "free"). A normal PC never has this credential, so this never runs there.
+ConditionCredential=mwx7.test-power
+
+[Service]
+Type=oneshot
+LoadCredential=mwx7.test-power
+# Waits for the logon screen, then long enough for mwx7-boot-ok.service (15 s), like a person who signs in and restarts.
+ExecStart=/bin/sh -c 'for i in $(seq 300); do pgrep -f mwx7/greeter/greeter.py >/dev/null && break; sleep 2; done; sleep 25; \
+  case "$(cat %d/mwx7.test-power)" in \
+    reboot) systemctl reboot ;; poweroff) systemctl poweroff ;; windows) /usr/share/mwx7/bin/mwx7-bootnext windows ;; esac'
+
+[Install]
+WantedBy=graphical.target

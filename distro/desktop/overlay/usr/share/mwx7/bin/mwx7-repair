@@ -10,6 +10,11 @@ reboot_in() { sleep "$1"; systemctl reboot; exit 0; }
 [ -f "$D/install.py" ] || { say "Repair is not available: MWX 7's repair files are missing."; reboot_in 20; }
 
 plymouth quit 2>/dev/null || true  # the splash would hold the screen
+# Every way out of here restarts the PC: back into MWX 7, not to Windows (the boot menu's default next to Windows).
+E=/boot/efi/EFI/MWX7/mwx7.env
+if [ -d /sys/firmware/efi ] && [ -d "${E%/*}" ] && command -v grub-editenv >/dev/null 2>&1; then
+  { [ -f "$E" ] || grub-editenv "$E" create; } 2>/dev/null && grub-editenv "$E" set mwx7_next=mwx7 2>/dev/null || true
+fi
 rm -f /run/mwx7-repair-shown /run/mwx7-repair-error
 if [ -f "$D/repair.py" ] && command -v cage >/dev/null 2>&1; then
   mkdir -p -m 700 /run/mwx7-repair

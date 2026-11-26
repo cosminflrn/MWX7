@@ -18,7 +18,10 @@
 #               disk page, "use the free space", the in-window "Last check", Install MWX 7, account test/test) and afterwards proves that
 #               every old partition is byte-identical (EFI: every old file), the data disk untouched, the new partitions lie in the free
 #               space, MWX 7's boot files are on the EFI partition and the installed boot menu lists Windows. Then the installed disk is
-#               booted once (same UEFI variables, so its boot entry is used) and must reach MWX7-LOGON-READY. Screenshots: out/free/.
+#               booted once (same UEFI variables, so its boot entry is used) and must reach MWX7-LOGON-READY. Then the boot menu
+#               next to Windows, start after start: switched on and Windows' own restarts go to Windows, MWX 7 chosen in the
+#               menu and restarted comes back to MWX 7, Restart to Windows and a shut down from MWX 7 lead to Windows (the
+#               fake Windows boot manager reports on the serial port). Screenshots: out/free/.
 # QEMU's VMware SVGA model is not tested: vmwgfx refuses it ("unsupported hypervisor"), and Debian's kernel has no
 # simpledrm fallback, so there is no display by design. Real VMware/VirtualBox and real GPUs all have drivers.
 # Needs: qemu-system-x86, ovmf. Usage: ./distro/smoke-test.sh [timeout-seconds per boot, default 900] [tests...]
@@ -146,6 +149,34 @@ session_test() {
   echo "FAIL session (screenshots and logs in $OUT/session and $slog)" >&2; tail -c 3000 "$slog" >&2; return 1
 }
 
+free_start() {  # NAME WINDOWS|MWX7 [reboot|poweroff|windows]: one start of the installed disks (free_test's variables)
+  local name="$1" want="$2" cred="${3:-}" log="$d/serial-$1.log" p t mp="" extra=() other
+  mkdir -p "$d/shots"
+  [ -n "$cred" ] && extra=(-smbios "type=11,value=io.systemd.credential:mwx7.test-power=$cred")
+  # shellcheck disable=SC2086
+  qemu-system-x86_64 $hw $fw $dr -qmp unix:"$d/qmp-$name.sock",server=on,wait=off "${extra[@]}" \
+    -chardev socket,id=s0,path="$d/serial-$name.sock",server=on,wait=off,logfile="$log" -serial chardev:s0 -no-reboot &
+  p=$!
+  case "$name" in pick-mwx7*)
+    python3 "$HERE/free-test.py" menu-mwx7 "$d/qmp-$name.sock" "$d/shots/boot-menu-$name.png" "$((30 * scale))" &
+    mp=$! ;;
+  esac
+  # Every start ends by itself: Windows powers off, MWX 7 does what the credential says.
+  for ((t = 0; t < LIMIT; t += 5)); do kill -0 $p 2>/dev/null || break; sleep 5; done
+  [ -n "$mp" ] && { wait $mp || echo "free $name: choosing MWX 7 in the menu failed" >&2; }
+  if kill -0 $p 2>/dev/null; then
+    python3 "$HERE/free-test.py" shot "$d/qmp-$name.sock" "$d/shots/boot-$name-stuck.png" || true
+    kill $p 2>/dev/null; sleep 5; kill -9 $p 2>/dev/null
+  fi
+  wait $p 2>/dev/null
+  if [ "$want" = WINDOWS ]; then want=MWX7-TEST-WINDOWS; other=MWX7-LOGON-READY; else want=MWX7-LOGON-READY; other=MWX7-TEST-WINDOWS; fi
+  if grep -aq "$want" "$log" 2>/dev/null && ! grep -aq "$other" "$log" 2>/dev/null; then
+    echo "PASS free $name: $want${cred:+, then $cred} (${t}s)"; return 0
+  fi
+  echo "FAIL free $name: wanted $want only; the serial port says: $(tr -d '\r' < "$log" | grep -aoE 'MWX7-[A-Z-]+' | tr '\n' ' ')" >&2
+  return 1
+}
+
 free_test() {
   local d="$OUT/free" disks="$OUT/free-disks" limit="${FREE_LIMIT:-3000}" scale=1 pid dpid t rc=0
   [ "$ACCEL" = kvm ] || { scale="${SESSION_SCALE:-6}"; limit=$((limit * 4)); }
@@ -200,6 +231,20 @@ free_test() {
     python3 "$HERE/free-test.py" shot "$d/qmp2.sock" "$d/shots/boot-failed.png" || true
   fi
   kill $pid 2>/dev/null; sleep 5; kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
+  # 3. The boot menu next to Windows, start after start on the same disks and UEFI variables (each QEMU run is one start;
+  #    -no-reboot ends it at a restart). Windows here is a stand-in that writes MWX7-TEST-WINDOWS and powers off;
+  #    MWX 7 restarts, shuts down or restarts to Windows by itself when the credential mwx7.test-power says so
+  #    (mwx7-test-power.service, once the logon screen is up).
+  if [ $rc -eq 0 ]; then
+    free_start on              WINDOWS        || rc=1  # switched on: Windows
+    free_start windows-restart WINDOWS        || rc=1  # Windows restarts (an update): Windows again
+    free_start pick-mwx7       MWX7 reboot    || rc=1  # MWX 7 chosen in the menu, then Restart
+    free_start restart         MWX7 windows   || rc=1  # ...comes back to MWX 7; then Restart to Windows
+    free_start to-windows      WINDOWS        || rc=1  # ...goes to Windows
+    free_start pick-mwx7-again MWX7 poweroff  || rc=1  # MWX 7 chosen again, then Shut Down
+    free_start switched-on     WINDOWS        || rc=1  # ...the next start is Windows
+    [ $rc -eq 0 ] && echo "PASS free: boot menu next to Windows (switched on, Windows restarts, MWX 7 restarts, Restart to Windows, shut down)"
+  fi
   MWX7_ISO="$ISO" python3 "$HERE/free-test.py" verify "$disks" 2>&1 | tee "$d/verify-after-boot.log" >&2
   [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "FAIL free: after booting MWX 7 the disks are not as they must be" >&2; rc=1; }
   cp "$disks/installed-grub.cfg" "$d/" 2>/dev/null; chmod -R a+rX "$d" 2>/dev/null

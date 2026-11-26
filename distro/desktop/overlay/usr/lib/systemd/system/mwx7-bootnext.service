@@ -1,0 +1,22 @@
+[Unit]
+Description=MWX 7: a restart comes back to MWX 7 (next to Windows)
+Documentation=file:/usr/share/mwx7/bin/mwx7-bootnext
+# Started early in every kind of start (desktop, offline update, Repair) so that its stop runs at every shut down,
+# while the EFI partition is still mounted (stopped before it is unmounted). The stop only writes on a restart.
+DefaultDependencies=no
+RequiresMountsFor=/boot/efi
+After=local-fs.target
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+ConditionPathExists=/etc/mwx7/installed
+ConditionPathExists=/sys/firmware/efi
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/share/mwx7/bin/mwx7-bootnext stop
+TimeoutStopSec=20
+
+[Install]
+WantedBy=sysinit.target

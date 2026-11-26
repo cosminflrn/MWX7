@@ -28,6 +28,9 @@ From then on: **Settings → Updates → Check for updates**, then **Install now
 4. In the setup, the disk page says what is on every disk ("Windows, files", "Empty"). A disk with something on it
    offers **Use the free space** (keeps everything) or **Erase this disk**, which you must confirm by ticking what will
    be deleted. **Advanced** opens the full installer: next to Windows (it shrinks a partition), or with disk encryption.
+5. Next to Windows, the PC starts Windows when you switch it on (and when Windows restarts for its updates); the boot
+   menu shows for 10 seconds to choose MWX 7. A restart from MWX 7 comes back to MWX 7, and **Start → Restart to
+   Windows** goes straight to Windows.
 
 What an installed MWX 7 has: your own administrator account (root is locked), btrfs with compression, swap in
 compressed RAM, a firewall that lets nothing unasked in, daily automatic security updates, and MWX 7 updates signed with

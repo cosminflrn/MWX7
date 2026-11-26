@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-<!-- MWX 7 Settings' administrator actions (Updates, Account). -->
+<!-- MWX 7 Settings' administrator actions (Updates, Account) and Restart to Windows. -->
 <policyconfig>
   <vendor>MWX 7</vendor>
   <action id="org.mwx7.update">
@@ -15,5 +15,12 @@
     <message>Confirm it's you to change your password or how you sign in.</message>
     <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/share/mwx7/bin/mwx7-admin</annotate>
+  </action>
+  <action id="org.mwx7.boot">
+    <description>Restart to Windows</description>
+    <message>Restarting to Windows needs the person at this PC.</message>
+    <!-- Like Restart itself: whoever sits at the PC may, without a password. It only chooses which system starts next. -->
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/share/mwx7/bin/mwx7-bootnext</annotate>
   </action>
 </policyconfig>

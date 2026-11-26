@@ -26,7 +26,7 @@ concurrency:
 jobs:
   iso:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180  # build ~30 min + 3 boots + the install test (KVM: ~15 min; the install test's own limit is 40)
+    timeout-minutes: 180  # build ~30 min + 3 boots + the install test (KVM: ~25 min with its boot menu starts; own limit 40)
     steps:
       - name: Free disk space (the build tree, ISO and 24 GB test disk need ~25 GB)
         run: |
@@ -48,11 +48,14 @@ jobs:
           for i in 1 2 3; do
             sudo apt-get update -qq -o Acquire::Retries=5 &&
               sudo apt-get install -y -qq -o Acquire::Retries=5 debootstrap squashfs-tools xorriso mtools dosfstools \
-                grub-pc-bin qemu-system-x86 ovmf ntfs-3g tesseract-ocr imagemagick && break
+                grub-pc-bin grub-efi-amd64-bin qemu-system-x86 ovmf ntfs-3g tesseract-ocr imagemagick && break
             sudo sed -i 's#azure.archive.ubuntu.com#archive.ubuntu.com#g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
             sleep 30
           done
           command -v debootstrap mksquashfs xorriso qemu-system-x86_64
+      - name: Boot menu choices in real GRUB (Windows by default, MWX 7 after its own restarts, the update fallback)
+        # A couple of minutes; first, so a broken boot menu fails before the 30-minute build.
+        run: ./distro/tests/boot-choice-test.sh
       - name: Build ISO
         run: |
           sudo -E env "PATH=$PATH" ./distro/build-iso.sh > build.log 2>&1 || { tail -50 build.log

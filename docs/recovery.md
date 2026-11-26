@@ -57,6 +57,11 @@ every confirmation before you click.
 ## For people who look after MWX 7
 
 - The boot entries come from `/etc/grub.d/42_mwx7` and `/etc/grub.d/01_mwx7_safe`.
+- Next to Windows (its boot manager on the same EFI partition) the boot menu starts Windows and shows for 10 seconds
+  (`45_mwx7_menu`); `mwx7_next` in `EFI/MWX7/mwx7.env` sends the next start straight elsewhere, once: `mwx7` is written
+  by `mwx7-bootnext.service` when MWX 7 restarts (not when it shuts down), by the setup and by Repair; `windows` by
+  Start → Restart to Windows (`mwx7-bootnext windows`). If the menu ever goes to the wrong system: hold Esc at power-on
+  for the menu, or use the PC's own boot menu (F12 on the B450M DS3H) and pick Windows Boot Manager.
 - Repair runs `/boot/mwx7-recovery/mwx7-repair` (a copy of `bin/mwx7-repair`, `oobe/install.py`, `oobe/repair.py` and
   `oobe/oobe.css` made by `update-grub`) through `systemd.run=` on the kernel command line, so it does not depend on
   `/usr/share/mwx7` or the package state. It calls `install.py reinstall keep|clean`.

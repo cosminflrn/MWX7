@@ -1,9 +1,20 @@
 #!/bin/sh
-# Starts back into the previous version when the first starts after an update do not work. mwx7-bootcount (run by
-# mwx7-update) arms a counter in a small GRUB environment file on the EFI partition (FAT: GRUB cannot write to btrfs);
-# this adds to the counter at each start and, at the third start with the counter at 2, makes the previous version's
-# entry the default. mwx7-boot-ok.service resets the counter once the logon screen is up. Every part is guarded: no EFI
-# partition, no file or no previous version means a normal boot menu, as before.
+# Which system the boot menu starts, decided from a small GRUB environment file on the EFI partition (FAT: GRUB cannot
+# write to btrfs). Every part is guarded: no EFI partition or no file means the plain boot menu (MWX 7 first, as
+# without this script).
+# 1. Next to Windows (its boot manager on the same EFI partition, where MWX 7's setup puts MWX 7 next to it), Windows is
+#    the default: a PC switched on, and every restart that Windows makes itself (updates restart several times in a
+#    row), lands in Windows. The menu shows for 10 seconds (45_mwx7_menu) to choose MWX 7.
+#    mwx7_next says where the next start goes, straight, with the menu hidden (Esc still shows it); it is used once:
+#      mwx7        a restart from MWX 7 (mwx7-bootnext.service writes it when MWX 7 restarts; the setup and Repair too)
+#      windows     Start menu -> Restart to Windows (mwx7-bootnext windows)
+#    Any other value is dropped (the default then starts, straight).
+# 2. Starts back into the previous version when the first starts after an update do not work. mwx7-bootcount (run by
+#    mwx7-update) arms a counter; each start into MWX 7 adds to it and, at the third start with the counter at 2, the
+#    previous version's entry becomes the default. mwx7-boot-ok.service resets the counter (and mwx7_next) once the logon
+#    screen is up. While the counter is armed, mwx7_next=mwx7 is kept, so a start that hangs is retried in MWX 7 (and
+#    then goes back to the previous version) instead of landing in Windows. Next to Windows only the starts that go to
+#    MWX 7 by themselves (mwx7_next=mwx7) count: a start that defaults to Windows never moves the counter.
 set -e
 . /usr/share/grub/grub-mkconfig_lib
 [ -d /sys/firmware/efi ] && [ -d /boot/efi/EFI/MWX7 ] || exit 0
@@ -12,12 +23,31 @@ set -e
 esp=$(grub-probe --target=fs_uuid /boot/efi 2>/dev/null) || exit 0
 [ -n "$esp" ] || exit 0
 sed "s/@ESP@/$esp/" <<'ENTRY'
+set mwx7_windows=
+set mwx7_quick=
 if search --no-floppy --fs-uuid --set=mwx7_esp @ESP@; then
   set mwx7_env=($mwx7_esp)/EFI/MWX7/mwx7.env
+  set mwx7_armed=0
+  set mwx7_tries=0
+  unset mwx7_next
   if [ -f $mwx7_env ]; then
-    set mwx7_armed=0
-    set mwx7_tries=0
-    load_env -f $mwx7_env
+    load_env -f $mwx7_env mwx7_armed mwx7_tries mwx7_next
+  fi
+  if [ -f ($mwx7_esp)/EFI/Microsoft/Boot/bootmgfw.efi ]; then
+    set mwx7_windows=1
+  fi
+  set mwx7_go="$mwx7_next"
+  if [ -n "$mwx7_go" ]; then
+    set mwx7_quick=1
+    if [ "$mwx7_go" != mwx7 -o "$mwx7_armed" != 1 ]; then
+      unset mwx7_next
+      save_env -f $mwx7_env mwx7_next
+    fi
+  fi
+  if [ "$mwx7_go" = windows ]; then
+    # By name: also a Windows on another disk. Without an entry of that name GRUB starts the first one, MWX 7.
+    set default=Windows
+  elif [ "$mwx7_go" = mwx7 -o "$mwx7_windows" != 1 ]; then
     if [ "$mwx7_armed" = 1 ]; then
       if [ "$mwx7_tries" = 2 ]; then
         set default=mwx7-previous
@@ -29,6 +59,8 @@ if search --no-floppy --fs-uuid --set=mwx7_esp @ESP@; then
         save_env -f $mwx7_env mwx7_tries
       fi
     fi
+  else
+    set default=Windows
   fi
 fi
 ENTRY

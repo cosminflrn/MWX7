@@ -1,6 +1,6 @@
 # MWX 7 — project status
 
-Current: v1.21.4 (update channel and ISO).
+Current: v1.22.0 (update channel and ISO).
 17 Nov 2026: installed on Cosmin's real work PC next to Windows 11 (GTX 1070, 144 Hz monitor) — works; NVIDIA driver in use.
 
 ## Backlog (next, in priority order)
@@ -21,8 +21,14 @@ Current: v1.21.4 (update channel and ISO).
 - Title bars stay translucent when blur is off (VMware/software rendering): blur_active() suspected wrong (#217 held; its patch: `docs/history/held-217-frosted-titlebar.patch`).
 
 ## Real PC
-- Gigabyte B450M DS3H (F12 boot menu), Ryzen 2600, GTX 1070, Win11 on a 256 GB SSD + 1 TB HDD, Secure Boot ON
-  (never ask to disable it; no MOK by default). MWX 7 in 24.41 GiB next to Windows; Windows must never be at risk.
+- Gigabyte B450M DS3H (F12 boot menu; BIOS Fast Boot off, the default), Ryzen 5 2600, 16 GB DDR4-3000, GTX 1070,
+  Win11 on a 256 GB SSD + 1 TB HDD, Secure Boot ON (never ask to disable it; no MOK by default).
+- Monitor: AOC G2590FX, 1920x1080 at 144 Hz, on DisplayPort (input fixed to DP, not Auto). Slow to show a picture
+  after power-on or a mode change: avoid extra mode switches (GRUB keeps the firmware's mode, GRUB_GFXMODE=auto).
+- SSD layout (GPT): EFI 200 MB (Windows' and MWX 7's), C: 198 GB NTFS, MWX 7 24.41 GiB btrfs, Windows RE 921 MB.
+  Windows must never be at risk.
+- Boot menu (v1.22, his choice): switched on → Windows (menu 10 s to pick MWX 7); Windows' own restarts → Windows; a
+  restart from MWX 7 → MWX 7 (menu hidden); Start → Restart to Windows. See `etc/grub.d/01_mwx7_safe`.
 
 Vision and how to work: `CLAUDE.md`.
 

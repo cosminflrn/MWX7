@@ -2,6 +2,7 @@
 root locked, the chosen keyboard in the desktop, and GRUB named and set up for MWX 7."""
 import os
 import re
+import subprocess
 
 import libcalamares
 
@@ -61,8 +62,8 @@ def run():
     # 5. GRUB: MWX 7's name, the quiet boot the splash needs, and other systems (Windows) listed in the menu.
     #    Calamares' grubcfg job runs next and adds what an encrypted disk needs.
     write(target('etc/default/grub'), '''# MWX 7 boot menu settings. Run "sudo update-grub" after changing this file.
-# Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
-# ("error: sparse file not allowed" on every start).
+# The first entry (MWX 7); next to Windows, /etc/grub.d/01_mwx7_safe starts Windows unless MWX 7 restarted (it keeps
+# that choice on the EFI partition: GRUB can't write to btrfs, "error: sparse file not allowed").
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=1
 GRUB_DISTRIBUTOR="MWX 7"
@@ -73,8 +74,22 @@ GRUB_DISABLE_OS_PROBER=false
 GRUB_DISABLE_RECOVERY=true
 # The menu in MWX 7's look; it only shows when Esc is held or another system (Windows) is there to choose.
 GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
-GRUB_GFXMODE=1920x1080,1280x800,auto
+# auto: the mode the PC's firmware already shows (normally the monitor's own resolution), so the monitor does not
+# switch modes again and stay dark while the menu counts down.
+GRUB_GFXMODE=auto
 GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_TIMEOUT_STYLE=hidden
 ''')
+    # 6. The restart after the install goes straight into MWX 7, not to Windows (the boot menu's default next to Windows,
+    #    /etc/grub.d/01_mwx7_safe). The bootloader job installs GRUB into this same folder afterwards.
+    esp = target('boot/efi')
+    if os.path.isdir('/sys/firmware/efi') and os.path.ismount(esp):
+        env = os.path.join(esp, 'EFI', 'MWX7', 'mwx7.env')
+        try:
+            os.makedirs(os.path.dirname(env), exist_ok=True)
+            if not os.path.exists(env):
+                subprocess.run(['grub-editenv', env, 'create'], capture_output=True, timeout=30)
+            subprocess.run(['grub-editenv', env, 'set', 'mwx7_next=mwx7'], capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            pass
     return None

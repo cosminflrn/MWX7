@@ -22,11 +22,17 @@ the docs or in the code is outdated or there's a better way, change it and updat
   stays on, no MOK or blue-screen steps.
 
 ## How to work
+- Every conversation starts cold (he keeps no Claude memory): this repo is the memory. Before asking him anything, read
+  `docs/STATUS.md` (his PC, decisions, backlog) and the code; write down there anything new he tells you about his
+  setup or what he decided, in the same change.
 - Do everything end to end yourself: build, test, commit, ship. Don't ask him to run diagnostics or send logs; find the
   cause yourself. Think through how he will really install and use it, not just the convenient path.
 - Fast and token-efficient; short messages; say expected durations before long steps. Suggest improvements proactively.
 - One branch: commit straight to `main` (author Cosmin Florian <cosmin@dazoot.ro>). Run `npm run build` / `npm test` for
   web changes; add a test for every bug you fix. Avoid CI runs that fail for non-issues (he gets the emails).
+- Anything that can stop his PC from starting (boot menu, GRUB, setup, Repair, updates of those): test it locally
+  (`distro/tests/boot-choice-test.sh` for the boot menu) and in the full ISO CI on a temporary branch
+  (Actions → Live ISO → run on that branch) before it reaches `main`; merge only when green, then delete the branch.
 - Every distro change on main ships to installed systems through the update channel (`updates.yml`). Bumping the
   version in `package.json` builds, tests and publishes the ISO by itself (`distro.yml`); only the newest release is kept.
 

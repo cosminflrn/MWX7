@@ -64,6 +64,18 @@ PLACES = [
 POWER_ACTIONS = [('Lock', 'system-lock-screen', ['/usr/share/mwx7/bin/mwx7-lock']),
                  ('Log Off', 'user', ['pkill', '-u', str(os.getuid()), '-x', 'wayfire']),
                  ('Restart', 'logoff', ['systemctl', 'reboot']), ('Shut Down', 'shutdown', ['systemctl', 'poweroff'])]
+# Next to Windows: restart straight into Windows (a plain Restart comes back to MWX 7; the boot menu's own default, when
+# the PC is switched on, is Windows). mwx7-bootnext through pkexec (org.mwx7.boot: no password, like Restart).
+BOOTNEXT = '/usr/share/mwx7/bin/mwx7-bootnext'
+RESTART_WINDOWS = ['pkexec', BOOTNEXT, 'windows']
+
+
+def windows_present():
+    """True when the boot menu offers Windows (only then is there a Restart to Windows)."""
+    try:
+        return subprocess.run([BOOTNEXT, 'has-windows'], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 # Written by mwx7-update-notify when updates are waiting: "<count> <MWX 7 version or ->". Gone when there are none.
 UPDATES_FILE = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'mwx7-updates')
@@ -117,7 +129,7 @@ def goodbye(cmd):
     """Log Off, Restart and Shut Down as in the concept: the screen fades to MWX 7 blue with "Logging off…", the log-off
     chime plays, then the session ends. Anything else (Lock) just runs."""
     text = {'reboot': 'Restarting\u2026', 'poweroff': 'Shutting down\u2026'}.get(cmd[-1]) if cmd[:1] == ['systemctl'] \
-        else ('Logging off\u2026' if 'wayfire' in cmd else None)
+        else ('Logging off\u2026' if 'wayfire' in cmd else 'Restarting to Windows\u2026' if cmd == RESTART_WINDOWS else None)
     if not text:
         subprocess.Popen(cmd)
         return
@@ -146,6 +158,15 @@ def goodbye(cmd):
         except (OSError, subprocess.SubprocessError):
             pass
         time.sleep(0.6)
+        if cmd == RESTART_WINDOWS:
+            # It restarts the PC itself; when it could not (nothing was changed then), the desktop comes back.
+            try:
+                ok = subprocess.run(cmd, timeout=60).returncode == 0
+            except (OSError, subprocess.SubprocessError):
+                ok = False
+            if not ok:
+                GLib.idle_add(w.destroy)
+            return
         subprocess.Popen(cmd)
     threading.Thread(target=go, daemon=True).start()
 
@@ -631,7 +652,10 @@ class StartMenu(Gtk.Popover):
         more_pop = Gtk.Popover()
         more_pop.add_css_class('start')
         col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        for label, icon, cmd in POWER_ACTIONS:
+        actions = list(POWER_ACTIONS)
+        if windows_present():
+            actions.insert(3, ('Restart to Windows', 'logoff', RESTART_WINDOWS))
+        for label, icon, cmd in actions:
             col.append(shell.menu_row(label, icon, lambda *_a, c=cmd: (more_pop.popdown(), self.popdown(), power(c))))
         more_pop.set_child(col)
         more.set_popover(more_pop)
@@ -1879,6 +1903,8 @@ class Shell(Gtk.Application):
         item('Lock', lambda: power(POWER_ACTIONS[0][2]))
         item('Log Off…', lambda: power(POWER_ACTIONS[1][2]))
         item('Restart…', lambda: power(POWER_ACTIONS[2][2]))
+        if windows_present():
+            item('Restart to Windows…', lambda: power(RESTART_WINDOWS))
         item('Shut Down…', lambda: power(POWER_ACTIONS[3][2]))
         pop.set_child(col)
         return pop

@@ -1,0 +1,57 @@
+#!/bin/sh
+# Where the next start goes, next to Windows (see etc/grub.d/01_mwx7_safe): GRUB starts Windows unless mwx7_next in
+# the small GRUB environment file on the EFI partition says otherwise; GRUB uses it once.
+#   mwx7-bootnext windows      Start menu -> Restart to Windows (through pkexec, org.mwx7.boot): restarts now, straight
+#                              into Windows
+#   mwx7-bootnext mwx7         the next start goes straight to MWX 7 (Repair, which restarts into MWX 7)
+#   mwx7-bootnext stop         mwx7-bootnext.service while the PC shuts down: a restart comes back to MWX 7 (or goes to
+#                              Windows after Restart to Windows); a shut down leaves nothing, so the PC starts Windows
+#   mwx7-bootnext has-windows  exit 0 when the boot menu offers Windows (no root needed; the Start menu asks)
+# Root only, except has-windows. Every action is harmless when it cannot work (no EFI partition, no grub-editenv):
+# the boot menu then simply starts its default.
+ESP=/boot/efi
+DIR=$ESP/EFI/MWX7
+ENV=$DIR/mwx7.env
+ASKED=/run/mwx7-next-windows   # Restart to Windows was chosen; the restart that follows must not write mwx7 over it
+
+has_windows() {
+  # Exactly the entry 01_mwx7_safe starts by name ("Windows": os-prober's, renamed by mwx7-grub-names, or the setup's
+  # own); "Windows Boot Manager (on ...)" would not be found by that name.
+  grep -Eq "^menuentry ('Windows'|\"Windows\") " /boot/grub/grub.cfg 2>/dev/null
+}
+
+set_next() {
+  [ -d /sys/firmware/efi ] && [ -d "$DIR" ] && command -v grub-editenv >/dev/null || return 1
+  [ -f "$ENV" ] || grub-editenv "$ENV" create || return 1
+  grub-editenv "$ENV" set "mwx7_next=$1"
+}
+
+case "$1" in
+  has-windows)
+    has_windows ;;
+  windows)
+    [ "$(id -u)" = 0 ] || exit 1
+    has_windows || { echo "mwx7-bootnext: there is no Windows in the boot menu" >&2; exit 1; }
+    : > "$ASKED"
+    if ! set_next windows; then
+      rm -f "$ASKED"
+      echo "mwx7-bootnext: could not write to the EFI partition" >&2
+      exit 1
+    fi
+    systemctl reboot && exit 0
+    # The restart did not start (another program holds it off): this was not a choice for some later restart.
+    rm -f "$ASKED"
+    grub-editenv "$ENV" unset mwx7_next 2>/dev/null
+    exit 1 ;;
+  mwx7)
+    [ "$(id -u)" = 0 ] || exit 0
+    set_next mwx7 2>/dev/null || true ;;
+  stop)
+    [ "$(id -u)" = 0 ] || exit 0
+    # Only a restart: systemd has reboot.target queued then. A shut down (poweroff.target) or halt leaves no choice.
+    systemctl list-jobs --no-legend --no-pager 2>/dev/null | awk '$2 == "reboot.target" { found = 1 } END { exit !found }' || exit 0
+    if [ -e "$ASKED" ]; then set_next windows 2>/dev/null || true; else set_next mwx7 2>/dev/null || true; fi ;;
+  *)
+    echo "usage: mwx7-bootnext windows|mwx7|stop|has-windows" >&2; exit 2 ;;
+esac
+exit 0

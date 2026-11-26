@@ -2,6 +2,18 @@
 
 Derived from the git history. Newest first.
 
+## v1.22.0
+- **Next to Windows, the PC starts Windows**: switched on, and at every restart Windows makes itself (its updates
+  restart several times), the boot menu starts Windows; it shows for 10 seconds to choose MWX 7, and the countdown stops
+  at the first key
+- A restart from MWX 7 comes back to MWX 7, straight, without the menu (also after Update and restart, the setup,
+  Repair and Reset); Shut Down leaves the choice to the menu again
+- **Start → Restart to Windows** (and in the Start button's right-click menu) goes straight to Windows
+- The boot menu keeps the screen mode the PC's firmware already shows instead of switching to 1920x1080, so a monitor
+  that is slow to show a picture after a mode change no longer loses the menu's first seconds; it fits any resolution
+- Safe boot after an update still works next to Windows: a start that hangs is retried in MWX 7 and then goes back to
+  the previous version; a start that defaults to Windows never counts
+
 ## v1.21.4
 - The mouse pointer is drawn by the graphics card again (it was drawn into every frame, which lagged behind the mouse and
   made 144 Hz feel like 60 Hz); only VMware keeps the drawn pointer

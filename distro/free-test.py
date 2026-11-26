@@ -10,8 +10,12 @@ space of a disk that holds Windows, driven with keyboard input only, and the pro
   free-test.py verify DIR                    after the install: every old partition byte for byte the same (the EFI partition:
                                              every old file), the HDD untouched, new partitions only in the former free space,
                                              MWX 7's boot files on the EFI partition, Windows in the installed boot menu
+  free-test.py menu-mwx7 QMP PNG SECONDS     a person choosing MWX 7 in the boot menu: Home every second for SECONDS, a
+                                             screenshot of the menu, Enter
+The fake Windows boot manager is a tiny GRUB (grub-mkstandalone, grub-efi-amd64-bin) that writes MWX7-TEST-WINDOWS to the serial
+port and powers off: the boot menu tests see when Windows was started.
 
-Needs root (loop devices, mounts), sfdisk, mkfs.ntfs + ntfs-3g, mtools, dosfstools, btrfs in the kernel; tesseract-ocr is optional
+Needs root (loop devices, mounts), sfdisk, mkfs.ntfs + ntfs-3g, mtools, dosfstools, grub-efi-amd64-bin, btrfs in the kernel; tesseract-ocr is optional
 (it lets the driver check what is on screen and try another key sequence; without it the first sequence is used blindly).
 """
 import hashlib
@@ -112,6 +116,18 @@ def mount_write(dev, fn):
         os.rmdir(mnt)
 
 
+def fake_windows():
+    """Windows' boot manager stand-in: a real EFI program (a tiny GRUB) that writes MWX7-TEST-WINDOWS to the serial port
+    and powers the VM off, so the test sees when the boot menu started Windows."""
+    with tempfile.TemporaryDirectory() as t:
+        with open(f'{t}/grub.cfg', 'w') as f:
+            f.write('serial --unit=0 --speed=115200\nterminal_output serial console\necho MWX7-TEST-WINDOWS\nsleep 2\nhalt\n')
+        run('grub-mkstandalone', '-O', 'x86_64-efi', '-o', f'{t}/bootmgfw.efi', '--modules=serial echo sleep halt',
+            f'boot/grub/grub.cfg={t}/grub.cfg')
+        with open(f'{t}/bootmgfw.efi', 'rb') as f:
+            return f.read()
+
+
 def build(d):
     os.makedirs(d, exist_ok=True)
     win, hdd = f'{d}/win.img', f'{d}/hdd.img'
@@ -139,7 +155,7 @@ def build(d):
         for name, dest in (('bootmgfw.efi', 'EFI/Microsoft/Boot/bootmgfw.efi'), ('BCD', 'EFI/Microsoft/Boot/BCD'),
                            ('bootmgr.efi', 'EFI/Microsoft/Boot/bootmgr.efi')):
             with tempfile.NamedTemporaryFile() as t:
-                t.write(b'MZ' + name.encode() + rnd[:300 * 1024])
+                t.write(fake_windows() if name == 'bootmgfw.efi' else b'MZ' + name.encode() + rnd[:300 * 1024])
                 t.flush()
                 subprocess.run(['mcopy', '-i', esp, t.name, f'::{dest}'], check=True, env=env)
     with Loop(win, wp[3]) as dev:
@@ -454,6 +470,14 @@ if __name__ == '__main__':
             Qmp(sys.argv[2]).cmd('screendump', filename=sys.argv[3], format='png')
         except Exception as e:  # noqa: BLE001
             log(f'no screenshot: {e}')
+    elif cmd == 'menu-mwx7':  # a person choosing MWX 7 in the boot menu (Windows is its default): Home until the menu has
+        q = Qmp(sys.argv[2])  # surely shown and stopped counting, a screenshot of it, then Enter
+        end = time.time() + float(sys.argv[4])
+        while time.time() < end:
+            q.key('home')
+            time.sleep(1)
+        q.cmd('screendump', filename=sys.argv[3], format='png')
+        q.key('ret')
     elif cmd == 'drive':
         sys.exit(drive(sys.argv[2], sys.argv[3], sys.argv[4], float(sys.argv[5]) if len(sys.argv) > 5 else 1.0))
     else:

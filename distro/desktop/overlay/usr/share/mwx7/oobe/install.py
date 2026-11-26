@@ -445,6 +445,25 @@ def ensure_windows_entry(esp):
     chroot('update-grub')
 
 
+def next_start_mwx7(root=''):
+    """The restart that ends a setup, a Repair or a Reset goes straight into MWX 7, not to Windows (the boot menu's default
+    next to Windows, etc/grub.d/01_mwx7_safe): mwx7_next=mwx7 in GRUB's small file on the EFI partition. root is where
+    the system is mounted ('' for the running one). Never fails: without it the menu simply shows its default."""
+    if DRYRUN:
+        say('DRYRUN', 'grub-editenv /boot/efi/EFI/MWX7/mwx7.env set mwx7_next=mwx7')
+        return
+    env = '/boot/efi/EFI/MWX7/mwx7.env'
+    if not uefi() or not os.path.isdir(root + '/boot/efi/EFI/MWX7'):
+        return
+    run = ['chroot', root] if root else []
+    try:
+        if not os.path.exists(root + env):
+            subprocess.run(run + ['grub-editenv', env, 'create'], capture_output=True, timeout=30)
+        subprocess.run(run + ['grub-editenv', env, 'set', 'mwx7_next=mwx7'], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def plan(mode, disk, gib=None):
     """The exact list of what a copy will change, for the confirmation page. Writes nothing."""
     d = disk_info(disk)
@@ -647,6 +666,7 @@ def copy(mode, disk, gib=None):
     if mode == 'alongside' or (mode == 'free' and esp and not own_esp and
                                os.path.exists(f'{TARGET}/boot/efi/EFI/Microsoft/Boot/bootmgfw.efi')):
         ensure_windows_entry(esp)
+    next_start_mwx7(TARGET)
     say('STEP', 'Keeping a recovery copy')
     store_install_medium(root)
     with open(STATE + '/state.json', 'w') as f:
@@ -1081,6 +1101,7 @@ def reinstall(keep):
             chroot('update-grub')
             # A repaired system starts with a clean count (a Repair after failed starts must not be sent back by them).
             subprocess.run(['chroot', TARGET, '/usr/share/mwx7/bin/mwx7-bootcount', 'clear'], capture_output=True)
+            next_start_mwx7(TARGET)
             unmount_all()
             if not keep:
                 for sub in ('@home', '@log', '@cache'):
@@ -1154,8 +1175,8 @@ def update(action):
 
 
 GRUB_DEFAULTS = '''# MWX 7 boot menu settings. Run "sudo update-grub" after changing this file.
-# Always the first entry: remembering the last choice needs GRUB to write to the disk, which it can't on btrfs
-# ("error: sparse file not allowed" on every start).
+# The first entry (MWX 7); next to Windows, /etc/grub.d/01_mwx7_safe starts Windows unless MWX 7 restarted (it keeps
+# that choice on the EFI partition: GRUB can't write to btrfs, "error: sparse file not allowed").
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=1
 GRUB_DISTRIBUTOR="MWX 7"
@@ -1168,7 +1189,9 @@ GRUB_DISABLE_RECOVERY=true
 # and the previous version) unless another system such as Windows is there to choose: then it shows for 5 seconds
 # (mwx7-grub-names turns that on in GRUB's os-prober script).
 GRUB_THEME=/usr/share/grub/themes/mwx7/theme.txt
-GRUB_GFXMODE=1920x1080,1280x800,auto
+# auto: the mode the PC's firmware already shows (normally the monitor's own resolution), so the monitor does not
+# switch modes again and stay dark while the menu counts down.
+GRUB_GFXMODE=auto
 GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_TIMEOUT_STYLE=hidden
 '''
@@ -1326,6 +1349,7 @@ def finish_reset():
                 subprocess.run(['btrfs', '-q', 'subvolume', 'delete', f'{top}/{old}'], capture_output=True)
     finally:
         sh('umount', top)
+    next_start_mwx7()
     # The setup's own user is gone now; the restart is scheduled here so the setup can still say it is done.
     subprocess.run(['systemd-run', '--on-active=7', '--', 'systemctl', 'reboot'], capture_output=True)
 
