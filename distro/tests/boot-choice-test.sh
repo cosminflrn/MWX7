@@ -30,13 +30,14 @@ else
   set timeout=1
 fi
 EOF
-  sed -n "/<<'ENTRY'$/,/^ENTRY$/p" "$GRUBD/01_mwx7_safe" | sed '1d;$d' | sed "s/@ESP@/$ESPID/"
-  cat <<EOF
-menuentry 'MWX 7' --id gnulinux-simple-test { echo "STARTED MWX7"; halt }
-menuentry '${WINTITLE:-Windows}' --id osprober-efi-test { echo "STARTED WINDOWS"; halt }
-menuentry 'Repair MWX 7' --id mwx7-repair { echo "STARTED REPAIR"; halt }
-menuentry 'MWX 7 (previous version)' --id mwx7-previous { echo "STARTED PREVIOUS"; halt }
-EOF
+  sed -n "/<<'ENTRY'$/,/^ENTRY$/p" "$GRUBD/01_mwx7_safe" | sed '1d;$d' | sed "s/@ESP@/$ESPID/; s/@MWX7@/gnulinux-simple-test/"
+  # Windows first (06_mwx7_windows), or after MWX 7 where os-prober lists it (WINFIRST=0)
+  local wline; wline="menuentry '${WINTITLE:-Windows}' --id mwx7-windows { echo \"STARTED WINDOWS\"; halt }"
+  [ "${WINFIRST:-1}" = 1 ] && echo "$wline"
+  echo "menuentry 'MWX 7' --id gnulinux-simple-test { echo \"STARTED MWX7\"; halt }"
+  [ "${WINFIRST:-1}" = 1 ] || echo "$wline"
+  echo "menuentry 'Repair MWX 7' --id mwx7-repair { echo \"STARTED REPAIR\"; halt }"
+  echo "menuentry 'MWX 7 (previous version)' --id mwx7-previous { echo \"STARTED PREVIOUS\"; halt }"
   [ -n "${NO_OSPROBER:-}" ] || cat <<'EOF'
 set timeout_style=menu
 if [ "${timeout}" -lt 5 ]; then  # MWX 7: at least 5 s
@@ -136,10 +137,10 @@ run_case "armed, Restart to Windows"            1 "mwx7_next=windows mwx7_armed=
 NO_OSPROBER=1 run_case "no Windows: as before"                0 -                                             MWX7     1  hidden -
 NO_OSPROBER=1 run_case "no Windows, restart"                  0 "mwx7_next=mwx7"                              MWX7     1  hidden '!mwx7_next'
 NO_OSPROBER=1 run_case "Windows on another disk, Restart to Windows" 0 "mwx7_next=windows" WINDOWS 1 hidden '!mwx7_next'
-WINTITLE=Other NO_OSPROBER=1 run_case "Windows gone, stale Restart to Windows" 0 "mwx7_next=windows" MWX7 1 hidden '!mwx7_next'
+WINFIRST=0 WINTITLE=Other NO_OSPROBER=1 run_case "Windows gone, stale Restart to Windows" 0 "mwx7_next=windows" MWX7 1 hidden '!mwx7_next'
 NO_OSPROBER=1 run_case "no Windows, after an update"          0 "mwx7_armed=1 mwx7_tries=0"                   MWX7     1  hidden 'mwx7_tries=1'
 NO_OSPROBER=1 run_case "no Windows, 3rd start: back"          0 "mwx7_armed=1 mwx7_tries=2"                   PREVIOUS 1  hidden 'mwx7_tries=2'
-NO_OSPROBER=1 run_case "Windows not found by os-prober" 1 -                                     WINDOWS  10 menu   -
-WINTITLE='Windows Boot Manager (on /dev/sda1)' run_case "Windows under another name" 1 -           MWX7     10 menu   -
+WINFIRST=0 NO_OSPROBER=1 run_case "Windows not found by os-prober" 1 -                                     WINDOWS  10 menu   -
+WINFIRST=0 WINTITLE='Windows Boot Manager (on /dev/sda1)' run_case "Windows under another name" 1 -           MWX7     10 menu   -
 [ $fails = 0 ] && echo "PASS: all boot choices" || echo "FAIL: $fails case(s)"
 exit $((fails > 0))

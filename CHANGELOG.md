@@ -2,6 +2,9 @@
 
 Derived from the git history. Newest first.
 
+## v1.22.1
+- Next to Windows, Windows is also first in the boot menu (it is the one that starts by itself), MWX 7 right under it
+
 ## v1.22.0
 - **Next to Windows, the PC starts Windows**: switched on, and at every restart Windows makes itself (its updates
   restart several times), the boot menu starts Windows; it shows for 10 seconds to choose MWX 7, and the countdown stops

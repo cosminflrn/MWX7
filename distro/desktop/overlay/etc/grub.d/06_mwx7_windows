@@ -1,0 +1,25 @@
+#!/bin/sh
+# Windows first in the boot menu, the default when the PC is switched on (01_mwx7_safe starts it by the name "Windows").
+# Only for Windows' boot manager on MWX 7's own EFI partition: os-prober skips that one then (mwx7-grub-names patches
+# 30_os-prober to look for /run/mwx7-grub-windows, which this writes), so it is listed once. Same guards as
+# 01_mwx7_safe: without them this adds nothing and os-prober lists Windows as before.
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+rm -f /run/mwx7-grub-windows 2>/dev/null || true
+[ -d /sys/firmware/efi ] && [ -d /boot/efi/EFI/MWX7 ] || exit 0
+[ -f /boot/efi/EFI/Microsoft/Boot/bootmgfw.efi ] || exit 0
+[ "$(grub-probe --target=fs / 2>/dev/null)" = btrfs ] || exit 0
+[ "$(grub-probe --target=fs /boot/efi 2>/dev/null)" = fat ] || exit 0
+esp=$(grub-probe --target=fs_uuid /boot/efi 2>/dev/null) || exit 0
+[ -n "$esp" ] || exit 0
+# Without the note os-prober would list Windows too, so no note, no entry here (os-prober's stays).
+{ echo "$esp" > /run/mwx7-grub-windows; } 2>/dev/null || exit 0
+echo "Found Windows Boot Manager on the EFI partition: listed first" >&2
+cat <<ENTRY
+menuentry 'Windows' --class windows --class os \$menuentry_id_option 'mwx7-windows' {
+	insmod part_gpt
+	insmod fat
+	search --no-floppy --fs-uuid --set=root $esp
+	chainloader /EFI/Microsoft/Boot/bootmgfw.efi
+}
+ENTRY

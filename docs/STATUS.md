@@ -1,6 +1,6 @@
 # MWX 7 — project status
 
-Current: v1.22.0 (update channel and ISO).
+Current: v1.22.1 (update channel and ISO).
 17 Nov 2026: installed on Cosmin's real work PC next to Windows 11 (GTX 1070, 144 Hz monitor) — works; NVIDIA driver in use.
 
 ## Backlog (next, in priority order)
@@ -27,7 +27,8 @@ Current: v1.22.0 (update channel and ISO).
   after power-on or a mode change: avoid extra mode switches (GRUB keeps the firmware's mode, GRUB_GFXMODE=auto).
 - SSD layout (GPT): EFI 200 MB (Windows' and MWX 7's), C: 198 GB NTFS, MWX 7 24.41 GiB btrfs, Windows RE 921 MB.
   Windows must never be at risk.
-- Boot menu (v1.22, his choice): switched on → Windows (menu 10 s to pick MWX 7); Windows' own restarts → Windows; a
+- Boot menu (v1.22, his choice): Windows first in the list (06_mwx7_windows), MWX 7 second; switched on → Windows
+  (menu 10 s to pick MWX 7); Windows' own restarts → Windows; a
   restart from MWX 7 → MWX 7 (menu hidden); Start → Restart to Windows. See `etc/grub.d/01_mwx7_safe`.
 
 Vision and how to work: `CLAUDE.md`.

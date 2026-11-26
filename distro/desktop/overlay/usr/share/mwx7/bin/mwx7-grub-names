@@ -25,6 +25,8 @@ patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name' 's|^  LONGNAME="`echo
 patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name (EFI)' 's|^\tonstr="\$(gettext_printf "(on %s)" "\${DEVICE}")"$|\tonstr="$(gettext_printf "(on %s)" "${DEVICE}")"; [ -n "${onstr_off:-}" ] \&\& onstr=""  # MWX 7: short Windows name (EFI)|'
 # ...and no space after the name when there is no "(on ...)": "Windows ", with the space, is not the name GRUB starts.
 patch /etc/grub.d/30_os-prober 'onstr:+ ' 's|menuentry '"'"'$(echo "${LONGNAME} $onstr" \| grub_quote)'"'"'|menuentry '"'"'$(echo "${LONGNAME}${onstr:+ $onstr}" \| grub_quote)'"'"'|g'
+# ...and skips Windows on MWX 7's own EFI partition when 06_mwx7_windows already listed it first (its note in /run).
+patch /etc/grub.d/30_os-prober 'MWX 7: Windows first' 's|^\tDEVICE=\${DEVICE%@\*}$|&\n\t[ -s /run/mwx7-grub-windows ] \&\& [ -x /etc/grub.d/06_mwx7_windows ] \&\& [ "$(echo "${EFIPATH}" \| tr A-Z a-z)" = /efi/microsoft/boot/bootmgfw.efi ] \&\& [ "$(grub-probe --target=fs_uuid --device "${DEVICE}" 2>/dev/null)" = "$(cat /run/mwx7-grub-windows)" ] \&\& continue  # MWX 7: Windows first|'
 # 30_os-prober: when it finds another system it switches the hidden menu on (5 s); without one MWX 7 starts directly.
 patch /etc/grub.d/30_os-prober 'MWX 7: menu with other systems' 's|^quick_boot="0"$|quick_boot="1"  # MWX 7: menu with other systems|; s|^  set timeout=10$|  set timeout=5|'
 # ...for at least 5 seconds (the hidden menu itself waits 1 second for Esc).

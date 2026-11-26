@@ -439,7 +439,8 @@ def ensure_windows_entry(esp):
     """os-prober normally adds Windows to the boot menu; if it did not, chainload Windows' boot manager directly."""
     if re.search(r'menuentry\s+[\'"]Windows', open(TARGET + '/boot/grub/grub.cfg').read()):
         return
-    write('etc/grub.d/40_custom', '#!/bin/sh\nexec tail -n +3 $0\n'
+    write('etc/grub.d/40_custom', '#!/bin/sh\n[ -s /run/mwx7-grub-windows ] && [ -x /etc/grub.d/06_mwx7_windows ] && exit 0  # MWX 7: 06_mwx7_windows lists '
+          'this Windows first\nexec tail -n +4 $0\n'
           'menuentry "Windows" --class windows --class os {\n  insmod part_gpt\n  insmod fat\n'
           f'  search --no-floppy --fs-uuid --set=root {uuid(esp)}\n  chainloader /EFI/Microsoft/Boot/bootmgfw.efi\n}}\n', 0o755)
     chroot('update-grub')

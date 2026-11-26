@@ -10,7 +10,7 @@ space of a disk that holds Windows, driven with keyboard input only, and the pro
   free-test.py verify DIR                    after the install: every old partition byte for byte the same (the EFI partition:
                                              every old file), the HDD untouched, new partitions only in the former free space,
                                              MWX 7's boot files on the EFI partition, Windows in the installed boot menu
-  free-test.py menu-mwx7 QMP PNG SECONDS     a person choosing MWX 7 in the boot menu: Home every second for SECONDS, a
+  free-test.py menu-mwx7 QMP PNG SECONDS     a person choosing MWX 7 in the boot menu: Home every second for SECONDS, Down, a
                                              screenshot of the menu, Enter
 The fake Windows boot manager is a tiny GRUB (grub-mkstandalone, grub-efi-amd64-bin) that writes MWX7-TEST-WINDOWS to the serial
 port and powers off: the boot menu tests see when Windows was started.
@@ -470,12 +470,14 @@ if __name__ == '__main__':
             Qmp(sys.argv[2]).cmd('screendump', filename=sys.argv[3], format='png')
         except Exception as e:  # noqa: BLE001
             log(f'no screenshot: {e}')
-    elif cmd == 'menu-mwx7':  # a person choosing MWX 7 in the boot menu (Windows is its default): Home until the menu has
+    elif cmd == 'menu-mwx7':  # a person choosing MWX 7 in the boot menu (Windows, first, is its default): Home until the menu has
         q = Qmp(sys.argv[2])  # surely shown and stopped counting, a screenshot of it, then Enter
         end = time.time() + float(sys.argv[4])
         while time.time() < end:
             q.key('home')
             time.sleep(1)
+        q.key('down')  # Windows is first, MWX 7 second
+        time.sleep(1)
         q.cmd('screendump', filename=sys.argv[3], format='png')
         q.key('ret')
     elif cmd == 'drive':

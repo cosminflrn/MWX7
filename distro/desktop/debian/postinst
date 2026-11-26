@@ -92,6 +92,13 @@ if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_DEFAULT=saved' /etc/default/grub
     -e 's/^GRUB_CMDLINE_LINUX="loglevel=3 vt.global_cursor_default=0"$/GRUB_CMDLINE_LINUX=""/' /etc/default/grub
   rm -f /boot/grub/grubenv
 fi
+# Before 1.22.1: the setup's own Windows entry (when os-prober missed Windows) stood in 40_custom; 06_mwx7_windows now
+# lists that same Windows first, so the old entry steps aside when 06 did (else it would be listed twice).
+f=/etc/grub.d/40_custom
+if [ -f "$f" ] && [ "$(sed -n 2p "$f")" = 'exec tail -n +3 $0' ] && sed -n 3p "$f" | grep -q '^menuentry "Windows"' \
+   && grep -q 'chainloader /EFI/Microsoft/Boot/bootmgfw.efi' "$f"; then
+  sed -i '2s|.*|[ -s /run/mwx7-grub-windows ] \&\& [ -x /etc/grub.d/06_mwx7_windows ] \&\& exit 0  # MWX 7: 06_mwx7_windows lists this Windows first\nexec tail -n +4 $0|' "$f"
+fi
 # Before 1.22.0: the boot menu switched the screen to 1920x1080 (a monitor then stays dark for a moment while the menu
 # counts down); now it keeps the mode the firmware already shows.
 if [ -f /etc/mwx7/installed ] && grep -q '^GRUB_GFXMODE=1920x1080,1280x800,auto$' /etc/default/grub 2>/dev/null; then

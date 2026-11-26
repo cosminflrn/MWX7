@@ -22,7 +22,9 @@ set -e
 [ "$(grub-probe --target=fs /boot/efi 2>/dev/null)" = fat ] || exit 0
 esp=$(grub-probe --target=fs_uuid /boot/efi 2>/dev/null) || exit 0
 [ -n "$esp" ] || exit 0
-sed "s/@ESP@/$esp/" <<'ENTRY'
+# MWX 7's entry by its id (10_linux's), not as "the first one": next to Windows, Windows is first (06_mwx7_windows).
+mwx7=gnulinux-simple-$(grub_get_device_id "${GRUB_DEVICE}") || exit 0
+sed "s/@ESP@/$esp/; s|@MWX7@|$mwx7|" <<'ENTRY'
 set mwx7_windows=
 set mwx7_quick=
 if search --no-floppy --fs-uuid --set=mwx7_esp @ESP@; then
@@ -48,6 +50,7 @@ if search --no-floppy --fs-uuid --set=mwx7_esp @ESP@; then
     # By name: also a Windows on another disk. Without an entry of that name GRUB starts the first one, MWX 7.
     set default=Windows
   elif [ "$mwx7_go" = mwx7 -o "$mwx7_windows" != 1 ]; then
+    set default=@MWX7@
     if [ "$mwx7_armed" = 1 ]; then
       if [ "$mwx7_tries" = 2 ]; then
         set default=mwx7-previous
