@@ -9,6 +9,7 @@ Derived from the git history. Newest first.
 - A restart from MWX 7 comes back to MWX 7, straight, without the menu (also after Update and restart, the setup,
   Repair and Reset); Shut Down leaves the choice to the menu again
 - **Start → Restart to Windows** (and in the Start button's right-click menu) goes straight to Windows
+- Windows' entry in the boot menu is called just "Windows" on UEFI PCs too (it was "Windows (on /dev/…)")
 - The boot menu keeps the screen mode the PC's firmware already shows instead of switching to 1920x1080, so a monitor
   that is slow to show a picture after a mode change no longer loses the menu's first seconds; it fits any resolution
 - Safe boot after an update still works next to Windows: a start that hangs is retried in MWX 7 and then goes back to

@@ -4,7 +4,7 @@
 # change (apt hook), because a GRUB update brings back the stock scripts. Every patched script is checked with sh -n
 # and put back as it was if the check fails, so a mistake here can never stop the system from getting a boot menu.
 patch() {  # patch FILE MARKER SED-SCRIPT
-  F=$1
+  F=${GRUBD:+$GRUBD/${1##*/}}; F=${F:-$1}
   [ -f "$F" ] || return 0
   grep -q "$2" "$F" && return 0
   cp -p "$F" "$F.mwx7-orig"
@@ -20,6 +20,11 @@ patch() {  # patch FILE MARKER SED-SCRIPT
 patch /etc/grub.d/10_linux '"MWX 7"|Ubuntu' 's/^    Ubuntu|Kubuntu|\*GNU\/Linux)$/    "MWX 7"|Ubuntu|Kubuntu|*GNU\/Linux)/'
 # 30_os-prober: Windows gets a plain name and no "(on /dev/...)" suffix.
 patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name' 's|^  LONGNAME="`echo \${OS} \| cut -d .:. -f 2 \| tr .\^. . .`"$|&\n  # MWX 7: short Windows name\n  onstr_off=; case "${LONGNAME}" in Windows*) LONGNAME=Windows; onstr_off=1 ;; esac|; s|^\t  onstr="\$(gettext_printf "(on %s)" "\${DEVICE}")"$|\t  onstr="$(gettext_printf "(on %s)" "${DEVICE}")"; [ -n "${onstr_off:-}" ] \&\& onstr=""|'
+# ...also in its EFI branch (the one a UEFI PC's Windows takes, indented differently): the boot menu starts Windows by
+# this exact name (etc/grub.d/01_mwx7_safe), and without it the entry was "Windows (on /dev/sda1)".
+patch /etc/grub.d/30_os-prober 'MWX 7: short Windows name (EFI)' 's|^\tonstr="\$(gettext_printf "(on %s)" "\${DEVICE}")"$|\tonstr="$(gettext_printf "(on %s)" "${DEVICE}")"; [ -n "${onstr_off:-}" ] \&\& onstr=""  # MWX 7: short Windows name (EFI)|'
+# ...and no space after the name when there is no "(on ...)": "Windows ", with the space, is not the name GRUB starts.
+patch /etc/grub.d/30_os-prober 'onstr:+ ' 's|menuentry '"'"'$(echo "${LONGNAME} $onstr" \| grub_quote)'"'"'|menuentry '"'"'$(echo "${LONGNAME}${onstr:+ $onstr}" \| grub_quote)'"'"'|g'
 # 30_os-prober: when it finds another system it switches the hidden menu on (5 s); without one MWX 7 starts directly.
 patch /etc/grub.d/30_os-prober 'MWX 7: menu with other systems' 's|^quick_boot="0"$|quick_boot="1"  # MWX 7: menu with other systems|; s|^  set timeout=10$|  set timeout=5|'
 # ...for at least 5 seconds (the hidden menu itself waits 1 second for Esc).

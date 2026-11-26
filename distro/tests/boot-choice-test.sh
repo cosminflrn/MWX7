@@ -54,6 +54,26 @@ grub-mkstandalone -O x86_64-efi -d "$MODDIR" -o "$W/BOOTX64.EFI" --modules="part
   "boot/grub/grub.cfg=$W/embed.cfg" || { echo "FAIL: grub-mkstandalone"; exit 1; }
 
 fails=0
+# The name: 01_mwx7_safe starts Windows by its exact menu name "Windows", which mwx7-grub-names makes out of os-prober's
+# "Windows Boot Manager (on /dev/sda1)". Checked on GRUB's real 30_os-prober (OSPROBER_SCRIPT, default this machine's)
+# with an os-prober stand-in that reports a UEFI Windows; patched twice, as an update does on an already patched system.
+src="${OSPROBER_SCRIPT:-/etc/grub.d/30_os-prober}"
+if [ -f "$src" ]; then
+  mkdir -p "$W/grub.d" "$W/bin"; cp "$src" "$W/grub.d/30_os-prober"
+  printf '#!/bin/sh\necho "/dev/sda1@/EFI/Microsoft/Boot/bootmgfw.efi:Windows Boot Manager:Windows:efi"\n' > "$W/bin/os-prober"
+  printf '#!/bin/sh\ncase "$*" in *fs_uuid*) echo %s ;; *) echo ;; esac\n' "$ESPID" > "$W/bin/grub-probe"
+  chmod +x "$W/bin/os-prober" "$W/bin/grub-probe"
+  GRUBD="$W/grub.d" sh "$HERE/../desktop/overlay/usr/share/mwx7/bin/mwx7-grub-names"
+  GRUBD="$W/grub.d" sh "$HERE/../desktop/overlay/usr/share/mwx7/bin/mwx7-grub-names"
+  entry=$(cd "$W" && PATH="$W/bin:$PATH" pkgdatadir=/usr/share/grub sh "$W/grub.d/30_os-prober" 2>/dev/null | grep -a '^menuentry ' | head -1)
+  if [ "${entry#menuentry \'Windows\' }" != "$entry" ]; then
+    echo "PASS os-prober names UEFI Windows 'Windows'"
+  else
+    echo "FAIL os-prober's Windows entry is not named exactly 'Windows': $entry"; fails=$((fails + 1))
+  fi
+else
+  echo "SKIP the Windows name (no $src)"
+fi
 # case NAME WINDOWS(1/0) "ENV ASSIGNMENTS or -" EXPECT-STARTED EXPECT-TIMEOUT EXPECT-STYLE "EXPECT ENV AFTER (grep -x lines, ;-separated) or -"
 run_case() {
   local name="$1" win="$2" env="$3" want="$4" wtime="$5" wstyle="$6" after="$7" img="$W/esp.img" log="$W/serial.log"
